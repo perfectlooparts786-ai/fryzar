@@ -961,7 +961,8 @@ async function ownerBootstrap(request: Request, env: Env): Promise<Response> {
 
   const configuredToken = env.OWNER_BOOTSTRAP_TOKEN ?? "";
   const suppliedToken = request.headers.get("X-Owner-Bootstrap-Token") ?? "";
-  if (configuredToken.length < 32 || suppliedToken.length < 32) {
+  if (new TextEncoder().encode(configuredToken).byteLength < 32 ||
+      new TextEncoder().encode(suppliedToken).byteLength < 32) {
     return json({ error: "owner_bootstrap_unavailable" }, 503);
   }
 
@@ -991,11 +992,15 @@ async function ownerBootstrap(request: Request, env: Env): Promise<Response> {
     return json({ error: "password_policy_failed" }, 400);
   }
 
-  const existing = await env.DB.prepare(
-    "SELECT COUNT(*) AS user_count FROM staff_users"
-  ).first<{ user_count: number }>();
+  const [existingOwnerClaim, existingUsers] = await Promise.all([
+    env.DB.prepare(
+      "SELECT claim_key FROM bootstrap_claims WHERE claim_key = 'first_owner' LIMIT 1"
+    ).first<{ claim_key: string }>(),
+    env.DB.prepare("SELECT COUNT(*) AS user_count FROM staff_users")
+      .first<{ user_count: number }>()
+  ]);
 
-  if (!existing || existing.user_count !== 0) {
+  if (existingOwnerClaim || !existingUsers || existingUsers.user_count !== 0) {
     return json({ error: "owner_already_configured" }, 409);
   }
 
@@ -1006,21 +1011,55 @@ async function ownerBootstrap(request: Request, env: Env): Promise<Response> {
     display_name: displayName,
     role: "owner"
   };
+  const sessionId = crypto.randomUUID();
+  const sessionToken = randomHex(32);
+  const sessionTokenHash = await sha256Hex(sessionToken);
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_SECONDS * 1000).toISOString();
 
   try {
-    await env.DB.prepare(
-      "INSERT INTO staff_users (id, email, password_hash, display_name, role, is_active) " +
-      "VALUES (?1, ?2, ?3, ?4, 'owner', 1)"
-    ).bind(staff.id, staff.email, passwordHash, staff.display_name).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO bootstrap_claims (claim_key) VALUES ('first_owner')"
+      ),
+      env.DB.prepare(
+        "INSERT INTO staff_users (id, email, password_hash, display_name, role, is_active) " +
+        "VALUES (?1, ?2, ?3, ?4, 'owner', 1)"
+      ).bind(staff.id, staff.email, passwordHash, staff.display_name),
+      env.DB.prepare(
+        "INSERT INTO staff_sessions (id, staff_user_id, token_hash, created_at, expires_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5)"
+      ).bind(sessionId, staff.id, sessionTokenHash, createdAt, expiresAt),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) " +
+        "VALUES (?1, ?2, 'owner', 'staff.owner_bootstrapped', 'staff_user', ?2, ?3)"
+      ).bind(
+        crypto.randomUUID(),
+        staff.id,
+        JSON.stringify({ source: "one_time_bootstrap" })
+      )
+    ]);
   } catch {
     return json({ error: "owner_already_configured" }, 409);
   }
 
-  const response = await createStaffSession(env, staff, request);
-  return new Response(response.body, {
-    status: 201,
-    headers: response.headers
-  });
+  const response = json({
+    authenticated: true,
+    user: {
+      id: staff.id,
+      email: staff.email,
+      display_name: staff.display_name,
+      role: staff.role
+    },
+    expires_at: expiresAt
+  }, 201);
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", sessionCookie(sessionToken, ADMIN_SESSION_SECONDS));
+
+  return applySecurityHeaders(new Response(response.body, {
+    status: response.status,
+    headers
+  }), request, env);
 }
 
 async function adminLogin(request: Request, env: Env): Promise<Response> {
