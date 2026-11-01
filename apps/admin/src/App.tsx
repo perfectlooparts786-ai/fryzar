@@ -21,7 +21,7 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "catalogue", label: "Catalogue", icon: "▦" },
   { id: "inventory", label: "Inventory", icon: "▧" },
   { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
-  { id: "delivery", label: "Delivery", icon: "⌖", note: "Read only" },
+  { id: "delivery", label: "Delivery", icon: "⌖" },
   { id: "team", label: "Team access", icon: "♙", note: "API pending" },
   { id: "settings", label: "Store settings", icon: "⚙", note: "Read only" }
 ];
@@ -42,6 +42,8 @@ function messageFor(error: unknown): string {
       case "idempotency_key_reused": return "This request key was already used with different adjustment details. Refresh and submit again.";
       case "request_already_processing": return "This adjustment is still being processed. Check movement history before retrying.";
       case "product_not_found": return "The selected product no longer exists. Refresh the inventory list.";
+      case "delivery_zone_code_conflict": return "This delivery zone code is already in use. Choose a different code.";
+      case "delivery_zone_not_found": return "This delivery zone no longer exists. Refresh the list.";
       case "invalid_credentials": return "Email or password is incorrect.";
       case "owner_bootstrap_unavailable": return "First-owner setup is not enabled on the API yet. The one-time bootstrap secret must be configured securely in Cloudflare.";
       case "invalid_bootstrap_token": return "The bootstrap token was not accepted.";
@@ -652,6 +654,103 @@ function InventoryModule({ user }: { user: StaffUser }) {
   </section>;
 }
 
+function DeliveryModule({ user }: { user: StaffUser }) {
+  const [zones, setZones] = useState<DeliveryZone[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [form, setForm] = useState({
+    code: "", name_en: "", name_ur: "", country_code: "PK", region: "", city: "",
+    delivery_fee_paisa: "0", minimum_order_paisa: "0", is_active: "1"
+  });
+  const canEdit = user.role === "owner" || user.role === "manager";
+
+  async function load() {
+    setLoading(true); setError("");
+    try {
+      const result = await adminApi.adminDeliveryZones();
+      setZones(result.delivery_zones);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  function resetForm() {
+    setEditingId("");
+    setForm({ code: "", name_en: "", name_ur: "", country_code: "PK", region: "", city: "", delivery_fee_paisa: "0", minimum_order_paisa: "0", is_active: "1" });
+  }
+  function editZone(zone: DeliveryZone) {
+    setEditingId(zone.id);
+    setForm({
+      code: zone.code, name_en: zone.name_en, name_ur: zone.name_ur,
+      country_code: zone.country_code || "PK", region: zone.region || "", city: zone.city,
+      delivery_fee_paisa: String(zone.delivery_fee_paisa),
+      minimum_order_paisa: String(zone.minimum_order_paisa),
+      is_active: String(zone.is_active)
+    });
+    setError(""); setNotice("");
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      await adminApi.saveDeliveryZone({
+        code: form.code.trim().toUpperCase(),
+        name_en: form.name_en.trim(),
+        name_ur: form.name_ur.trim(),
+        country_code: form.country_code.trim().toUpperCase(),
+        region: form.region.trim(),
+        city: form.city.trim(),
+        delivery_fee_paisa: Number(form.delivery_fee_paisa),
+        minimum_order_paisa: Number(form.minimum_order_paisa),
+        is_active: form.is_active === "1"
+      }, editingId || undefined);
+      setNotice(editingId ? "Delivery zone updated." : "Delivery zone created.");
+      resetForm(); await load();
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setBusy(false); }
+  }
+  const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
+
+  return <section className="delivery-module">
+    <div className="module-heading">
+      <div><span className="kicker">SERVICE AREA CONFIGURATION</span><h1>Delivery zones</h1><p>Manage service areas, delivery charges and minimum order values. Existing zones are deactivated, not deleted.</p></div>
+      <button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button>
+    </div>
+    {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+    {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+    {canEdit ? <form className="catalogue-editor" onSubmit={submit}>
+      <h2>{editingId ? "Edit delivery zone" : "Create delivery zone"}</h2>
+      <div className="catalogue-form-grid">
+        <label className="catalogue-field"><span>Zone code</span><input required maxLength={40} value={form.code} onChange={event => update("code", event.target.value)} placeholder="WAH-CANTT" /></label>
+        <label className="catalogue-field"><span>English name</span><input required maxLength={140} value={form.name_en} onChange={event => update("name_en", event.target.value)} /></label>
+        <label className="catalogue-field"><span>Urdu name</span><input required maxLength={140} value={form.name_ur} onChange={event => update("name_ur", event.target.value)} /></label>
+        <label className="catalogue-field"><span>Country code</span><input required minLength={2} maxLength={2} value={form.country_code} onChange={event => update("country_code", event.target.value)} /></label>
+        <label className="catalogue-field"><span>Region / province</span><input maxLength={120} value={form.region} onChange={event => update("region", event.target.value)} /></label>
+        <label className="catalogue-field"><span>City</span><input required maxLength={120} value={form.city} onChange={event => update("city", event.target.value)} /></label>
+        <label className="catalogue-field"><span>Delivery fee (paisa)</span><input required type="number" min="0" step="1" value={form.delivery_fee_paisa} onChange={event => update("delivery_fee_paisa", event.target.value)} /></label>
+        <label className="catalogue-field"><span>Minimum order (paisa)</span><input required type="number" min="0" step="1" value={form.minimum_order_paisa} onChange={event => update("minimum_order_paisa", event.target.value)} /></label>
+        <label className="catalogue-field"><span>Zone status</span><select value={form.is_active} onChange={event => update("is_active", event.target.value)}><option value="1">Active</option><option value="0">Inactive</option></select></label>
+      </div>
+      <div className="catalogue-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : editingId ? "Save changes" : "Create zone"}</button>{editingId ? <button type="button" className="refresh-button" disabled={busy} onClick={resetForm}>Cancel edit</button> : null}</div>
+      <p className="orders-footnote">Amounts are integer paisa. PKR 100 = 10,000 paisa. Only active zones are offered during checkout.</p>
+    </form> : <p className="orders-footnote">Your role can view delivery configuration but cannot change it.</p>}
+    <section className="inventory-stock-card">
+      <div className="inventory-card-heading"><div><h2>Configured service areas</h2><p>{zones.length} zones · inactive records remain available for historical orders</p></div></div>
+      {loading ? <div className="orders-empty">Loading delivery zones…</div> : zones.length === 0 ? <div className="orders-empty"><strong>No delivery zones configured</strong><small>Add genuine service areas and fees before opening the store.</small></div> :
+        <div className="table-wrap"><table className="orders-table"><thead><tr><th>Zone</th><th>Code</th><th>Location</th><th>Delivery fee</th><th>Minimum order</th><th>Status</th><th>Action</th></tr></thead><tbody>{zones.map(zone => <tr key={zone.id}>
+          <td><strong>{zone.name_en}</strong><small>{zone.name_ur}</small></td>
+          <td>{zone.code}</td><td>{[zone.city, zone.region, zone.country_code].filter(Boolean).join(", ")}</td>
+          <td>{money(zone.delivery_fee_paisa)}</td><td>{money(zone.minimum_order_paisa)}</td>
+          <td><span className={"order-status " + (zone.is_active ? "status-confirmed" : "status-cancelled")}>{zone.is_active ? "Active" : "Inactive"}</span></td>
+          <td><button className="refresh-button" type="button" disabled={!canEdit} onClick={() => editZone(zone)}>Edit</button></td>
+        </tr>)}</tbody></table></div>}
+    </section>
+  </section>;
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -777,6 +876,8 @@ export default function App() {
             <CatalogueModule user={user} />
           ) : section === "inventory" ? (
             <InventoryModule user={user} />
+          ) : section === "delivery" ? (
+            <DeliveryModule user={user} />
           ) : section === "overview" ? (
             <Overview
               user={user}
