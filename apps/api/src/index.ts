@@ -2309,7 +2309,10 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
 
-  const metricsResponse = await adminDashboardMetrics(request, env, url, user);\n  if (metricsResponse) return metricsResponse;\n\n  const paymentsResponse = await adminPaymentsApi(request, env, url, user);
+  const metricsResponse = await adminDashboardMetrics(request, env, url, user);
+  if (metricsResponse) return metricsResponse;
+
+  const paymentsResponse = await adminPaymentsApi(request, env, url, user);
   if (paymentsResponse) return paymentsResponse;
 
   const staffResponse = await adminStaffApi(request, env, url, user);
