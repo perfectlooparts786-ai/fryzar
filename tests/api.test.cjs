@@ -58,7 +58,8 @@ function createEnv(options = {}) {
       DB,
       APP_ENV: "test",
       ALLOWED_ORIGINS: "https://store.example,https://admin.example",
-      TRACKING_SECRET: options.trackingSecret ?? "test-only-tracking-secret-at-least-32-bytes-long"
+      TRACKING_SECRET: options.trackingSecret ?? "test-only-tracking-secret-at-least-32-bytes-long",
+      OWNER_BOOTSTRAP_TOKEN: options.ownerBootstrapToken ?? "test-owner-bootstrap-token-at-least-32-bytes"
     },
     state
   };
@@ -370,4 +371,180 @@ test("tracking returns order summary without customer phone or delivery address"
   assert.deepEqual(body.items, savedItems);
   assert.equal("customer_phone" in body.order, false);
   assert.equal("delivery_address" in body.order, false);
+});
+
+
+async function makeTestPasswordHash(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 310000 },
+    key,
+    256
+  );
+  const encode = (bytes) => Buffer.from(bytes).toString("base64");
+  return "pbkdf2_sha256$310000$" + encode(salt) + "$" + encode(new Uint8Array(bits));
+}
+
+test("owner bootstrap requires an allowed browser origin", async () => {
+  const { env, state } = createEnv();
+  const response = await worker.fetch(
+    request("/api/v1/admin/bootstrap-owner", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Owner-Bootstrap-Token": "test-owner-bootstrap-token-at-least-32-bytes"
+      },
+      body: JSON.stringify({
+        email: "owner@example.test",
+        display_name: "FRYZAR Owner",
+        password: "a-strong-test-password-123"
+      })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal(state.firstCount, 0);
+});
+
+test("owner bootstrap creates one atomic owner and returns a secure session cookie", async () => {
+  const { env, state } = createEnv({ firstResults: [null, { user_count: 0 }] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/bootstrap-owner", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json",
+        "X-Owner-Bootstrap-Token": "test-owner-bootstrap-token-at-least-32-bytes"
+      },
+      body: JSON.stringify({
+        email: "owner@example.test",
+        display_name: "FRYZAR Owner",
+        password: "a-strong-test-password-123"
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+  const cookie = response.headers.get("Set-Cookie");
+
+  assert.equal(response.status, 201);
+  assert.equal(body.authenticated, true);
+  assert.equal(body.user.role, "owner");
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 4);
+  assert.match(state.batchStatements[0].sql, /bootstrap_claims/);
+  assert.match(state.batchStatements[1].sql, /staff_users/);
+  assert.match(state.batchStatements[2].sql, /staff_sessions/);
+  assert.match(cookie, /^__Host-fryzar_admin=[a-f0-9]{64}/);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /Secure/);
+  assert.match(cookie, /SameSite=Strict/);
+  assert.match(cookie, /Path=\//);
+  assert.equal(JSON.stringify(body).includes("a-strong-test-password-123"), false);
+});
+
+test("owner bootstrap refuses when the single-use claim is already consumed", async () => {
+  const { env, state } = createEnv({
+    firstResults: [{ claim_key: "first_owner" }, { user_count: 1 }]
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/bootstrap-owner", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json",
+        "X-Owner-Bootstrap-Token": "test-owner-bootstrap-token-at-least-32-bytes"
+      },
+      body: JSON.stringify({
+        email: "second@example.test",
+        display_name: "Second Owner",
+        password: "a-strong-test-password-456"
+      })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "owner_already_configured");
+  assert.equal(state.batchCount, 0);
+});
+
+test("admin session endpoint rejects missing session cookies", async () => {
+  const { env } = createEnv();
+  const response = await worker.fetch(request("/api/v1/admin/session"), env);
+
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).authenticated, false);
+});
+
+test("admin login creates a secure HttpOnly session after password verification", async () => {
+  const password = "a-strong-test-password-789";
+  const passwordHash = await makeTestPasswordHash(password);
+  const staff = {
+    id: "staff-1",
+    email: "owner@example.test",
+    display_name: "FRYZAR Owner",
+    role: "owner",
+    is_active: 1,
+    password_hash: passwordHash
+  };
+  const { env, state } = createEnv({ firstResults: [staff] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "owner@example.test", password })
+    }),
+    env
+  );
+  const body = await response.json();
+  const cookie = response.headers.get("Set-Cookie");
+
+  assert.equal(response.status, 200);
+  assert.equal(body.authenticated, true);
+  assert.equal(body.user.role, "owner");
+  assert.match(cookie, /^__Host-fryzar_admin=[a-f0-9]{64}/);
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /Secure/);
+  assert.match(cookie, /SameSite=Strict/);
+  assert.equal(state.batchCount, 1);
+});
+
+test("admin login returns the same generic failure for a wrong password", async () => {
+  const passwordHash = await makeTestPasswordHash("correct-password-123");
+  const staff = {
+    id: "staff-1",
+    email: "owner@example.test",
+    display_name: "FRYZAR Owner",
+    role: "owner",
+    is_active: 1,
+    password_hash: passwordHash
+  };
+  const { env, state } = createEnv({ firstResults: [staff] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "owner@example.test", password: "incorrect-password" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "invalid_credentials");
+  assert.equal(state.batchCount, 0);
 });
