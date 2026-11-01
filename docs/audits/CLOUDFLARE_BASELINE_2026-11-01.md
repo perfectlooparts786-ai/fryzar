@@ -22,7 +22,7 @@ All three Workers exist, use standard usage model, have no compatibility flags, 
 
 API environment was observed as `APP_ENV=development` and `ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`. This is not production-ready. Secret values were not fetched. Deployed Worker versions are not tied to Git commits in the observed inventory.
 
-The Cloudflare Execute connector accepted the Worker script download request but returned no script body (`result` undefined). Exact deployed source and imports therefore remain unrecovered through the currently exposed connector. Do not substitute the foundation branch as recovered production source.
+The exact deployed module bodies for all three Workers were subsequently retrieved and preserved on recovery branch `recovery/cloudflare-worker-source-2026-11-01`, proposed in [recovery PR #3](https://github.com/perfectlooparts786-ai/fryzar/pull/3). The Git tree reports complete UTF-8 blob sizes of 37,817 bytes (app), 33,957 bytes (admin), and 22,511 bytes (API). The source digests and provenance are in the recovery manifest. Do not substitute the foundation branch as recovered production source: its architecture and API surface differ from the deployed snapshots.
 
 ## D1 schemas, migrations, and non-sensitive counts
 
@@ -56,8 +56,8 @@ Zone `fryzar.com` is active. DNS inventory contains one apex TXT record. No Work
 
 1. **High — split databases:** customer/admin use fryzar-production; API uses fryzar-core. Do not rebind or migrate until data/schema reconciliation, D1-specific rollback evidence, and owner sign-off.
 2. **High — API environment:** development APP_ENV and localhost origins remain configured on the current API Worker.
-3. **High — source provenance:** exact deployed modules remain unrecovered; foundation branch code is a candidate implementation, not proof of deployed source.
+3. **High — source/architecture transition:** exact deployed modules are now preserved in recovery PR #3, but the candidate foundation branch differs materially from the deployed direct-D1 customer/admin implementation. Review and plan the transition; do not deploy or rebind yet.
 4. **Launch blocker — routing:** no fryzar.com Worker routes or app DNS targets were observed.
 5. **Runtime verification:** green mocked CI does not establish real D1 behavior, live Worker behavior, browser E2E, or domain health.
 
-Next exact task: obtain a source-download path returning original Worker modules, then compare each deployed Worker to the foundation branch while preserving version and deployment provenance. Do not deploy or switch database bindings as part of source recovery.
+Next exact task: complete D1-specific restore and schema/data reconciliation, then prepare a preview migration plan for the candidate central-API architecture. Keep deployed Workers and both D1 bindings unchanged until the plan passes review and owner approval.
