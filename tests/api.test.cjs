@@ -695,7 +695,7 @@ test("manager inventory adjustment writes quantity, adjustment ledger, movement 
   const token = "a".repeat(64);
   const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
   const product = { id: productId, stock_qty: 8 };
-  const { env, state } = createEnv({ firstResults: [staff, product] });
+  const { env, state } = createEnv({ firstResults: [staff, product], batchChanges: [1, 1, 1, 1] });
   const response = await worker.fetch(
     request("/api/v1/admin/inventory/adjustments", {
       method: "POST",
@@ -834,4 +834,40 @@ test("product update cannot bypass the inventory adjustment ledger", async () =>
   assert.equal(response.status, 409);
   assert.equal((await response.json()).error, "inventory_adjustment_required");
   assert.equal(state.batchCount, 0);
+});
+
+
+test("new products with opening stock create matching adjustment and movement records", async () => {
+  const token = "1".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, batchChanges: [1, 1, 1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/products", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        slug: "initial-stock-product",
+        name_en: "Initial Stock Product",
+        name_ur: "ابتدائی اسٹاک",
+        price_paisa: 25000,
+        stock_qty: 15,
+        is_available: true
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(body.saved, true);
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 4);
+  assert.match(state.batchStatements[1].sql, /inventory_adjustments/);
+  assert.match(state.batchStatements[1].sql, /Opening stock at product creation/);
+  assert.match(state.batchStatements[2].sql, /inventory_movements/);
+  assert.match(state.batchStatements[3].sql, /product.created/);
 });
