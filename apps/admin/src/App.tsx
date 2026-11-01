@@ -504,7 +504,7 @@ function CatalogueModule({ user }: { user: StaffUser }) {
     setForm({
       slug: product.slug, name_en: product.name_en, name_ur: product.name_ur,
       description_en: product.description_en ?? "", description_ur: product.description_ur ?? "",
-      price_paisa: String(product.price_paisa), compare_at_paisa: product.compare_at_paisa == null ? "" : String(product.compare_at_paisa),
+      price_paisa: (product.price_paisa / 100).toFixed(2), compare_at_paisa: product.compare_at_paisa == null ? "" : (product.compare_at_paisa / 100).toFixed(2),
       stock_qty: product.stock_qty == null ? "" : String(product.stock_qty), sku: product.sku ?? "",
       category_id: product.category_id ?? "", image_url: product.image_url ?? "", sort_order: String(product.sort_order ?? 0)
     });
@@ -529,8 +529,8 @@ function CatalogueModule({ user }: { user: StaffUser }) {
         await adminApi.saveProduct({
           slug: form.slug, name_en: form.name_en, name_ur: form.name_ur,
           description_en: form.description_en, description_ur: form.description_ur,
-          price_paisa: Number(form.price_paisa),
-          compare_at_paisa: form.compare_at_paisa === "" ? null : Number(form.compare_at_paisa),
+          price_paisa: Math.round(Number(form.price_paisa) * 100),
+          compare_at_paisa: form.compare_at_paisa === "" ? null : Math.round(Number(form.compare_at_paisa) * 100),
           ...(editingId ? {} : { stock_qty: form.stock_qty === "" ? null : Number(form.stock_qty) }),
           sku: form.sku || null, category_id: form.category_id || null, image_url: form.image_url || null,
           sort_order: Number(form.sort_order), is_available: form.is_available !== "0", is_featured: form.is_featured === "1"
@@ -541,12 +541,23 @@ function CatalogueModule({ user }: { user: StaffUser }) {
     } catch (cause) { setError(messageFor(cause)); }
     finally { setBusy(false); }
   }
-  function field(label: string, key: string, type = "text", required = false) {
-    return <label className="catalogue-field" key={key}><span>{label}</span><input type={type} required={required} value={form[key] ?? ""} onChange={event => setForm(current => ({ ...current, [key]: event.target.value }))} /></label>;
+  function field(label: string, key: string, type = "text", required = false, step?: string) {
+    return <label className="catalogue-field" key={key}>
+      <span>{label}</span>
+      <input
+        type={type}
+        required={required}
+        min={type === "number" ? "0" : undefined}
+        step={step ?? (type === "number" ? "1" : undefined)}
+        inputMode={type === "number" ? "decimal" : undefined}
+        value={form[key] ?? ""}
+        onChange={event => setForm(current => ({ ...current, [key]: event.target.value }))}
+      />
+    </label>;
   }
 
   return <section className="catalogue-module">
-    <div className="module-heading"><div><span className="kicker">CATALOGUE MANAGEMENT</span><h1>Products &amp; categories</h1><p>Create and update store catalogue records. Prices are entered in paisa.</p></div><button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button></div>
+    <div className="module-heading"><div><span className="kicker">CATALOGUE MANAGEMENT</span><h1>Products &amp; categories</h1><p>Create and update store catalogue records. Enter prices in PKR; the system stores them accurately in paisa.</p></div><button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button></div>
     <div className="filter-tabs"><button type="button" className={tab === "products" ? "selected" : ""} onClick={() => { setTab("products"); resetForm(); }}>Products ({products.length})</button><button type="button" className={tab === "categories" ? "selected" : ""} onClick={() => { setTab("categories"); resetForm(); }}>Categories ({categories.length})</button></div>
     {error ? <div className="orders-alert" role="alert">{error}</div> : null}
     {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
@@ -555,9 +566,9 @@ function CatalogueModule({ user }: { user: StaffUser }) {
       <div className="catalogue-form-grid">
         {field("English name", "name_en", "text", true)}{field("Urdu name", "name_ur", "text", true)}{field("URL slug", "slug", "text", true)}
         {tab === "products" ? <>
-          {field("Price (paisa)", "price_paisa", "number", true)}{field("Compare-at price (paisa)", "compare_at_paisa", "number")}{!editingId ? field("Opening stock (blank = not tracked)", "stock_qty", "number") : null}
+          {field("Price (PKR)", "price_paisa", "number", true, "0.01")}{field("Compare-at price (PKR)", "compare_at_paisa", "number", false, "0.01")}{!editingId ? field("Opening stock (blank = not tracked)", "stock_qty", "number") : null}
           {field("SKU (optional)", "sku")}{field("Image URL (HTTPS only)", "image_url")}
-          <label className="catalogue-field"><span>Category</span><select value={form.category_id ?? ""} onChange={event => setForm(current => ({ ...current, category_id: event.target.value }))}><option value="">Uncategorised</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_en}</option>)}</select></label>
+          <label className="catalogue-field"><span>Category</span><select value={form.category_id ?? ""} onChange={event => setForm(current => ({ ...current, category_id: event.target.value }))}><option value="">Uncategorised</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_en} · {c.name_ur}</option>)}</select></label>
           <label className="catalogue-field"><span>Availability</span><select value={form.is_available ?? "1"} onChange={event => setForm(current => ({ ...current, is_available: event.target.value }))}><option value="1">Available</option><option value="0">Unavailable</option></select></label>
           <label className="catalogue-field"><span>Featured</span><select value={form.is_featured ?? "0"} onChange={event => setForm(current => ({ ...current, is_featured: event.target.value }))}><option value="0">No</option><option value="1">Yes</option></select></label>
         </> : <label className="catalogue-field"><span>Active</span><select value={form.is_active ?? "1"} onChange={event => setForm(current => ({ ...current, is_active: event.target.value }))}><option value="1">Active</option><option value="0">Inactive</option></select></label>}
@@ -1225,7 +1236,13 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-status"><span /><div><strong>API connected</strong><small>Development environment</small></div></div>
+          <div className={"sidebar-status " + (dataLoading ? "checking" : dataError ? "warning" : "connected")}>
+            <span />
+            <div>
+              <strong>{dataLoading ? "Checking store services" : dataError ? "Some services need attention" : "Store services available"}</strong>
+              <small>Preview environment</small>
+            </div>
+          </div>
           <div className="sidebar-user"><span className="avatar">{user.display_name.slice(0,1).toUpperCase()}</span><div><strong>{user.display_name}</strong><small>{user.role}</small></div><button type="button" onClick={() => void logout()} disabled={logoutBusy} aria-label="Sign out">↗</button></div>
         </div>
       </aside>
@@ -1233,7 +1250,7 @@ export default function App() {
       <main className="admin-main">
         <header className="topbar">
           <div><span className="breadcrumb">FRYZAR <i>/</i> {pageTitle}</span><strong>{pageTitle}</strong></div>
-          <div className="topbar-right"><span className="environment-pill">DEV</span><span className="topbar-role">{user.role.toUpperCase()}</span><button type="button" onClick={() => void logout()} disabled={logoutBusy}>Sign out</button></div>
+          <div className="topbar-right"><span className="environment-pill">PREVIEW</span><span className="topbar-role">{user.role.toUpperCase()}</span><button type="button" onClick={() => void logout()} disabled={logoutBusy}>Sign out</button></div>
         </header>
 
         <div className="page-content">
