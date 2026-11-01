@@ -21,7 +21,8 @@
     "deploy:admin-preview": "npm run build:admin && wrangler deploy --config apps/admin-worker/wrangler.toml",
     "test:workers": "node --test tests/worker-routing.test.cjs",
     "db:migrate:preview": "wrangler d1 migrations apply fryzar-preview --remote --config apps/api/wrangler.toml",
-    "dev:api-preview": "wrangler dev --config apps/api/wrangler.toml"
+    "dev:api-preview": "wrangler dev --config apps/api/wrangler.toml",
+    "test:integration:local": "node tests/checkout.integration.cjs"
   },
   "dependencies": {
     "react": "19.3.1",
