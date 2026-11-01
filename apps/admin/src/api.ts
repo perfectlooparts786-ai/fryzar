@@ -55,9 +55,14 @@ export interface DeliveryZone {
   code: string;
   name_en: string;
   name_ur: string;
+  country_code: string;
+  region: string;
   city: string;
   delivery_fee_paisa: number;
   minimum_order_paisa: number;
+  is_active: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface InventoryMovement {
@@ -199,6 +204,15 @@ export const adminApi = {
 
   saveProduct: (data: Record<string, unknown>, id?: string) =>
     apiRequest<{ saved: boolean; id: string }>("/admin/products" + (id ? "/" + encodeURIComponent(id) : ""), {
+      method: id ? "PATCH" : "POST",
+      body: JSON.stringify(data)
+    }),
+
+  adminDeliveryZones: () =>
+    apiRequest<{ delivery_zones: DeliveryZone[] }>("/admin/delivery-zones"),
+
+  saveDeliveryZone: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>("/admin/delivery-zones" + (id ? "/" + encodeURIComponent(id) : ""), {
       method: id ? "PATCH" : "POST",
       body: JSON.stringify(data)
     }),
