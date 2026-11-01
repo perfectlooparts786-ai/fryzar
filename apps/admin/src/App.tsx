@@ -3,7 +3,7 @@ import {
   AdminApiError,
   adminApi,
   type AdminOrder,
-  type AdminPayment,
+  type AdminPayment,\n  type DashboardMetrics,
   type Category,
   type InventoryMovement,
   type DeliveryZone,
@@ -242,9 +242,13 @@ function Overview({
 }) {
   const open = settings.store_status === "open" && isEnabled(settings.launch_ready);
   const stats = [
-    { label: "Active products", value: String(products.length), tone: "mint", note: "From live catalogue API" },
-    { label: "Categories", value: String(categories.length), tone: "sand", note: "Active categories only" },
-    { label: "Delivery zones", value: String(zones.length), tone: "blue", note: "Active delivery areas" },
+    { label: "Total orders", value: String(metrics?.total_orders ?? "—"), tone: "mint", note: "All recorded orders" },
+    { label: "Open orders", value: String(metrics?.open_orders ?? "—"), tone: "sand", note: "Awaiting completion" },
+    { label: "Delivered orders", value: String(metrics?.delivered_orders ?? "—"), tone: "blue", note: "Completed deliveries" },
+    { label: "Delivered revenue", value: metrics ? money(metrics.delivered_revenue_paisa) : "—", tone: "slate", note: "Delivered order totals" },
+    { label: "Unpaid COD", value: String(metrics?.unpaid_cod_count ?? "—"), tone: "sand", note: "Awaiting collection" },
+    { label: "Low stock", value: String(metrics?.low_stock_products ?? "—"), tone: "blue", note: "Tracked stock ≤ 5" },
+    { label: "Active products", value: String(metrics?.active_products ?? products.length), tone: "mint", note: "Available catalogue items" },
     { label: "Store readiness", value: open ? "Open" : "Setup", tone: "slate", note: "Server-controlled status" }
   ];
 
@@ -294,8 +298,8 @@ function Overview({
           </div>
           <div className="check-row"><span className={products.length ? "check-dot complete" : "check-dot"}>{products.length ? "✓" : "1"}</span><div><strong>Product catalogue</strong><small>{products.length ? products.length + " active products loaded" : "No products have been added yet"}</small></div></div>
           <div className="check-row"><span className={zones.length ? "check-dot complete" : "check-dot"}>{zones.length ? "✓" : "2"}</span><div><strong>Delivery areas</strong><small>{zones.length ? zones.length + " active delivery zones loaded" : "No delivery zones have been configured"}</small></div></div>
-          <div className="check-row"><span className="check-dot">3</span><div><strong>Order operations</strong><small>Admin order management endpoints are still under development</small></div></div>
-          <div className="check-row"><span className="check-dot">4</span><div><strong>Payment review</strong><small>COD collection and bank-transfer review are not yet available</small></div></div>
+          <div className="check-row"><span className="check-dot">3</span><div><strong>Order operations</strong><small>Order management is available in the Orders module</small></div></div>
+          <div className="check-row"><span className="check-dot">4</span><div><strong>Payment review</strong><small>COD collection recording is available; bank-transfer proof review remains disabled</small></div></div>
         </article>
       </section>
 
@@ -676,7 +680,7 @@ function InventoryModule({ user }: { user: StaffUser }) {
 }
 
 function DeliveryModule({ user }: { user: StaffUser }) {
-  const [zones, setZones] = useState<DeliveryZone[]>([]);
+  const [zones, setZones] = useState<DeliveryZone[]>([]);\n  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1164,7 +1168,7 @@ export default function App() {
       if (results[0].status === "fulfilled") setSettings(results[0].value.settings);
       if (results[1].status === "fulfilled") setProducts(results[1].value.products);
       if (results[2].status === "fulfilled") setCategories(results[2].value.categories);
-      if (results[3].status === "fulfilled") setZones(results[3].value.delivery_zones);
+      if (results[3].status === "fulfilled") setZones(results[3].value.delivery_zones);\n      if (results[4].status === "fulfilled") setMetrics(results[4].value.metrics);
       const failed = results.filter(result => result.status === "rejected").length;
       if (failed) setDataError("Some public store data could not be loaded. Check API connectivity.");
       setDataLoading(false);
