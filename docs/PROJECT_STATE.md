@@ -1,59 +1,80 @@
 # FRYZAR project state
 
 **Last verified:** 2026-11-01  
-**Phase:** Fresh application foundation and isolated API deployment
+**Phase:** Fresh API foundation, checkout implementation, isolated deployment
 
-## Confirmed
+## Confirmed infrastructure
 
-- Private GitHub repository perfectlooparts786-ai/fryzar is accessible with push permission.
-- Default branch: main. Fresh-build branch: foundation/fresh-build.
-- The foundation branch contains 19 files in its initial implementation commit.
-- A separate Cloudflare D1 database named fryzar-core was created in APAC.
-- New database ID: 098238a6-1bda-4735-8f21-d925c7fe32de.
-- The initial schema migration was applied successfully to fryzar-core.
-- Schema read-back confirmed 19 application tables, 15 indexes, one stock-protection trigger, and 13 initial store settings.
-- New database settings keep store_status=setup and launch_ready=false. COD is enabled in configuration; manual transfer is disabled.
-- A new Worker named fryzar-api was uploaded and deployed.
-- The new Worker has workers.dev enabled and previews disabled.
-- Worker deployment metadata shows 100% traffic assigned to its new version.
-- The Worker settings show DB bound to the new fryzar-core database. It has only public development configuration variables, no secrets.
-- The isolated API hostname is https://fryzar-api.perfectlooparts786.workers.dev.
-- Cloudflare zone fryzar.com is active on a Free Website zone plan.
-- The zone currently contains an Apple verification TXT record and no Worker routes.
-- Existing Workers fryzar-app and fryzar-admin and database fryzar-production are treated as legacy/unverified resources. This new application branch has not modified them.
+- Private GitHub repository: `perfectlooparts786-ai/fryzar`.
+- Default branch: `main`; active build branch: `foundation/fresh-build`.
+- Fresh branch includes project source, schema migrations, documentation, tests, and a GitHub Actions validation workflow.
+- New Cloudflare D1 database: `fryzar-core`, APAC, ID `098238a6-1bda-4735-8f21-d925c7fe32de`.
+- Migrations `0001_core.sql` and `0002_checkout_integrity.sql` are applied and recorded in `d1_migrations`.
+- Database read-back confirmed the 19 application tables, migration tracker, indexes, product-stock protection trigger, order-item validation trigger, and payment/order uniqueness.
+- New Cloudflare Worker: `fryzar-api`.
+- Latest deployment version: `c0f0ecf8-97ef-4768-a947-f3f56be0df8e`, 100% of Worker traffic assigned.
+- `workers.dev` is enabled. The Worker is bound to `fryzar-core` using binding `DB`.
+- Secret binding `TRACKING_SECRET` is configured. Its value is not in GitHub and is not included in logs or project documents.
+- Worker environment remains `APP_ENV=development`; the only configured web origins are localhost development origins.
+- The isolated API base URL is `https://fryzar-api.perfectlooparts786.workers.dev`.
+- Existing `fryzar-app`, `fryzar-admin`, and `fryzar-production` are legacy/unverified and remain untouched.
+- Zone `fryzar.com` has no Worker routes. Its Apple verification TXT record remains untouched.
 - No Android source or APK has been verified.
 
-## Tests and evidence
+## Implemented API source
 
-- API TypeScript source passed a local strict TypeScript check.
-- Six local API smoke/unit scenarios passed: health ready, health missing schema, invalid category, bounded query limit, JSON settings parsing, and disallowed-origin rejection.
-- These are local checks, not live production end-to-end tests.
-- External HTTP requests to the new workers.dev URL could not be resolved from the current tool environment. Therefore live health/catalog/config responses remain UNVERIFIED.
-- The migration was applied through the Cloudflare D1 API, not the Wrangler migrations command. Wrangler migration tracking still needs to be reconciled before using future remote Wrangler migration commands.
+- `GET /api/v1/health`
+- `GET /api/v1/categories`
+- `GET /api/v1/products`
+- `GET /api/v1/storefront-config`
+- `POST /api/v1/orders`
+- `GET /api/v1/orders/track/{token}`
 
-## Not yet implemented or verified
+Checkout source validates customer details and product IDs, requires an idempotency key, hashes the canonical request, checks store/payment flags, loads the active delivery zone, calculates prices from D1, and builds the order/payment/line-item/inventory/audit writes into one D1 batch. The API creates an unpaid COD payment record. Manual transfer remains disabled. Order tracking credentials are derived from the secret and only their hash is persisted on the order.
 
-- CI workflow and repeatable clean-checkout build.
-- Live HTTP runtime tests for the deployed API.
-- Customer website and complete customer journey.
-- Admin portal and staff authentication.
-- Checkout, mandatory idempotency, order tracking, inventory reservation/restoration.
-- COD collection workflow and manual-transfer payment review.
-- Private payment-proof storage.
-- Android source, APK, and device tests.
-- Production domain routing, HTTPS, cookie behavior, and release deployment.
-- Backup/recovery test and full release-readiness evidence.
+## Store remains closed
+
+D1 settings are still:
+- `store_status=setup`
+- `launch_ready=false`
+- COD enabled in settings
+- Manual transfer disabled
+- No genuine products or delivery zones have been entered
+
+The checkout endpoint therefore rejects all new orders while the store is in setup mode. Even after launch is configured, products and active delivery zones must exist before checkout can succeed.
+
+## Testing and verification
+
+- The initial API version previously passed a strict TypeScript check and six local API scenarios.
+- The expanded test suite currently contains 16 scenarios, including checkout guards and a mocked COD transaction batch. The expanded suite has not yet been run.
+- A GitHub Actions workflow has been added, but no workflow run/status has been returned for the current commits.
+- Cloudflare accepted the updated Worker upload and assigned 100% of traffic to the uploaded version.
+- External HTTP requests to `workers.dev` could not be resolved from the current tool environment. Live HTTP behavior remains unverified.
+- Checkout has not been exercised against real D1 data or in a browser. The current D1 database has no product or delivery-zone records.
+
+## Not yet implemented
+
+- Product/category administration endpoints and web screens.
+- Staff authentication, owner bootstrap, password/session lifecycle, and server-side RBAC.
+- Order status administration and cancellation stock restoration.
+- COD collection workflow.
+- Manual-transfer proof uploads, private storage, and payment review.
+- Customer storefront and admin dashboard.
+- Customer Android application.
+- Production domain, HTTPS routes, final origins, production rate-limit fail-closed settings.
+- Complete live runtime and end-to-end tests.
+- Backup/recovery test and release approval.
 
 ## Safety posture
 
-No legacy Worker or database was overwritten. No DNS record was changed. No production route was created. No secret values or real payment instructions were added to source control. No paid plan or paid service was activated.
+No legacy Worker or database was overwritten. No DNS record was changed. No production route was created. No paid plan or paid service was activated. No secret values, real bank details, or customer data were added to source control.
 
 ## Next steps
 
-1. Reconcile migration tracking and add repeatable API tests/CI.
-2. Verify the deployed Worker runtime from an external browser/device.
-3. Complete backend checkout, idempotency, order state, inventory, authentication, and RBAC.
-4. Build real customer and admin web applications.
-5. Implement payment workflows and private proof storage only after storage/cost eligibility review.
-6. Build Android after the API contract is stable.
-7. Configure production hostnames only after the user-facing domain topology is agreed and tested.
+1. Run the 16-case validation suite and fix any failures.
+2. Verify live API responses externally.
+3. Test checkout against an isolated D1 fixture with real D1 batch behavior.
+4. Implement order lifecycle, cancellation restoration, staff authentication, and role authorization.
+5. Build the customer storefront and admin portal against the tested API.
+6. Add COD collection and secure manual-transfer proof handling after storage/cost review.
+7. Build and test Android after the API contract is stable.

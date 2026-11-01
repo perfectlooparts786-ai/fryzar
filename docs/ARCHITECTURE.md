@@ -1,10 +1,9 @@
 # FRYZAR architecture
 
 ## Product surfaces
-
-- Customer website: food, grocery, and local product discovery, cart, guest checkout, order tracking, and support.
+- Customer website: product discovery, cart, guest checkout, order tracking, support.
 - Customer Android app: native Kotlin + Jetpack Compose client using the same API.
-- Admin portal: staff operations, catalog, inventory, orders, payment review, delivery, settings, support, and audit.
+- Admin portal: staff operations, catalog, inventory, orders, payment review, delivery, settings, support, audit.
 
 ## Request and data flow
 
@@ -16,44 +15,45 @@ Admin Portal ─────┘                         │
                                            └── Private object storage (planned)
 ~~~
 
-Clients do not own prices, final totals, stock, order transitions, payment state, or permissions. The API validates input and applies all business rules.
+Clients do not own prices, final totals, stock, order transitions, payment state, or permissions. The API validates all input and applies business rules.
 
 ## Platform
-
-| Area | Choice | Reason |
-|---|---|---|
-| API | Cloudflare Worker + TypeScript | Existing account and edge runtime |
-| Database | Cloudflare D1 | Relational product, inventory, order, payment, staff, and audit data |
-| Web clients | React + TypeScript (planned) | Typed API integration and maintainability |
-| Android | Kotlin + Jetpack Compose (planned) | Native Android user experience |
-| Migrations | Versioned SQL files | Reviewable and repeatable schema changes |
-| Media | Private R2 bucket (planned) | Payment evidence; account activation and free eligibility must be checked first |
-| Source | Private GitHub monorepo | One version-controlled source of truth |
-
-## Domain model
-
-The domain zone exists but has no Worker route. Production hostnames will be selected only after the web/API topology is finalized. Initial API testing uses an isolated workers.dev endpoint.
-
-Prefer same-site web routing where practical to simplify secure admin cookies and reduce CORS complexity. Android uses the same versioned API.
+| Area | Choice |
+|---|---|
+| API | Cloudflare Worker + TypeScript |
+| Database | Cloudflare D1 |
+| Web clients | React + TypeScript (planned) |
+| Android | Kotlin + Jetpack Compose (planned) |
+| Schema migrations | Versioned SQL and Wrangler migration history |
+| Private media | R2 (planned, not activated) |
+| Source control | Private GitHub monorepo |
 
 ## Data ownership
 
-D1 is authoritative for products, categories, price, availability, delivery zones, orders, stock, payment state, staff access, and audit events. Money is stored as integer paisa. The API calculates all order totals.
+D1 is authoritative for catalog, price, availability, delivery zones, orders, stock, payment state, staff access, and audit events. Money uses integer paisa. The API recalculates all totals.
 
 ## Customer identity
 
-Browsing and guest checkout do not require customer registration. Order tracking uses a random unguessable token, with only its hash stored server-side. Staff accounts are separate.
+Browsing and guest checkout do not require customer registration. Order tracking uses an HMAC-derived high-entropy token. A SHA-256 hash is stored on the order, not the raw token. The HMAC secret is a Worker secret and is not committed to GitHub. Idempotency response cache entries store the order response without the raw tracking token.
 
-## Inventory and orders
+Staff accounts are separate and must use server-enforced authorization.
 
-Tracked stock is reserved atomically during order placement. Every stock change creates an inventory movement. Cancellation must restore the reservation exactly once. Order creation requires an idempotency key and payload hash.
+## Order and inventory flow
+
+Checkout validates the request and mandatory Idempotency-Key, canonicalizes and hashes its payload, verifies the store is open, checks payment feature flags, loads an active delivery zone, and reads current product prices. Client-supplied amounts are ignored.
+
+The order, payment row, immutable order-item snapshots, stock reservations, status event, idempotency record, and audit event are submitted in one D1 batch. A unique idempotency index prevents a duplicate request from creating a second order. Database triggers reject unavailable products and insufficient stock. Unique inventory indexes are prepared to prevent duplicate order reservation/cancellation movements.
+
+The cancellation transition and stock restoration operation are not implemented yet.
 
 ## Payments
 
-COD remains due until staff records collection. Manual transfer requires a payment record, transaction reference, private proof upload, authorized reviewer, amount/reference validation, and audit history. Uploading proof never marks an order paid.
+COD creates a payment row with status unpaid. It remains due until an authorized staff action records collection. Manual transfer is disabled in settings. A future transfer workflow requires a payment record, transaction reference, private proof upload, authorized reviewer, amount/reference checks, replay protection, and audit history. Uploading proof never marks an order paid.
 
-Manual transfer remains disabled until private storage and the full review workflow pass testing. No payment gateway is assumed.
+## Rate limiting and origins
+
+Checkout and tracking have D1-backed IP-hash rate limiting. The Worker remains in development mode and only allows localhost browser origins. Before production, switch to fail-closed rate limit behavior and configure exact customer/admin origins.
 
 ## Free-first approach
 
-Use Workers and D1 free allowances where practical. Optimize indexed D1 queries. Do not enable R2, Workers Paid, third-party paid services, or paid gateways without checking eligibility and getting approval for possible charges.
+Prefer Workers and D1 free allowances. Optimize indexed D1 queries. Do not enable R2, Workers Paid, paid gateways, or third-party paid services without checking eligibility and obtaining approval for possible charges.

@@ -5,47 +5,67 @@
 - Development/staging: isolated Worker and non-production D1.
 - Production: dedicated database, verified domain routes, and production-only secrets.
 
-New application development targets fryzar-core. Never point the new application at legacy fryzar-production.
+The new application targets fryzar-core. Never point new development at legacy fryzar-production.
 
 ## Current development deployment
-- New D1: fryzar-core, APAC, ID 098238a6-1bda-4735-8f21-d925c7fe32de.
-- Migration 0001_core.sql has been applied through the Cloudflare D1 API.
-- New Worker: fryzar-api.
-- Worker version tag: b837d2a9c9e54e5fb208bfcd61e03928.
-- Deployment: e95c5844-debf-4e06-8052-974b81328987, with 100% traffic assigned to the uploaded version.
-- workers.dev is enabled; previews are disabled.
-- DB binding points to fryzar-core.
-- Development origins are localhost:5173 and 127.0.0.1:5173.
-- Expected endpoint base: https://fryzar-api.perfectlooparts786.workers.dev.
-- Live HTTP runtime tests have not succeeded from the current tool environment because the host could not be resolved. Do not interpret this as a confirmed Worker response.
-- Wrangler migration tracking has not yet been reconciled for the migration applied through the REST API.
 
-## Legacy resources
-The older fryzar-app and fryzar-admin Workers and fryzar-production D1 database remain untouched. No custom domain or production route was changed. Preserve the existing fryzar.com Apple verification TXT record.
+- D1 database: fryzar-core, APAC, ID 098238a6-1bda-4735-8f21-d925c7fe32de.
+- Applied migrations: 0001_core.sql and 0002_checkout_integrity.sql.
+- Wrangler migration tracker: d1_migrations contains both migration names.
+- Worker: fryzar-api.
+- Latest uploaded version: c0f0ecf8-97ef-4768-a947-f3f56be0df8e.
+- Latest deployment: 9faa976e-e399-46c3-9cd6-e01190d101e7, with 100% traffic on the uploaded version.
+- workers.dev enabled, previews disabled.
+- DB binding points to fryzar-core.
+- TRACKING_SECRET exists as a Worker secret binding. Never read or print its value.
+- APP_ENV remains development. ALLOWED_ORIGINS contains only localhost development origins.
+- API hostname: https://fryzar-api.perfectlooparts786.workers.dev.
+- Live HTTP/runtime test has not succeeded from the current tool environment, so deployment metadata is not proof that endpoint behavior works.
+- No customer/admin web application is deployed.
+
+## Legacy resources and domain protection
+
+The older fryzar-app and fryzar-admin Workers and fryzar-production D1 database remain untouched. No custom domain or production route was changed. Preserve the fryzar.com Apple verification TXT record.
 
 ## Local workflow
-Install dependencies, apply local migrations, run the Worker locally, and type-check. The checked-in commands are:
+
 ~~~bash
 npm install
 npm run db:migrate:local
 npm run dev:api
 npm run typecheck
+npm run test:api
 ~~~
 
-Before using remote Wrangler migrations, first reconcile the existing remote schema with Wrangler's migration tracking so migration 0001 is not re-executed.
+The remote migrations have already been applied and recorded. Future migrations should use the normal Wrangler workflow only after reviewing the SQL and confirming the selected D1 binding.
 
 ## Remote workflow
-Before remote migration, verify the selected account, database name and ID, migration diff, and recovery path. Apply only reviewed migrations. Read back the schema and seeded settings.
 
-Before deployment, verify Worker name, D1 binding, origins, environment variables, and secrets. Deploy only the isolated Worker first, then test health and every enabled endpoint. Capture the deployment version and rollback target.
+Before applying remote migration:
+1. Confirm the selected account, database name and ID.
+2. Inspect the pending SQL diff.
+3. Confirm the correct migration history.
+4. Preserve the recovery path.
+5. Apply only the reviewed migration.
+6. Read back schema and migration history.
 
-Production routes, DNS, secret rotation, payment activation, and public ordering are separate release actions.
+Before deploying:
+1. Confirm Worker name and D1 binding.
+2. Confirm development or production environment variables.
+3. Verify required secret binding names without exposing their values.
+4. Confirm exact allowed browser origins.
+5. Deploy to the isolated Worker first.
+6. Test every enabled API endpoint externally.
+7. Capture deployment version and rollback target.
+
+Production DNS, Worker routes, secret rotation, payment activation, and public ordering are separate release actions.
 
 ## Cost controls
-- Cloudflare D1 Free currently includes 10 databases, 5 GB total storage, 5 million rows read per day, and 100,000 rows written per day. Limits are account-wide.
-- Workers Free currently includes 100,000 requests per day and 10 ms CPU per invocation.
-- Monitor usage. If limits are inadequate, stop and present alternatives/cost before upgrading.
-- R2 is not configured in this branch. Check account eligibility and free-tier usage before enabling private uploads.
+
+Prefer Cloudflare Free resources. Monitor D1 and Workers account-wide limits. Do not enable a paid plan, R2, paid gateway, or third-party billing service without checking eligibility and getting approval where charges may apply.
+
+R2 is not configured in this branch. Check account eligibility and free-tier usage before enabling private payment-proof uploads.
 
 ## Rollback
-Keep the previous known-good Worker version. Version schema changes. Use documented D1 backup/recovery before risky production work. Do not delete legacy Workers, databases, or DNS records during the rebuild.
+
+Keep the previous known-good Worker version. Version every schema change. Use documented D1 backup/recovery before risky production work. Do not delete legacy Workers, databases, or DNS records during the rebuild.
