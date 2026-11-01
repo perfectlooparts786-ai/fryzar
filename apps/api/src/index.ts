@@ -1518,8 +1518,7 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
     adjusted: true,
     adjustment_id: adjustmentId,
     product_id: productId,
-    previous_stock_qty: product.stock_qty,
-    requested_delta_qty: deltaQty,
+    delta_qty: deltaQty,
     reason
   }, 201);
 }
