@@ -67,3 +67,12 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 7. Deploy updated API to isolated development Worker and verify live HTTP.
 8. Build and deploy web apps to an isolated preview environment.
 9. Only then plan production domain and release.
+
+
+## Development update — 2026-11-01
+
+- Added owner/manager-protected admin category and product list/create/update API routes in commit `507cd77` and follow-up validation fix in `71511c4`.
+- Added the admin API client and catalogue screen with product/category forms, edit actions, empty states, validation error display, and responsive styling. The screen collects prices in paisa and shows empty catalogue states without fake data.
+- Category/product writes produce audit log entries. Product stock can be set through the product form, but a dedicated reasoned inventory-adjustment workflow with movement records is still not implemented.
+- CI run 41269693927 passed on commit `507cd77` for API type-check/tests and both web builds. That run predates the subsequent admin UI and follow-up commits. The newest combined source must be treated as awaiting fresh CI validation until a run for the latest commit is confirmed.
+- No deployment was performed. The live Worker is still known to be behind GitHub source. No real products, categories, stock values, or delivery zones were added to D1.
