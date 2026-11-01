@@ -23,6 +23,14 @@ Updated: 1 November 2026
 - Confirmed current launch guards: both databases are in setup/not-ready state; production manual transfer is disabled. The current store is not configured to accept checkout.
 - No Worker, DNS, D1 schema/data/binding, route, or secret was changed. No secret values or customer records were queried or committed.
 
+## GitHub work items
+
+- [#4 Checkout, payment and stock integrity](https://github.com/perfectlooparts786-ai/fryzar/issues/4)
+- [#5 Admin permissions, login throttling and cancellation](https://github.com/perfectlooparts786-ai/fryzar/issues/5)
+- [#6 Central API architecture transition](https://github.com/perfectlooparts786-ai/fryzar/issues/6)
+- [#7 D1 reconciliation and restore verification](https://github.com/perfectlooparts786-ai/fryzar/issues/7)
+- [#8 CORS, production environment and domain routing](https://github.com/perfectlooparts786-ai/fryzar/issues/8)
+
 ## Remaining, in priority order
 
 1. Independently review the recovered snapshots and compare them against the candidate source at function and data-model level; resolve the direct-D1 legacy architecture versus central-API architecture transition.
