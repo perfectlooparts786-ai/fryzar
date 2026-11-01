@@ -90,3 +90,17 @@ CI run [41286160460](https://github.com/perfectlooparts786-ai/fryzar/actions/run
 Preview Workers have not yet been deployed. GitHub Actions environment `preview` must be configured with `CLOUDFLARE_ACCOUNT_ID` and a narrowly scoped `CLOUDFLARE_API_TOKEN`. This was not verifiable via the available GitHub connector. Separate preview-only `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` are needed before authenticated bootstrap, tracking and checkout flows can be tested. See [Issue #10](https://github.com/perfectlooparts786-ai/fryzar/issues/10).
 
 **Production impact:** none. Existing Workers, `fryzar-production`, `fryzar-core`, bindings, secrets, DNS/routes and payment settings remain unchanged. No canonical D1 has been selected; D1-native restore of the two existing SQL backups remains outstanding.
+
+
+## Preview deployment workflow gate — 1 November 2026
+
+PR [#12](https://github.com/perfectlooparts786-ai/fryzar/pull/12) was merged to `main` as commit `2a2afcee5c9963745a2ba725ae5c32e78ffdb7ca`. This adds `.github/workflows/deploy-preview.yml` to the default branch so the manual `workflow_dispatch` action is available. The workflow explicitly checks out candidate application code from `foundation/fresh-build` and contains:
+
+- Exact account, Worker-name, service-binding and preview-D1 guards.
+- Candidate API/routing tests, local D1 checkout integration, and storefront/admin builds before remote deployment.
+- Migrations targeting only `fryzar-preview`.
+- Deployment of only `fryzar-api-preview`, `fryzar-app-preview`, and `fryzar-admin-preview`.
+- Preview-only `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` provisioning through stdin.
+- Post-deploy smoke checks for direct API health, both service bindings, exact CORS, catalogue, unauthenticated admin session, and both React shells.
+
+The GitHub Actions environment `preview` must contain `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `TRACKING_SECRET`, and `OWNER_BOOTSTRAP_TOKEN`. Secret availability has not been verified through the connected repository interface. The workflow has not been dispatched, and no preview Worker has been deployed. This merge did not change production Workers, D1 databases/bindings, secrets, `fryzar.com` routes, payment configuration, or store readiness.
