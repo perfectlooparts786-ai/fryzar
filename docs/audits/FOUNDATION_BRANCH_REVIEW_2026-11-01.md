@@ -51,7 +51,7 @@ The Cloudflare script download endpoint returned no usable script body through t
 
 Core's migration ledger contains `0001_core.sql`, `0002_checkout_integrity.sql`, `0003_admin_bootstrap.sql`, and `0004_inventory_adjustments.sql`. Production has no `d1_migrations` table. Both schemas were read using read-only queries. No customer records or payment contents were queried.
 
-Time-travel bookmarks were read for both D1 databases, but these are not exported backups and do not establish restore capability. No export or restore rehearsal was run. The D1 export operation can affect database availability, so obtain an owner-approved maintenance window before starting export and restore validation.
+The committed [D1 backup manifest](D1_BACKUP_MANIFEST_2026-11-01.md) records completed SQL exports for both databases, sizes and SHA-256 hashes, successful replay in separate in-memory SQLite databases, and post-export live `SELECT 1` probes. The raw dumps are described as residing in an ACL-restricted local Windows task folder and are not in GitHub or the current execution container, so this session cannot independently recompute their hashes or inspect the files. Local SQLite replay is not a Cloudflare D1-managed restore drill; restore into isolated non-production D1 databases before any migration/cutover.
 
 ## Documentation drift found
 
@@ -63,7 +63,7 @@ Time-travel bookmarks were read for both D1 databases, but these are not exporte
 
 1. **Exact source recovery blocked:** Cloudflare script download returns no body through the current connector. Do not reconstruct deployed Workers from memory or substitute branch source.
 2. **D1 split remains:** app/admin use `fryzar-production`; API uses `fryzar-core`. The production database holds the only observed catalogue and tracked stock. No canonical database decision is justified yet.
-3. **No verified backups:** bookmarks exist, but exports and restore tests do not.
+3. **Backup verification limit:** exports and local SQLite replay are recorded in the manifest, but the raw files are not accessible in this execution container and a D1-managed restore rehearsal remains outstanding.
 4. **API environment is development:** localhost-only origins are not valid production app origins.
 5. **No custom domain route:** `fryzar.com` remains without a Worker route; no domain/DNS changes are proposed here.
 6. **No real-runtime verification:** CI is green, but mocked D1 tests are not live integration evidence.
