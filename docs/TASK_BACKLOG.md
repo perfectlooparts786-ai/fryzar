@@ -16,13 +16,13 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | F-010 | Admin portal | TESTED | Auth screens, live overview and Orders UI build passed CI; real API/browser integration pending |
 | F-011 | Role-aware order list/detail | IMPLEMENTED | Role checks in source; finance/rider/support excluded; D1 integration tests pending |
 | F-012 | Order status transition and cancellation restock | IMPLEMENTED | Conditional D1 batch with stock restoration, movement, history and audit; concurrency test pending |
-| F-013 | Validate catalogue and inventory API/admin source with CI | TESTED | GitHub Actions run 41270463960 on `0f6efdd` passed strict TypeScript, 39/39 API tests, storefront build and admin build |
+| F-013 | Validate catalogue, inventory and delivery API/admin source with CI | TESTED | GitHub Actions run 41270769486 on `95af500` passed strict TypeScript, 45/45 API tests, storefront build and admin build |
 | F-014 | Deploy current API source to isolated Worker | NOT STARTED | Worker source must exactly match validated GitHub commit |
 | F-015 | Live API health/catalog/zone/admin smoke tests | BLOCKED | Tool environment could not externally fetch workers.dev; verify through browser/device |
 | A-001 | Staff user CRUD/invites/role management | NOT STARTED | Owner/manager APIs, role matrix, audit |
 | A-002 | Product/category CRUD | TESTED | Owner/manager API + admin UI; validation and audit writes; initial stock logged atomically; CI passed. Live Worker test pending |
 | A-003 | Inventory adjustment | TESTED | Admin screen + owner/manager API, opening-stock ledger, non-negative guard, idempotency, movement history and audit; 39/39 CI tests; D1 0004 applied/read back. Real D1 concurrency and live Worker verification pending |
-| A-004 | Delivery zone management | NOT STARTED | Owner/manager CRUD and public allowlisted read |
+| A-004 | Delivery zone management | TESTED | Owner/manager create/update/deactivate, operations/rider read, audit batch, validation and duplicate-code handling; admin UI; 45/45 CI tests. Live Worker verification pending |
 | A-005 | Store settings management | NOT STARTED | Validate origin, payments, delivery, languages, launch state |
 | A-006 | Admin dashboard operational metrics | NOT STARTED | Only metrics derived from real D1 rows |
 | O-001 | COD collection | NOT STARTED | Authorized collection state and audit |
