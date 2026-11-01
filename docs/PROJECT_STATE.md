@@ -2,14 +2,14 @@
 
 **Last updated:** 2026-11-01  
 **Active branch:** \`foundation/fresh-build\`  
-**Current phase:** Fresh platform foundation, customer storefront, admin authentication and order operations source. Latest full GitHub Actions validation passed.
+**Current phase:** Fresh platform foundation plus CI-tested catalogue and inventory management source. Development D1 migration 0004 is applied; the Worker deployment is still behind GitHub source.
 
 ## Verified infrastructure
 
 - Private repository \`perfectlooparts786-ai/fryzar\`; active development branch \`foundation/fresh-build\`; draft PR #1 remains unmerged.
 - New Cloudflare D1 database \`fryzar-core\`, APAC, ID \`098238a6-1bda-4735-8f21-d925c7fe32de\`.
 - Migrations \`0001_core.sql\`, \`0002_checkout_integrity.sql\`, and \`0003_admin_bootstrap.sql\` applied and recorded in \`d1_migrations\`.
-- The new database has the application schema plus the migration tracker. Its initial catalogue and order-related tables are empty; no products, delivery zones, staff accounts, orders, or payments have been fabricated.
+- The new database has the application schema plus the migration tracker. Products, delivery zones, staff accounts, orders, payments, inventory adjustments and inventory movements remain empty; no business or demo rows have been fabricated. Migration 0004 adds the auditable \\`inventory_adjustments\\` ledger and movement uniqueness index.
 - New Cloudflare Worker \`fryzar-api\` deployed to its isolated workers.dev hostname and bound to \`fryzar-core\` using \`DB\`.
 - \`TRACKING_SECRET\` is configured on the Worker. Secret values are never committed or displayed.
 - Recorded deployed Worker version \`c0f0ecf8-97ef-4768-a947-f3f56be0df8e\` had 100% traffic at the last deployment check. That deployment predates the latest delivery-zone, admin-auth and admin-order source changes; the live Worker is therefore behind GitHub source.
@@ -43,7 +43,7 @@
 
 ## Test state
 
-- Latest GitHub Actions run 41266597656 on commit \\`44ce7ecd861f385dd636a7382ed861eeb24b5188\\` passed: strict TypeScript, all 28 API tests (28 passed, 0 failed), customer storefront build, and admin portal build.
+- Latest full GitHub Actions run 41270463960 on commit \\`0f6efdd838ea4426f2949cde835701e594fd2dcd\\` passed: strict TypeScript validation, all 39 API tests (39 passed, 0 failed), customer storefront production build, and admin portal production build.
 - Owner bootstrap/session tests, order RBAC/cancellation tests, admin portal source, and admin build step are included in the passing combined CI run.
 - Tests use mocked D1 statements. They do not establish live D1 transaction rollback, concurrency behavior, or live Worker HTTP behavior.
 - The Cloudflare deployment metadata is not proof that all API endpoints respond correctly. External HTTP checks from the tool environment have been unavailable.
@@ -76,3 +76,17 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - Category/product writes produce audit log entries. Product stock can be set through the product form, but a dedicated reasoned inventory-adjustment workflow with movement records is still not implemented.
 - CI run 41269693927 passed on commit `507cd77` for API type-check/tests and both web builds. That run predates the subsequent admin UI and follow-up commits. The newest combined source must be treated as awaiting fresh CI validation until a run for the latest commit is confirmed.
 - No deployment was performed. The live Worker is still known to be behind GitHub source. No real products, categories, stock values, or delivery zones were added to D1.
+
+
+## Development update — inventory management (2026-11-01)
+
+- Admin catalogue API and UI are now CI-tested. Product/category create, update and list operations are owner/manager write-protected and audit logged.
+- Product stock can be initialized when a new product is created. Initial positive stock is recorded in \`inventory_adjustments\` and \`inventory_movements\` in the same D1 batch as product creation.
+- Product PATCH rejects direct \`stock_qty\` edits with \`inventory_adjustment_required\`. Subsequent stock changes must use the inventory adjustment workflow.
+- Added \`POST /api/v1/admin/inventory/adjustments\` with owner/manager authorization, required \`Idempotency-Key\`, 24-hour replay protection, stock non-negative guard, and atomic product quantity + adjustment ledger + movement + audit writes.
+- Added \`GET /api/v1/admin/inventory/movements\` with owner/manager/operator/kitchen read access and product filtering.
+- Admin portal now has a Current Stock table, stock receipt/return/correction form, and filtered adjustment history. Existing unlimited/untracked products are shown distinctly and are not eligible for quantity changes until tracking is explicitly enabled in a future step.
+- Added API test coverage for role access, insufficient/untracked stock, idempotent replay, key reuse with a different payload, batch concurrency guard, opening-stock ledger records, and preventing stock edits through product PATCH.
+- GitHub Actions run 41270463960 passed on commit \`0f6efdd838ea4426f2949cde835701e594fd2dcd\`: 39/39 API tests passed, TypeScript validation passed, storefront build passed, and admin build passed.
+- D1 migration \`0004_inventory_adjustments.sql\` was applied to the isolated development database \`fryzar-core\` (ID \`098238a6-1bda-4735-8f21-d925c7fe32de\`). The migration tracker, table columns, both indexes and zero-row counts were read back successfully.
+- No product, staff, order, or inventory fixtures were inserted. The current Worker deployment is still older than GitHub source; live Worker API tests and real D1 concurrency/rollback tests remain pending.
