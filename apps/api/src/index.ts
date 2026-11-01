@@ -1707,6 +1707,106 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
   }
 }
 
+
+const DELIVERY_READ_ROLES: readonly StaffUserRow["role"][] = [
+  "owner", "manager", "operator", "kitchen", "rider"
+];
+const DELIVERY_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+
+async function adminDeliveryApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  const collection = url.pathname === "/api/v1/admin/delivery-zones";
+  const match = url.pathname.match(/^\/api\/v1\/admin\/delivery-zones\/([0-9a-f-]{36})$/i);
+  if (!collection && !match) return null;
+
+  if (request.method === "GET" && collection) {
+    if (!hasRole(user, DELIVERY_READ_ROLES)) return roleDenied();
+    const result = await env.DB.prepare(
+      "SELECT id, code, name_en, name_ur, country_code, region, city, " +
+      "delivery_fee_paisa, minimum_order_paisa, is_active, created_at, updated_at " +
+      "FROM delivery_zones ORDER BY country_code, city, name_en LIMIT 500"
+    ).all<JsonRecord>();
+    return json({ delivery_zones: result.results });
+  }
+
+  if (request.method !== "POST" && request.method !== "PATCH") {
+    return json({ error: "method_not_allowed" }, 405);
+  }
+  if (request.method === "POST" && !collection) return json({ error: "not_found" }, 404);
+  if (request.method === "PATCH" && (!match?.[1] || !validUuid(match[1]))) {
+    return json({ error: "not_found" }, 404);
+  }
+  if (!hasRole(user, DELIVERY_WRITE_ROLES)) return roleDenied();
+  if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+  const body = await parseJsonBody(request, 6000);
+  if (!body) return json({ error: "invalid_request" }, 400);
+  const code = safeString(body.code).toUpperCase();
+  const nameEn = safeString(body.name_en);
+  const nameUr = safeString(body.name_ur);
+  const countryCode = safeString(body.country_code || "PK").toUpperCase();
+  const region = safeString(body.region);
+  const city = safeString(body.city);
+  const deliveryFee = Number(body.delivery_fee_paisa);
+  const minimumOrder = Number(body.minimum_order_paisa);
+  const isActive = body.is_active === undefined ? true : body.is_active === true;
+
+  if (!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(code) ||
+      !nameEn || nameEn.length > 140 ||
+      !nameUr || nameUr.length > 140 ||
+      !/^[A-Z]{2}$/.test(countryCode) ||
+      !city || city.length > 120 ||
+      region.length > 120 ||
+      !Number.isSafeInteger(deliveryFee) || deliveryFee < 0 || deliveryFee > 100000000000 ||
+      !Number.isSafeInteger(minimumOrder) || minimumOrder < 0 || minimumOrder > 100000000000) {
+    return json({ error: "validation_failed" }, 400);
+  }
+
+  const id = request.method === "POST" ? crypto.randomUUID() : match![1].toLowerCase();
+  const timestamp = new Date().toISOString();
+  const statement = request.method === "POST"
+    ? env.DB.prepare(
+        "INSERT INTO delivery_zones " +
+        "(id, code, name_en, name_ur, country_code, region, city, delivery_fee_paisa, minimum_order_paisa, is_active, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)"
+      ).bind(id, code, nameEn, nameUr, countryCode, region, city, deliveryFee, minimumOrder, isActive ? 1 : 0, timestamp)
+    : env.DB.prepare(
+        "UPDATE delivery_zones SET code=?1, name_en=?2, name_ur=?3, country_code=?4, region=?5, city=?6, " +
+        "delivery_fee_paisa=?7, minimum_order_paisa=?8, is_active=?9, updated_at=?10 WHERE id=?11"
+      ).bind(code, nameEn, nameUr, countryCode, region, city, deliveryFee, minimumOrder, isActive ? 1 : 0, timestamp, id);
+
+  try {
+    const results = await env.DB.batch([
+      statement,
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "SELECT ?1, ?2, ?3, ?4, 'delivery_zone', id, ?5, ?6 FROM delivery_zones WHERE id = ?7 AND updated_at = ?6"
+      ).bind(
+        crypto.randomUUID(), user.id, user.role,
+        request.method === "POST" ? "delivery_zone.created" : "delivery_zone.updated",
+        JSON.stringify({
+          code,
+          country_code: countryCode,
+          city,
+          delivery_fee_paisa: deliveryFee,
+          minimum_order_paisa: minimumOrder,
+          is_active: isActive
+        }),
+        timestamp,
+        id
+      )
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) !== 1) {
+      return json({ error: "delivery_zone_not_found" }, request.method === "PATCH" ? 404 : 409);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/UNIQUE constraint failed/i.test(message)) return json({ error: "delivery_zone_code_conflict" }, 409);
+    throw error;
+  }
+
+  return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
+}
+
 async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
     return ownerBootstrap(request, env);
@@ -1723,6 +1823,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const deliveryResponse = await adminDeliveryApi(request, env, url, user);
+  if (deliveryResponse) return deliveryResponse;
 
   const inventoryResponse = await adminInventoryApi(request, env, url, user);
   if (inventoryResponse) return inventoryResponse;
