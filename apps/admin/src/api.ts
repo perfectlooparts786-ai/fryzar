@@ -19,6 +19,8 @@ export interface StoreSettings {
   cod_enabled?: boolean | string;
   manual_transfer_enabled?: boolean | string;
   whatsapp_number?: string;
+  store_name_en?: string;
+  store_name_ur?: string;
 }
 
 export interface Category {
@@ -205,6 +207,15 @@ export const adminApi = {
   saveProduct: (data: Record<string, unknown>, id?: string) =>
     apiRequest<{ saved: boolean; id: string }>("/admin/products" + (id ? "/" + encodeURIComponent(id) : ""), {
       method: id ? "PATCH" : "POST",
+      body: JSON.stringify(data)
+    }),
+
+  adminSettings: () =>
+    apiRequest<{ settings: StoreSettings }>("/admin/settings"),
+
+  saveStoreSettings: (data: Record<string, unknown>) =>
+    apiRequest<{ saved: boolean; updated_keys: string[] }>("/admin/settings", {
+      method: "PATCH",
       body: JSON.stringify(data)
     }),
 
