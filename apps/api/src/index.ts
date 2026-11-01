@@ -906,9 +906,7 @@ async function createStaffSession(
     )
   ]);
 
-  const headers = new Headers();
-  headers.append("Set-Cookie", sessionCookie(token, ADMIN_SESSION_SECONDS));
-  return applySecurityHeaders(json({
+  const response = json({
     authenticated: true,
     user: {
       id: staff.id,
@@ -917,6 +915,12 @@ async function createStaffSession(
       role: staff.role
     },
     expires_at: expiresAt
+  });
+  const headers = new Headers(response.headers);
+  headers.append("Set-Cookie", sessionCookie(token, ADMIN_SESSION_SECONDS));
+  return applySecurityHeaders(new Response(response.body, {
+    status: response.status,
+    headers
   }), request, env);
 }
 
