@@ -69,3 +69,24 @@ Updated: 1 November 2026
 ## Next action
 
 Verify access to the two raw SQL backup artifacts recorded in the existing backup manifest, independently recompute their hashes, and perform D1-managed restores into isolated non-production databases. Until those artifacts are accessible and the restore passes, keep both live databases, all Worker bindings, and public routing unchanged.
+
+
+## Preview environment update — 1 November 2026
+
+A separate preview D1 database has been created and initialized from the four migrations committed in `foundation/fresh-build`:
+
+- `fryzar-preview` — `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`, APAC, read replication disabled.
+- 22 application tables; four migration ledger records match `0001_core.sql` through `0004_inventory_adjustments.sql`.
+- Product, category, delivery-zone, order, payment, staff and inventory business tables remain empty.
+- Store setup/readiness remains closed and manual transfer is disabled.
+
+A candidate three-Worker preview topology is in [PR #9](https://github.com/perfectlooparts786-ai/fryzar/pull/9), targeting `foundation/fresh-build`. It adds:
+- `fryzar-api-preview` bound to the new preview database.
+- `fryzar-app-preview` and `fryzar-admin-preview` Workers serving static React builds and forwarding `/api/*` through service bindings to the preview API.
+- Worker routing tests, Wrangler dry-run CI checks, and a manual-only preview deployment workflow.
+
+CI run [41286160460](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41286160460) passed API tests, Worker routing tests, customer/admin production builds, and dry-run validation of all three preview Worker configs on commit `db32b8d3b185e73b025e144cec9b9be2ad94f59b`. A later documentation-only branch commit has a new CI run still in progress at the time of this update.
+
+Preview Workers have not yet been deployed. GitHub Actions environment `preview` must be configured with `CLOUDFLARE_ACCOUNT_ID` and a narrowly scoped `CLOUDFLARE_API_TOKEN`. This was not verifiable via the available GitHub connector. Separate preview-only `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` are needed before authenticated bootstrap, tracking and checkout flows can be tested. See [Issue #10](https://github.com/perfectlooparts786-ai/fryzar/issues/10).
+
+**Production impact:** none. Existing Workers, `fryzar-production`, `fryzar-core`, bindings, secrets, DNS/routes and payment settings remain unchanged. No canonical D1 has been selected; D1-native restore of the two existing SQL backups remains outstanding.
