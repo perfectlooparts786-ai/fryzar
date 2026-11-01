@@ -23,7 +23,7 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
   { id: "delivery", label: "Delivery", icon: "⌖" },
   { id: "team", label: "Team access", icon: "♙", note: "API pending" },
-  { id: "settings", label: "Store settings", icon: "⚙", note: "Read only" }
+  { id: "settings", label: "Store settings", icon: "⚙" }
 ];
 
 function isEnabled(value: unknown): boolean {
@@ -44,6 +44,9 @@ function messageFor(error: unknown): string {
       case "product_not_found": return "The selected product no longer exists. Refresh the inventory list.";
       case "delivery_zone_code_conflict": return "This delivery zone code is already in use. Choose a different code.";
       case "delivery_zone_not_found": return "This delivery zone no longer exists. Refresh the list.";
+      case "setting_requires_release_gate": return "Launch readiness, currency and payment-proof settings are controlled by release checks and cannot be changed here.";
+      case "store_requires_release_gate": return "The store cannot be opened from this settings screen. Complete the release-readiness checks first.";
+      case "invalid_whatsapp_number": return "Enter a valid international phone number, or leave the field empty.";
       case "invalid_credentials": return "Email or password is incorrect.";
       case "owner_bootstrap_unavailable": return "First-owner setup is not enabled on the API yet. The one-time bootstrap secret must be configured securely in Cloudflare.";
       case "invalid_bootstrap_token": return "The bootstrap token was not accepted.";
@@ -751,6 +754,97 @@ function DeliveryModule({ user }: { user: StaffUser }) {
   </section>;
 }
 
+function StoreSettingsModule({ user }: { user: StaffUser }) {
+  const [settings, setSettings] = useState<StoreSettings>({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [form, setForm] = useState({
+    store_name_en: "FRYZAR",
+    store_name_ur: "FRYZAR",
+    default_language: "ur",
+    cod_enabled: "1",
+    whatsapp_number: "",
+    store_status: "setup"
+  });
+  const canEdit = user.role === "owner" || user.role === "manager";
+
+  async function load() {
+    setLoading(true); setError("");
+    try {
+      const result = await adminApi.adminSettings();
+      const value = result.settings;
+      setSettings(value);
+      setForm({
+        store_name_en: value.store_name_en ?? "FRYZAR",
+        store_name_ur: value.store_name_ur ?? "FRYZAR",
+        default_language: value.default_language === "en" ? "en" : "ur",
+        cod_enabled: isEnabled(value.cod_enabled) ? "1" : "0",
+        whatsapp_number: value.whatsapp_number ?? "",
+        store_status: value.store_status === "paused" ? "paused" : "setup"
+      });
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await adminApi.saveStoreSettings({
+        store_name_en: form.store_name_en.trim(),
+        store_name_ur: form.store_name_ur.trim(),
+        default_language: form.default_language,
+        cod_enabled: form.cod_enabled === "1",
+        whatsapp_number: form.whatsapp_number.trim(),
+        store_status: form.store_status
+      });
+      setNotice("Store settings saved: " + result.updated_keys.join(", ") + ".");
+      await load();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally { setBusy(false); }
+  }
+
+  return <section className="settings-module">
+    <div className="module-heading">
+      <div><span className="kicker">STORE CONFIGURATION</span><h1>Store settings</h1><p>Manage customer-facing store details and operating preferences. Release-gated controls stay locked.</p></div>
+      <button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button>
+    </div>
+    {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+    {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+    <section className="settings-status-grid">
+      <div className="settings-status-card"><span>Store mode</span><strong>{settings.store_status ?? "setup"}</strong><small>Setup or paused only</small></div>
+      <div className="settings-status-card"><span>Launch readiness</span><strong>{isEnabled(settings.launch_ready) ? "Ready" : "Not ready"}</strong><small>Release-gated, read-only</small></div>
+      <div className="settings-status-card"><span>Manual transfer</span><strong>{isEnabled(settings.manual_transfer_enabled) ? "Enabled" : "Disabled"}</strong><small>Payment-proof flow not released</small></div>
+    </section>
+    {canEdit ? <form className="catalogue-editor" onSubmit={submit}>
+      <h2>Customer-facing details</h2>
+      {loading ? <p className="orders-footnote">Loading current settings…</p> : <>
+        <div className="catalogue-form-grid">
+          <label className="catalogue-field"><span>Store name (English)</span><input required minLength={2} maxLength={80} value={form.store_name_en} onChange={event => update("store_name_en", event.target.value)} /></label>
+          <label className="catalogue-field"><span>Store name (Urdu)</span><input required minLength={2} maxLength={80} value={form.store_name_ur} onChange={event => update("store_name_ur", event.target.value)} /></label>
+          <label className="catalogue-field"><span>Default language</span><select value={form.default_language} onChange={event => update("default_language", event.target.value)}><option value="ur">Urdu</option><option value="en">English</option></select></label>
+          <label className="catalogue-field"><span>Cash on delivery</span><select value={form.cod_enabled} onChange={event => update("cod_enabled", event.target.value)}><option value="1">Enabled</option><option value="0">Disabled</option></select></label>
+          <label className="catalogue-field"><span>WhatsApp contact (international format)</span><input inputMode="tel" maxLength={20} value={form.whatsapp_number} onChange={event => update("whatsapp_number", event.target.value)} placeholder="+923001234567" /></label>
+          <label className="catalogue-field"><span>Store mode</span><select value={form.store_status} onChange={event => update("store_status", event.target.value)}><option value="setup">Setup</option><option value="paused">Paused</option></select></label>
+        </div>
+        <div className="settings-readonly-grid">
+          <div><span>Supported languages</span><strong>Urdu · English</strong><small>Both language options stay enabled</small></div>
+          <div><span>Currency</span><strong>PKR</strong><small>Stored as integer paisa</small></div>
+          <div><span>Manual transfer</span><strong>Disabled</strong><small>Cannot be enabled until proof storage and review are complete</small></div>
+        </div>
+        <div className="catalogue-actions"><button type="submit" disabled={busy || loading}>{busy ? "Saving…" : "Save settings"}</button></div>
+      </>}
+    </form> : <p className="orders-footnote">Your role can view public store configuration but cannot make changes.</p>}
+    <p className="orders-footnote">This screen cannot set launch readiness to true or open the store. Checkout remains closed until separate release gates are completed.</p>
+  </section>;
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -878,6 +972,8 @@ export default function App() {
             <InventoryModule user={user} />
           ) : section === "delivery" ? (
             <DeliveryModule user={user} />
+          ) : section === "settings" ? (
+            <StoreSettingsModule user={user} />
           ) : section === "overview" ? (
             <Overview
               user={user}
