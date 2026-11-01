@@ -1317,3 +1317,272 @@ test("invalid international store contact number is rejected before writes", asy
   assert.equal((await response.json()).error, "invalid_whatsapp_number");
   assert.equal(state.batchCount, 0);
 });
+
+
+test("owner can create a manager account with a hashed password and audit record", async () => {
+  const token = "3".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, batchChanges: [1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: "manager@example.test",
+        display_name: "Store Manager",
+        role: "manager",
+        password: "SecureManagerPass123"
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(body.created, true);
+  assert.equal(body.role, "manager");
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 2);
+  assert.match(state.batchStatements[0].sql, /INSERT INTO staff_users/);
+  assert.notEqual(state.batchStatements[0].params[2], "SecureManagerPass123");
+  assert.match(state.batchStatements[0].params[2], /^pbkdf2_sha256\\$/);
+  assert.match(state.batchStatements[1].sql, /staff.user_created/);
+});
+
+test("manager can create an operator but cannot assign management roles", async () => {
+  const token = "4".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, batchChanges: [1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: "operator@example.test",
+        display_name: "Operator",
+        role: "operator",
+        password: "SecureOperatorPass123"
+      })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 201);
+  assert.equal(state.batchCount, 1);
+});
+
+test("manager cannot create another manager account", async () => {
+  const token = "5".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: "another-manager@example.test",
+        display_name: "Another Manager",
+        role: "manager",
+        password: "SecureManagerPass123"
+      })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "role_assignment_denied");
+  assert.equal(state.batchCount, 0);
+});
+
+test("staff list never selects password hashes and is limited to owner/manager", async () => {
+  const token = "6".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const rows = [{ id: "operator-1", email: "operator@example.test", role: "operator", is_active: 1 }];
+  const { env, state } = createEnv({ firstResult: staff, allResults: rows });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.staff, rows);
+  assert.doesNotMatch(state.lastSql, /password_hash/);
+});
+
+test("operator cannot read the staff directory", async () => {
+  const token = "7".repeat(64);
+  const staff = { id: "operator-1", email: "operator@example.test", display_name: "Operator", role: "operator", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.allCount, 0);
+});
+
+test("manager cannot update another manager or owner account", async () => {
+  const token = "8".repeat(64);
+  const actor = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const target = { id: "manager-2", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResults: [actor, target] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff/" + target.id, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ is_active: false })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.batchCount, 0);
+});
+
+test("owner cannot deactivate the first owner account", async () => {
+  const token = "9".repeat(64);
+  const actor = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const target = { id: "owner-1", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResults: [actor, target] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff/" + target.id, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ is_active: false })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.batchCount, 0);
+});
+
+test("role change revokes the target staff sessions and records an audit event", async () => {
+  const token = "a".repeat(64);
+  const actor = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const target = { id: "operator-1", role: "operator", is_active: 1 };
+  const { env, state } = createEnv({ firstResults: [actor, target], batchChanges: [1, 1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff/" + target.id, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ role: "kitchen" })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.sessions_revoked, true);
+  assert.equal(state.batchCount, 1);
+  assert.match(state.batchStatements[0].sql, /UPDATE staff_users SET/);
+  assert.match(state.batchStatements[1].sql, /UPDATE staff_sessions SET revoked_at/);
+  assert.match(state.batchStatements[2].sql, /staff.user_updated/);
+});
+
+test("staff cannot deactivate their own account", async () => {
+  const token = "b".repeat(64);
+  const actor = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const target = { id: "manager-1", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResults: [actor, target] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff/" + target.id, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ is_active: false })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "cannot_deactivate_self");
+  assert.equal(state.batchCount, 0);
+});
+
+test("staff password reset revokes all active sessions and is audit logged", async () => {
+  const token = "c".repeat(64);
+  const actor = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const target = { id: "operator-1", role: "operator" };
+  const { env, state } = createEnv({ firstResults: [actor, target], batchChanges: [1, 2, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff/" + target.id + "/reset-password", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ new_password: "NewSecureOperatorPass123" })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.password_reset, true);
+  assert.equal(body.sessions_revoked, true);
+  assert.equal(state.batchCount, 1);
+  assert.match(state.batchStatements[0].sql, /UPDATE staff_users SET password_hash/);
+  assert.match(state.batchStatements[1].sql, /UPDATE staff_sessions SET revoked_at/);
+  assert.match(state.batchStatements[2].sql, /staff.password_reset/);
+});
+
+test("manager cannot reset another manager password", async () => {
+  const token = "d".repeat(64);
+  const actor = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const target = { id: "manager-2", role: "manager" };
+  const { env, state } = createEnv({ firstResults: [actor, target] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/staff/" + target.id + "/reset-password", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ new_password: "AnotherSecureManagerPass12" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.batchCount, 0);
+});
