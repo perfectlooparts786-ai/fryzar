@@ -3,6 +3,7 @@ node_modules/
 dist/
 build/
 coverage/
+.test-build/
 .wrangler/
 .dev.vars
 .dev.vars.*
