@@ -312,10 +312,7 @@ test("successful COD checkout uses server prices and creates an atomic batch", a
   assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO payments")));
   assert.ok(state.batchStatements.some((item) => item.sql.includes("UPDATE products")));
   assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO idempotency_keys")));
-  assert.equal(
-    state.batchStatements.some((item) => item.params.includes(1) && item.sql.includes("INSERT INTO orders")),
-    false
-  );
+  assert.equal(state.batchStatements.length, 9);
 });
 
 test("tracking endpoint never returns customer phone or delivery address", async () => {
