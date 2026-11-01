@@ -4,8 +4,6 @@
   "private": true,
   "description": "FRYZAR customer ordering platform and operations system",
   "scripts": {
-    "dev:api": "wrangler dev --config apps/api/wrangler.toml",
-    "deploy:api": "wrangler deploy --config apps/api/wrangler.toml",
     "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
     "test:build": "tsc --project apps/api/tsconfig.test.json",
     "test:api": "npm run test:build && node --test tests/api.test.cjs",
@@ -22,7 +20,8 @@
     "dev:admin-worker": "wrangler dev --config apps/admin-worker/wrangler.toml",
     "deploy:admin-preview": "npm run build:admin && wrangler deploy --config apps/admin-worker/wrangler.toml",
     "test:workers": "node --test tests/worker-routing.test.cjs",
-    "db:migrate:preview": "wrangler d1 migrations apply fryzar-preview --remote --config apps/api/wrangler.toml"
+    "db:migrate:preview": "wrangler d1 migrations apply fryzar-preview --remote --config apps/api/wrangler.toml",
+    "dev:api-preview": "wrangler dev --config apps/api/wrangler.toml"
   },
   "dependencies": {
     "react": "19.3.1",
