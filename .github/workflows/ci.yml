@@ -34,3 +34,6 @@ jobs:
 
       - name: Build customer storefront
         run: npm run build:storefront
+
+      - name: Build admin portal
+        run: npm run build:admin
