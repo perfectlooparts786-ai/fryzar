@@ -182,12 +182,15 @@ async function consumeRateLimit(
   maximum: number,
   windowMs: number
 ): Promise<boolean> {
-  if (env.APP_ENV !== "production") {
+  // Only local development and automated unit tests bypass network rate limits.
+  // Preview is publicly reachable on workers.dev, so it must enforce limits too.
+  if (env.APP_ENV === "development" || env.APP_ENV === "test") {
     return true;
   }
 
   const clientIp = request.headers.get("CF-Connecting-IP");
 
+  // Fail closed in preview and production if the platform IP header is absent.
   if (!clientIp) {
     return false;
   }
@@ -212,7 +215,8 @@ async function consumeRateLimit(
 
     return Boolean(result && result.request_count <= maximum);
   } catch {
-    return env.APP_ENV !== "production";
+    // Do not silently disable protection when the rate-limit store is unavailable.
+    return false;
   }
 }
 
