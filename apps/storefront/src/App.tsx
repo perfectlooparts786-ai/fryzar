@@ -9,6 +9,8 @@ import type {
   StoreSettings
 } from "./types";
 
+type CopyText = { [Key in keyof typeof COPY.en]: string };
+
 const COPY = {
   en: {
     announcement: "A simpler way to shop your neighbourhood",
@@ -186,7 +188,10 @@ function productDescription(product: Product, language: Language): string {
   return language === "ur" ? product.description_ur : product.description_en;
 }
 
-function errorText(error: unknown, t: typeof COPY.en): string {
+function errorText(
+  error: unknown,
+  t: Pick<CopyText, "storeClosed" | "zoneUnavailable" | "notAvailable" | "genericError">
+): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case "store_not_accepting_orders":
