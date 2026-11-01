@@ -9,14 +9,20 @@
     "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
     "test:build": "tsc --project apps/api/tsconfig.test.json",
     "test:api": "npm run test:build && node --test tests/api.test.cjs",
-    "test": "npm run typecheck && npm run test:api",
+    "test": "npm run typecheck && npm run test:api && npm run test:workers",
     "dev:storefront": "vite --config apps/storefront/vite.config.ts",
     "build:storefront": "tsc --project apps/storefront/tsconfig.json && vite build --config apps/storefront/vite.config.ts",
     "preview:storefront": "vite preview --config apps/storefront/vite.config.ts",
     "db:migrate:local": "wrangler d1 migrations apply fryzar-core --local --config apps/api/wrangler.toml",
     "db:migrate:remote": "wrangler d1 migrations apply fryzar-core --remote --config apps/api/wrangler.toml",
     "dev:admin": "vite --config apps/admin/vite.config.ts",
-    "build:admin": "tsc --project apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts"
+    "build:admin": "tsc --project apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts",
+    "deploy:api-preview": "wrangler deploy --config apps/api/wrangler.toml",
+    "dev:customer-worker": "wrangler dev --config apps/customer-worker/wrangler.toml",
+    "deploy:customer-preview": "npm run build:storefront && wrangler deploy --config apps/customer-worker/wrangler.toml",
+    "dev:admin-worker": "wrangler dev --config apps/admin-worker/wrangler.toml",
+    "deploy:admin-preview": "npm run build:admin && wrangler deploy --config apps/admin-worker/wrangler.toml",
+    "test:workers": "node --test tests/worker-routing.test.cjs"
   },
   "dependencies": {
     "react": "19.3.1",
