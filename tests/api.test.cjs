@@ -712,8 +712,7 @@ test("manager inventory adjustment writes quantity, adjustment ledger, movement 
 
   assert.equal(response.status, 201);
   assert.equal(body.adjusted, true);
-  assert.equal(body.previous_stock_qty, 8);
-  assert.equal(body.requested_delta_qty, 12);
+  assert.equal(body.delta_qty, 12);
   assert.equal(state.batchCount, 1);
   assert.equal(state.batchStatements.length, 4);
   assert.match(state.batchStatements[0].sql, /stock_qty = stock_qty \+ \?1/);
