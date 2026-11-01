@@ -731,6 +731,8 @@ const ADMIN_COOKIE_NAME = "__Host-fryzar_admin";
 const ADMIN_SESSION_SECONDS = 8 * 60 * 60;
 const PASSWORD_ITERATIONS = 310000;
 const PASSWORD_HASH_FORMAT = "pbkdf2_sha256";
+const DUMMY_PASSWORD_HASH =
+  "pbkdf2_sha256$310000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 interface StaffUserRow {
   id: string;
@@ -1092,6 +1094,7 @@ async function adminLogin(request: Request, env: Env): Promise<Response> {
   ).bind(email).first<StaffUserRow>();
 
   if (!staff || staff.is_active !== 1 || !staff.password_hash) {
+    await verifyPassword(password, DUMMY_PASSWORD_HASH);
     return json({ error: "invalid_credentials" }, 401);
   }
 
