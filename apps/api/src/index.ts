@@ -2098,6 +2098,159 @@ async function adminDeliveryApi(request: Request, env: Env, url: URL, user: Sess
   return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
 }
 
+const PAYMENT_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "finance"];
+const PAYMENT_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "finance"];
+
+async function adminPaymentsApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/payments") {
+    if (!hasRole(user, PAYMENT_READ_ROLES)) return roleDenied();
+    const status = safeString(url.searchParams.get("status"));
+    if (status && status !== "unpaid" && status !== "collected") {
+      return json({ error: "invalid_payment_filter" }, 400);
+    }
+    const result = await env.DB.prepare(
+      "SELECT p.id AS payment_id, p.order_id, o.order_number, o.status AS order_status, " +
+      "p.method, p.status AS payment_status, p.amount_paisa, p.created_at, p.reviewed_at, " +
+      "s.display_name AS collected_by " +
+      "FROM payments p JOIN orders o ON o.id = p.order_id " +
+      "LEFT JOIN staff_users s ON s.id = p.reviewer_staff_id " +
+      "WHERE p.method = 'cod' AND (?1 = '' OR p.status = ?1) " +
+      "ORDER BY CASE WHEN p.status = 'unpaid' THEN 0 ELSE 1 END, p.created_at DESC LIMIT 200"
+    ).bind(status).all<JsonRecord>();
+    return json({ payments: result.results });
+  }
+
+  if (request.method !== "POST" || url.pathname !== "/api/v1/admin/payments/cod-collection") return null;
+  if (!hasRole(user, PAYMENT_WRITE_ROLES)) return roleDenied();
+  if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
+    return json({ error: "idempotency_key_required" }, 400);
+  }
+  const body = await parseJsonBody(request, 2048);
+  if (!body) return json({ error: "invalid_request" }, 400);
+  const orderId = safeString(body.order_id).toLowerCase();
+  if (!validUuid(orderId)) return json({ error: "invalid_order_id" }, 400);
+
+  const requestHash = await sha256Hex(JSON.stringify({ order_id: orderId }));
+  const existing = await env.DB.prepare(
+    "SELECT request_hash, response_json, expires_at FROM idempotency_keys " +
+    "WHERE scope = 'cod_collection' AND idempotency_key = ?1 LIMIT 1"
+  ).bind(idempotencyKey).first<IdempotencyRow>();
+  if (existing && Date.parse(existing.expires_at) > Date.now()) {
+    if (existing.request_hash !== requestHash) return json({ error: "idempotency_key_reused" }, 409);
+    if (!existing.response_json) return json({ error: "request_already_processing" }, 409);
+    try {
+      return json(JSON.parse(existing.response_json) as JsonRecord, 200, { "Idempotent-Replay": "true" });
+    } catch {
+      return json({ error: "idempotency_record_invalid" }, 500);
+    }
+  }
+
+  const payment = await env.DB.prepare(
+    "SELECT p.id AS payment_id, p.status AS payment_status, p.method, p.amount_paisa, " +
+    "o.id AS order_id, o.order_number, o.status AS order_status, o.payment_status AS order_payment_status " +
+    "FROM payments p JOIN orders o ON o.id = p.order_id " +
+    "WHERE o.id = ?1 ORDER BY p.created_at DESC LIMIT 1"
+  ).bind(orderId).first<{
+    payment_id: string;
+    payment_status: string;
+    method: string;
+    amount_paisa: number;
+    order_id: string;
+    order_number: string;
+    order_status: string;
+    order_payment_status: string;
+  }>();
+
+  if (!payment) return json({ error: "payment_not_found" }, 404);
+  if (payment.method !== "cod") return json({ error: "not_cod_payment" }, 409);
+  if (payment.order_status !== "delivered") return json({ error: "order_not_delivered" }, 409);
+  if (payment.payment_status === "collected" && payment.order_payment_status === "collected") {
+    return json({ error: "payment_already_collected" }, 409);
+  }
+  if (payment.payment_status !== "unpaid" || payment.order_payment_status !== "unpaid") {
+    return json({ error: "payment_state_conflict" }, 409);
+  }
+
+  const timestamp = new Date().toISOString();
+  const responseBody = {
+    collected: true,
+    order_id: payment.order_id,
+    order_number: payment.order_number,
+    payment_id: payment.payment_id,
+    payment_status: "collected",
+    amount_paisa: payment.amount_paisa
+  };
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const auditId = crypto.randomUUID();
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "DELETE FROM idempotency_keys WHERE scope = 'cod_collection' " +
+      "AND idempotency_key = ?1 AND expires_at <= ?2"
+    ).bind(idempotencyKey, timestamp),
+    env.DB.prepare(
+      "UPDATE orders SET payment_status='collected', updated_at=?1 " +
+      "WHERE id=?2 AND status='delivered' AND payment_method='cod' AND payment_status='unpaid'"
+    ).bind(timestamp, orderId),
+    env.DB.prepare(
+      "UPDATE payments SET status='collected', reviewer_staff_id=?1, reviewed_at=?2, updated_at=?2 " +
+      "WHERE id=?3 AND method='cod' AND status='unpaid' " +
+      "AND EXISTS (SELECT 1 FROM orders WHERE id=?4 AND status='delivered' AND payment_status='collected')"
+    ).bind(user.id, timestamp, payment.payment_id, orderId),
+    env.DB.prepare(
+      "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+      "SELECT ?1, ?2, ?3, 'payment.cod_collected', 'payment', p.id, ?4, ?5 " +
+      "FROM payments p WHERE p.id=?6 AND p.status='collected' AND p.reviewed_at=?5 AND changes()=1"
+    ).bind(
+      auditId,
+      user.id,
+      user.role,
+      JSON.stringify({ order_id: orderId, order_number: payment.order_number, amount_paisa: payment.amount_paisa }),
+      timestamp,
+      payment.payment_id
+    ),
+    env.DB.prepare(
+      "INSERT INTO idempotency_keys (id, scope, idempotency_key, request_hash, response_json, expires_at) " +
+      "SELECT ?1, 'cod_collection', ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM audit_logs WHERE id=?6)"
+    ).bind(
+      crypto.randomUUID(),
+      idempotencyKey,
+      requestHash,
+      JSON.stringify(responseBody),
+      expiresAt,
+      auditId
+    )
+  ];
+
+  try {
+    const results = await env.DB.batch(statements);
+    if ((results[1]?.meta?.changes ?? 0) !== 1 || (results[2]?.meta?.changes ?? 0) !== 1 ||
+        (results[3]?.meta?.changes ?? 0) !== 1 || (results[4]?.meta?.changes ?? 0) !== 1) {
+      return json({ error: "payment_state_changed_retry" }, 409);
+    }
+  } catch {
+    const concurrent = await env.DB.prepare(
+      "SELECT request_hash, response_json, expires_at FROM idempotency_keys " +
+      "WHERE scope = 'cod_collection' AND idempotency_key = ?1 LIMIT 1"
+    ).bind(idempotencyKey).first<IdempotencyRow>();
+    if (concurrent && Date.parse(concurrent.expires_at) > Date.now()) {
+      if (concurrent.request_hash !== requestHash) return json({ error: "idempotency_key_reused" }, 409);
+      if (concurrent.response_json) {
+        try {
+          return json(JSON.parse(concurrent.response_json) as JsonRecord, 200, { "Idempotent-Replay": "true" });
+        } catch {
+          return json({ error: "idempotency_record_invalid" }, 500);
+        }
+      }
+    }
+    return json({ error: "payment_collection_failed" }, 409);
+  }
+
+  return json(responseBody, 201);
+}
+
 async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
     return ownerBootstrap(request, env);
@@ -2114,6 +2267,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const paymentsResponse = await adminPaymentsApi(request, env, url, user);
+  if (paymentsResponse) return paymentsResponse;
 
   const staffResponse = await adminStaffApi(request, env, url, user);
   if (staffResponse) return staffResponse;
