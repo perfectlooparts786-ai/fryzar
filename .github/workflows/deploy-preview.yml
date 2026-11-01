@@ -36,6 +36,11 @@ jobs:
 
       - name: Validate preview-only credentials
         shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TRACKING_SECRET: ${{ secrets.TRACKING_SECRET }}
+          OWNER_BOOTSTRAP_TOKEN: ${{ secrets.OWNER_BOOTSTRAP_TOKEN }}
         run: |
           set -euo pipefail
 
