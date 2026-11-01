@@ -339,7 +339,9 @@ test("successful COD checkout uses server prices and creates an atomic batch", a
   assert.match(body.tracking_token, /^[a-f0-9]{64}$/);
   assert.equal(state.batchCount, 1);
   assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO payments")));
-  assert.ok(state.batchStatements.some((item) => item.sql.includes("UPDATE products")));
+  const stockReservation = state.batchStatements.find((item) => item.sql.includes("UPDATE products"));
+  assert.ok(stockReservation);
+  assert.match(stockReservation.sql, /stock_qty IS NULL OR stock_qty >= \\?1/);
   assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO idempotency_keys")));
   assert.equal(state.batchStatements.length, 9);
 });
