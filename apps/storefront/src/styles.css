@@ -462,3 +462,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .tracking-timeline li:nth-child(4)::before { display:none; }
   .tracking-meta { grid-template-columns:1fr; }
 }
+
+.track-mobile-link { display:none; color:var(--forest); font-size:10px; font-weight:750; white-space:nowrap; }
+@media (max-width:740px) {
+  .track-mobile-link { display:inline-flex; align-items:center; min-height:36px; }
+}
