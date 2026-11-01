@@ -299,3 +299,15 @@ td small { margin-top: 4px; color: #96a197; font-size: 9px; }
   .settings-status-card { padding:14px 16px; }
   .settings-module .catalogue-editor { padding:14px; }
 }
+
+.team-module { display:flex; flex-direction:column; gap:16px; }
+.team-module .catalogue-editor { margin:0; }
+.team-form-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:15px; }
+.team-form-heading h2 { margin:0; color:var(--forest); font-size:16px; }
+.team-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.team-actions .refresh-button { white-space:nowrap; }
+.team-module .orders-table td { vertical-align:middle; }
+@media (max-width:720px) {
+  .team-module .catalogue-editor { padding:14px; }
+  .team-actions { min-width:130px; }
+}
