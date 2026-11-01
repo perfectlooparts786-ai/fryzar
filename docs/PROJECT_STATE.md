@@ -2,14 +2,14 @@
 
 **Last updated:** 2026-11-01  
 **Active branch:** \`foundation/fresh-build\`  
-**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory, delivery-zone and guarded store-settings management source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
+**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory, delivery zones, guarded store settings, staff access management and customer order tracking source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
 
 ## Verified infrastructure
 
 - Private repository \`perfectlooparts786-ai/fryzar\`; active development branch \`foundation/fresh-build\`; draft PR #1 remains unmerged.
 - New Cloudflare D1 database \`fryzar-core\`, APAC, ID \`098238a6-1bda-4735-8f21-d925c7fe32de\`.
 - Migrations \`0001_core.sql\`, \`0002_checkout_integrity.sql\`, and \`0003_admin_bootstrap.sql\` applied and recorded in \`d1_migrations\`.
-- The new database has the application schema plus the migration tracker. Products, delivery zones, staff accounts, orders, payments, inventory adjustments and inventory movements remain empty; no business or demo rows have been fabricated. Migration 0004 adds the auditable \\`inventory_adjustments\\` ledger and movement uniqueness index.
+- The new database has the application schema plus the migration tracker. Products, delivery zones, staff accounts, orders, payments, inventory adjustments and inventory movements remain empty; no business or demo rows have been fabricated. Migration 0004 adds the auditable \`inventory_adjustments\` ledger and movement uniqueness index.
 - New Cloudflare Worker \`fryzar-api\` deployed to its isolated workers.dev hostname and bound to \`fryzar-core\` using \`DB\`.
 - \`TRACKING_SECRET\` is configured on the Worker. Secret values are never committed or displayed.
 - Recorded deployed Worker version \`c0f0ecf8-97ef-4768-a947-f3f56be0df8e\` had 100% traffic at the last deployment check. That deployment predates the latest delivery-zone, admin-auth and admin-order source changes; the live Worker is therefore behind GitHub source.
@@ -114,3 +114,25 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - Added tests for public settings read, owner/manager update and audit, blocked launch/manual-transfer changes, blocked store opening, operator write denial, valid international phone acceptance, and invalid contact rejection.
 - Latest GitHub Actions run 41270993539 passed on commit \`ab5557a39c3cfa281cd425f882645efb263a6708\`: 51/51 API tests passed, TypeScript validation passed, storefront build passed and admin build passed.
 - No real store settings or contact number were changed in D1. The admin feature is source/CI-tested but has not been deployed to the Worker or tested against authenticated live D1 sessions.
+
+
+## Development update — staff access and customer tracking (2026-11-01)
+
+### Staff management
+- Added \`GET/POST /api/v1/admin/staff\`, \`PATCH /api/v1/admin/staff/{id}\`, and \`POST /api/v1/admin/staff/{id}/reset-password\`.
+- Owner/manager access is enforced in the API. Owners may create manager and operational roles; managers may create only operational roles. No staff route allows creation of another owner.
+- Staff list omits password hashes. Create and password-reset operations hash passwords with the existing PBKDF2-SHA256 routine.
+- Role/deactivation changes and password resets revoke active staff sessions and write audit records. Owner role targets and manager-managed manager targets are protected; self-deactivation returns a conflict.
+- Team Access admin UI supports staff directory, account creation, role/status edit and password reset.
+- No invitation email delivery exists yet. Initial passwords are set during account creation and must be shared separately through a secure channel.
+- CI run 41271345375 passed on commit \`85a3004d912b2b24b5b81d155eebd18fb78994af\`: 62/62 API tests, TypeScript, storefront build and admin build.
+- No staff account was inserted into the development D1 database. \`OWNER_BOOTSTRAP_TOKEN\` is still not configured; live first-owner setup has not occurred.
+
+### Customer order tracking
+- Added typed customer API client for \`GET /api/v1/orders/track/{token}\`, validating the 64-character hexadecimal tracking token before lookup.
+- Added bilingual customer order tracking section, with desktop navigation and a mobile header shortcut.
+- Tracking page displays order number/status, order lifecycle timeline, timestamps, product line snapshots, quantities, prices, subtotal, delivery, total and payment state.
+- The page does not display customer phone or delivery address and does not persist the private tracking token in browser storage.
+- Order confirmation includes a direct "Track order" action.
+- Latest GitHub Actions run 41271663890 passed on commit \`f6be27b0d89ad19cc50347347495100cb48f22e9\`: 62/62 API tests, API TypeScript validation, customer storefront build and admin build.
+- The public tracking API already had token hashing, response PII omission and rate limiting. The latest Worker still predates these features and has not been redeployed; no live customer tracking session has been tested.
