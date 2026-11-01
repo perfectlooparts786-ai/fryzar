@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const worker = require("../.test-build/api/index.js").default;
 
 function createEnv(options = {}) {
@@ -695,13 +696,14 @@ test("manager inventory adjustment writes quantity, adjustment ledger, movement 
   const token = "a".repeat(64);
   const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
   const product = { id: productId, stock_qty: 8 };
-  const { env, state } = createEnv({ firstResults: [staff, product], batchChanges: [1, 1, 1, 1] });
+  const { env, state } = createEnv({ firstResults: [staff, null, product], batchChanges: [0, 1, 1, 1, 1, 1] });
   const response = await worker.fetch(
     request("/api/v1/admin/inventory/adjustments", {
       method: "POST",
       headers: {
         Origin: "https://admin.example",
         Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "inventory-adjustment-test-0001",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ product_id: productId, delta_qty: 12, reason: "stock_received", note: "Supplier delivery" })
@@ -714,25 +716,28 @@ test("manager inventory adjustment writes quantity, adjustment ledger, movement 
   assert.equal(body.adjusted, true);
   assert.equal(body.delta_qty, 12);
   assert.equal(state.batchCount, 1);
-  assert.equal(state.batchStatements.length, 4);
-  assert.match(state.batchStatements[0].sql, /stock_qty = stock_qty \+ \?1/);
-  assert.match(state.batchStatements[0].sql, /stock_qty \+ \?1 >= 0/);
-  assert.match(state.batchStatements[1].sql, /INSERT INTO inventory_adjustments/);
-  assert.match(state.batchStatements[2].sql, /INSERT INTO inventory_movements/);
-  assert.match(state.batchStatements[3].sql, /inventory.stock_adjusted/);
+  assert.equal(state.batchStatements.length, 6);
+  assert.match(state.batchStatements[1].sql, /stock_qty = stock_qty \+ \?1/);
+  assert.match(state.batchStatements[1].sql, /stock_qty \+ \?1 >= 0/);
+  assert.match(state.batchStatements[2].sql, /INSERT INTO inventory_adjustments/);
+  assert.match(state.batchStatements[2].sql, /changes\(\) = 1/);
+  assert.match(state.batchStatements[3].sql, /INSERT INTO inventory_movements/);
+  assert.match(state.batchStatements[4].sql, /inventory.stock_adjusted/);
+  assert.match(state.batchStatements[5].sql, /inventory_adjustment/);
 });
 
 test("inventory adjustment rejects a stock reduction below zero before writing", async () => {
   const token = "b".repeat(64);
   const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
   const product = { id: productId, stock_qty: 3 };
-  const { env, state } = createEnv({ firstResults: [staff, product] });
+  const { env, state } = createEnv({ firstResults: [staff, null, product] });
   const response = await worker.fetch(
     request("/api/v1/admin/inventory/adjustments", {
       method: "POST",
       headers: {
         Origin: "https://admin.example",
         Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "inventory-adjustment-test-0002",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ product_id: productId, delta_qty: -4, reason: "stock_adjustment" })
@@ -756,6 +761,7 @@ test("inventory adjustment rejects untracked stock quantities", async () => {
       headers: {
         Origin: "https://admin.example",
         Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "inventory-adjustment-test-0003",
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ product_id: productId, delta_qty: 4, reason: "stock_received" })
@@ -869,4 +875,89 @@ test("new products with opening stock create matching adjustment and movement re
   assert.match(state.batchStatements[1].sql, /Opening stock at product creation/);
   assert.match(state.batchStatements[2].sql, /inventory_movements/);
   assert.match(state.batchStatements[3].sql, /product.created/);
+});
+
+
+test("inventory adjustment requires an idempotency key", async () => {
+  const token = "2".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ product_id: productId, delta_qty: 2, reason: "stock_received" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "idempotency_key_required");
+  assert.equal(state.batchCount, 0);
+});
+
+test("inventory adjustment replays the stored response for an identical idempotency key", async () => {
+  const token = "3".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const payload = { product_id: productId, delta_qty: 5, reason: "stock_received", note: "" };
+  const requestHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  const storedResponse = { adjusted: true, adjustment_id: "inventory-adjustment-1", product_id: productId, delta_qty: 5, reason: "stock_received" };
+  const existing = {
+    request_hash: requestHash,
+    response_json: JSON.stringify(storedResponse),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  };
+  const { env, state } = createEnv({ firstResults: [staff, existing] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "inventory-adjustment-replay-0001",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    }),
+    env
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Idempotent-Replay"), "true");
+  assert.deepEqual(await response.json(), storedResponse);
+  assert.equal(state.batchCount, 0);
+});
+
+test("inventory adjustment rejects reuse of a key with a different payload", async () => {
+  const token = "4".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const originalPayload = { product_id: productId, delta_qty: 5, reason: "stock_received", note: "" };
+  const requestHash = createHash("sha256").update(JSON.stringify(originalPayload)).digest("hex");
+  const existing = {
+    request_hash: requestHash,
+    response_json: JSON.stringify({ adjusted: true }),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  };
+  const { env, state } = createEnv({ firstResults: [staff, existing] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "inventory-adjustment-replay-0002",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ ...originalPayload, delta_qty: 6 })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "idempotency_key_reused");
+  assert.equal(state.batchCount, 0);
 });
