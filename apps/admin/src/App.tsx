@@ -852,6 +852,148 @@ function StoreSettingsModule({ user }: { user: StaffUser }) {
   </section>;
 }
 
+function TeamAccessModule({ user }: { user: StaffUser }) {
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState<StaffMember | null>(null);
+  const [resetTarget, setResetTarget] = useState<StaffMember | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [createForm, setCreateForm] = useState({
+    email: "", display_name: "", role: "operator" as StaffUser["role"], password: ""
+  });
+  const [editForm, setEditForm] = useState({
+    display_name: "", role: "operator" as StaffUser["role"], is_active: "1"
+  });
+  const isManager = user.role === "manager";
+  const canManage = user.role === "owner" || isManager;
+  const assignableRoles: StaffUser["role"][] = isManager
+    ? ["operator", "kitchen", "finance", "rider", "support"]
+    : ["manager", "operator", "kitchen", "finance", "rider", "support"];
+
+  async function load() {
+    setLoading(true); setError("");
+    try {
+      const result = await adminApi.staffDirectory();
+      setStaff(result.staff);
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  function protectedTarget(member: StaffMember) {
+    return member.role === "owner" || (isManager && member.role === "manager");
+  }
+  function editMember(member: StaffMember) {
+    setEditing(member); setResetTarget(null);
+    setEditForm({
+      display_name: member.display_name,
+      role: member.role,
+      is_active: member.is_active ? "1" : "0"
+    });
+    setError(""); setNotice("");
+  }
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await adminApi.createStaff({
+        email: createForm.email.trim().toLowerCase(),
+        display_name: createForm.display_name.trim(),
+        role: createForm.role,
+        password: createForm.password
+      });
+      setNotice("Staff account created (" + result.role + "). No invitation email was sent.");
+      setCreateForm({ email: "", display_name: "", role: isManager ? "operator" : "manager", password: "" });
+      await load();
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setBusy(false); }
+  }
+  async function updateAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    const payload: { display_name?: string; role?: StaffUser["role"]; is_active?: boolean } = {};
+    if (editForm.display_name.trim() !== editing.display_name) payload.display_name = editForm.display_name.trim();
+    if (editForm.role !== editing.role) payload.role = editForm.role;
+    if ((editForm.is_active === "1") !== Boolean(editing.is_active)) payload.is_active = editForm.is_active === "1";
+    if (Object.keys(payload).length === 0) { setNotice("No changes to save."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await adminApi.updateStaff(editing.id, payload);
+      setNotice(result.sessions_revoked ? "Staff account updated. Existing sessions were revoked." : "Staff profile updated.");
+      setEditing(null); await load();
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setBusy(false); }
+  }
+  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetTarget) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await adminApi.resetStaffPassword(resetTarget.id, newPassword);
+      setNotice("Password reset completed. All existing sessions for " + resetTarget.display_name + " were revoked.");
+      setNewPassword(""); setResetTarget(null);
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="team-module">
+    <div className="module-heading">
+      <div><span className="kicker">ACCESS CONTROL</span><h1>Team access</h1><p>Create staff accounts, assign least-privilege roles and revoke sessions when access changes.</p></div>
+      <button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button>
+    </div>
+    {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+    {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+
+    {canManage ? <form className="catalogue-editor" onSubmit={createAccount}>
+      <h2>Create staff account</h2>
+      <div className="catalogue-form-grid">
+        <label className="catalogue-field"><span>Email address</span><input required type="email" maxLength={254} value={createForm.email} onChange={event => setCreateForm(current => ({ ...current, email: event.target.value }))} /></label>
+        <label className="catalogue-field"><span>Display name</span><input required minLength={2} maxLength={100} value={createForm.display_name} onChange={event => setCreateForm(current => ({ ...current, display_name: event.target.value }))} /></label>
+        <label className="catalogue-field"><span>Staff role</span><select value={createForm.role} onChange={event => setCreateForm(current => ({ ...current, role: event.target.value as StaffUser["role"] }))}>{assignableRoles.map(role => <option key={role} value={role}>{role}</option>)}</select></label>
+        <label className="catalogue-field"><span>Initial password (12–128 characters)</span><input required type="password" minLength={12} maxLength={128} autoComplete="new-password" value={createForm.password} onChange={event => setCreateForm(current => ({ ...current, password: event.target.value }))} /></label>
+      </div>
+      <div className="catalogue-actions"><button type="submit" disabled={busy}>{busy ? "Creating…" : "Create staff account"}</button></div>
+      <p className="orders-footnote">FRYZAR does not send invitation emails yet. Share the initial password with the staff member through a separate secure channel.</p>
+    </form> : null}
+
+    {editing ? <form className="catalogue-editor" onSubmit={updateAccount}>
+      <div className="team-form-heading"><h2>Edit {editing.display_name}</h2><button className="refresh-button" type="button" onClick={() => setEditing(null)}>Close</button></div>
+      <div className="catalogue-form-grid">
+        <label className="catalogue-field"><span>Email address (read-only)</span><input value={editing.email} disabled /></label>
+        <label className="catalogue-field"><span>Display name</span><input required minLength={2} maxLength={100} value={editForm.display_name} onChange={event => setEditForm(current => ({ ...current, display_name: event.target.value }))} /></label>
+        <label className="catalogue-field"><span>Role</span><select value={editForm.role} onChange={event => setEditForm(current => ({ ...current, role: event.target.value as StaffUser["role"] }))}>{assignableRoles.map(role => <option key={role} value={role}>{role}</option>)}</select></label>
+        <label className="catalogue-field"><span>Account status</span><select value={editForm.is_active} onChange={event => setEditForm(current => ({ ...current, is_active: event.target.value }))}><option value="1">Active</option><option value="0">Deactivated</option></select></label>
+      </div>
+      <div className="catalogue-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save staff changes"}</button></div>
+    </form> : null}
+
+    {resetTarget ? <form className="catalogue-editor" onSubmit={resetPassword}>
+      <div className="team-form-heading"><h2>Reset password for {resetTarget.display_name}</h2><button className="refresh-button" type="button" onClick={() => { setResetTarget(null); setNewPassword(""); }}>Close</button></div>
+      <div className="catalogue-form-grid">
+        <label className="catalogue-field"><span>New password (12–128 characters)</span><input required type="password" minLength={12} maxLength={128} autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} /></label>
+      </div>
+      <div className="catalogue-actions"><button type="submit" disabled={busy}>{busy ? "Resetting…" : "Reset password and revoke sessions"}</button></div>
+    </form> : null}
+
+    <section className="inventory-stock-card">
+      <div className="inventory-card-heading"><div><h2>Staff directory</h2><p>{staff.length} accounts · maximum 200 displayed</p></div></div>
+      {loading ? <div className="orders-empty">Loading staff directory…</div> : staff.length === 0 ? <div className="orders-empty"><strong>No staff accounts found</strong><small>Create the first staff account after the owner has signed in.</small></div> :
+        <div className="table-wrap"><table className="orders-table"><thead><tr><th>Staff member</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Actions</th></tr></thead><tbody>{staff.map(member => <tr key={member.id}>
+          <td><strong>{member.display_name}</strong><small>{member.email}</small></td>
+          <td>{member.role}</td>
+          <td><span className={"order-status " + (member.is_active ? "status-confirmed" : "status-cancelled")}>{member.is_active ? "Active" : "Deactivated"}</span></td>
+          <td>{member.last_login_at ? new Date(member.last_login_at).toLocaleString() : "Never"}</td>
+          <td>{protectedTarget(member) ? <small className="restricted-action">Protected account</small> : <div className="team-actions">
+            <button className="refresh-button" type="button" disabled={busy} onClick={() => editMember(member)}>Edit</button>
+            <button className="refresh-button" type="button" disabled={busy || !member.is_active} onClick={() => { setEditing(null); setResetTarget(member); setNewPassword(""); }}>Reset password</button>
+          </div>}</td>
+        </tr>)}</tbody></table></div>}
+    </section>
+  </section>;
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -981,6 +1123,8 @@ export default function App() {
             <DeliveryModule user={user} />
           ) : section === "settings" ? (
             <StoreSettingsModule user={user} />
+          ) : section === "team" ? (
+            <TeamAccessModule user={user} />
           ) : section === "overview" ? (
             <Overview
               user={user}
