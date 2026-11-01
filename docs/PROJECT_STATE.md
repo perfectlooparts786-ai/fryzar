@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-01  
 **Active branch:** \`foundation/fresh-build\`  
-**Current phase:** Fresh platform foundation, customer storefront, admin authentication and order operations source
+**Current phase:** Fresh platform foundation, customer storefront, admin authentication and order operations source. Latest full GitHub Actions validation passed.
 
 ## Verified infrastructure
 
@@ -43,8 +43,8 @@
 
 ## Test state
 
-- Earlier GitHub Actions run passed strict TypeScript validation and 17/17 API tests, and the customer storefront production build passed.
-- Since then, owner bootstrap/session tests, order RBAC/cancellation tests, admin portal source, and admin build step have been added. The latest combined CI result for these changes is not yet confirmed.
+- Latest GitHub Actions run 41266597656 on commit \\`44ce7ecd861f385dd636a7382ed861eeb24b5188\\` passed: strict TypeScript, all 28 API tests (28 passed, 0 failed), customer storefront build, and admin portal build.
+- Owner bootstrap/session tests, order RBAC/cancellation tests, admin portal source, and admin build step are included in the passing combined CI run.
 - Tests use mocked D1 statements. They do not establish live D1 transaction rollback, concurrency behavior, or live Worker HTTP behavior.
 - The Cloudflare deployment metadata is not proof that all API endpoints respond correctly. External HTTP checks from the tool environment have been unavailable.
 
