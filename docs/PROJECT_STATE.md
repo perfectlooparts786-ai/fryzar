@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-01  
 **Active branch:** \`foundation/fresh-build\`  
-**Current phase:** Fresh platform foundation plus CI-tested catalogue and inventory management source. Development D1 migration 0004 is applied; the Worker deployment is still behind GitHub source.
+**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory and delivery-zone management source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
 
 ## Verified infrastructure
 
@@ -90,3 +90,15 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - GitHub Actions run 41270463960 passed on commit \`0f6efdd838ea4426f2949cde835701e594fd2dcd\`: 39/39 API tests passed, TypeScript validation passed, storefront build passed, and admin build passed.
 - D1 migration \`0004_inventory_adjustments.sql\` was applied to the isolated development database \`fryzar-core\` (ID \`098238a6-1bda-4735-8f21-d925c7fe32de\`). The migration tracker, table columns, both indexes and zero-row counts were read back successfully.
 - No product, staff, order, or inventory fixtures were inserted. The current Worker deployment is still older than GitHub source; live Worker API tests and real D1 concurrency/rollback tests remain pending.
+
+
+## Development update — delivery-zone management (2026-11-01)
+
+- Added authenticated \`GET /api/v1/admin/delivery-zones\` for owner/manager/operator/kitchen/rider roles. The admin read returns active and inactive zones so historical records remain visible.
+- Added owner/manager-only \`POST /api/v1/admin/delivery-zones\` and \`PATCH /api/v1/admin/delivery-zones/{id}\`. Permanent delete is not supported; deactivation preserves zone references used by existing orders.
+- Server validation covers zone code, English/Urdu names, country code, region/city, integer paisa delivery fee and minimum order, and active status. Zone create/update and audit write share one D1 batch.
+- Admin portal now includes a Delivery Zones module with create/edit/deactivate form and full zone listing. It shows values in PKR, while inputs and storage use integer paisa.
+- Added six API tests for create/audit batch, update/deactivation, validation, authorization, rider read projection and duplicate-code conflicts. One initial test run failed two assertions because the action is a bound SQL parameter; tests were corrected to inspect the parameter values.
+- GitHub Actions run 41270769486 passed on commit \`95af500df33e8c79981097bc22123da5f7a63aeb\`: 45/45 API tests, API strict TypeScript validation, storefront build and admin build.
+- Read-only Cloudflare D1 verification confirmed the existing \`delivery_zones\` schema matches the API columns and there are currently zero configured zones. No delivery-zone data was added.
+- No new D1 migration was needed for delivery zones. The current Worker is still behind GitHub source; Delivery APIs/UI are implemented and CI-tested, not deployed/live-verified.
