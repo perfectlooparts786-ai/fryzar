@@ -609,7 +609,7 @@ test("admin login creates a secure HttpOnly session after password verification"
   const successfulAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
   assert.ok(successfulAttempt);
   assert.equal(successfulAttempt.params.length, 4);
-  assert.match(successfulAttempt.sql, /VALUES \\(?1, \\?2, \\?3, \\?4, 1\\)/);
+  assert.ok(successfulAttempt.sql.includes("VALUES (?1, ?2, ?3, ?4, 1)"));
   assert.match(successfulAttempt.params[1], /^[a-f0-9]{64}$/);
   assert.match(successfulAttempt.params[2], /^[a-f0-9]{64}$/);
 });
@@ -643,7 +643,7 @@ test("admin login returns the same generic failure for a wrong password", async 
   const failedAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
   assert.ok(failedAttempt);
   assert.equal(failedAttempt.params.length, 6);
-  assert.match(failedAttempt.sql, /SELECT \\?1, \\?2, \\?3, \\?4, 0/);
+  assert.ok(failedAttempt.sql.includes("SELECT ?1, ?2, ?3, ?4, 0"));
   assert.equal(failedAttempt.params.includes("owner@example.test"), false);
   assert.match(failedAttempt.params[1], /^[a-f0-9]{64}$/);
   assert.match(failedAttempt.params[2], /^[a-f0-9]{64}$/);
