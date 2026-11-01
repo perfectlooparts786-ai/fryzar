@@ -159,3 +159,6 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - Added two API tests for aggregate metrics response and rider-role denial. These tests and the combined latest source still require a fresh CI run; do not label this change CI-tested until that run succeeds.
 - Latest known completed CI evidence remains run 41271949570 on commit `8633e41d8a284c95713cefde5be5ac7543aeeb51` (70/70 API tests and both builds), which predates the dashboard metrics change.
 - No deployment, live D1 write, live account creation, or real payment mutation was performed.
+
+
+- Dashboard metrics follow-up commit: `4e0ac438e665d395e8959f4463f6edc77fe97805`; includes explicit test assertion that the aggregate SQL query does not select customer phone/address columns. Latest CI is still awaiting confirmation.
