@@ -427,6 +427,113 @@ function OrdersModule({ user }: { user: StaffUser }) {
   );
 }
 
+
+function CatalogueModule({ user }: { user: StaffUser }) {
+  const [tab, setTab] = useState<"products" | "categories">("products");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [form, setForm] = useState<Record<string, string>>({
+    slug: "", name_en: "", name_ur: "", description_en: "", description_ur: "",
+    price_paisa: "0", compare_at_paisa: "", stock_qty: "", sku: "", category_id: "", image_url: "", sort_order: "0"
+  });
+  const canEdit = user.role === "owner" || user.role === "manager";
+
+  async function load() {
+    setLoading(true); setError("");
+    try {
+      const [p, c] = await Promise.all([adminApi.adminProducts(), adminApi.adminCategories()]);
+      setProducts(p.products); setCategories(c.categories);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  function resetForm() {
+    setEditingId("");
+    setForm({ slug: "", name_en: "", name_ur: "", description_en: "", description_ur: "", price_paisa: "0", compare_at_paisa: "", stock_qty: "", sku: "", category_id: "", image_url: "", sort_order: "0" });
+  }
+  function editProduct(product: Product) {
+    setTab("products"); setEditingId(product.id);
+    setForm({
+      slug: product.slug, name_en: product.name_en, name_ur: product.name_ur,
+      description_en: product.description_en ?? "", description_ur: product.description_ur ?? "",
+      price_paisa: String(product.price_paisa), compare_at_paisa: product.compare_at_paisa == null ? "" : String(product.compare_at_paisa),
+      stock_qty: product.stock_qty == null ? "" : String(product.stock_qty), sku: product.sku ?? "",
+      category_id: product.category_id ?? "", image_url: product.image_url ?? "", sort_order: String(product.sort_order ?? 0)
+    });
+  }
+  function editCategory(category: Category) {
+    setTab("categories"); setEditingId(category.id);
+    setForm({ slug: category.slug, name_en: category.name_en, name_ur: category.name_ur,
+      description_en: category.description_en ?? "", description_ur: category.description_ur ?? "",
+      sort_order: String(category.sort_order ?? 0), is_active: String(category.is_active ?? 1) });
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setNotice("");
+    try {
+      if (tab === "categories") {
+        await adminApi.saveCategory({
+          slug: form.slug, name_en: form.name_en, name_ur: form.name_ur,
+          description_en: form.description_en, description_ur: form.description_ur,
+          sort_order: Number(form.sort_order), is_active: form.is_active !== "0"
+        }, editingId || undefined);
+        setNotice("Category saved.");
+      } else {
+        await adminApi.saveProduct({
+          slug: form.slug, name_en: form.name_en, name_ur: form.name_ur,
+          description_en: form.description_en, description_ur: form.description_ur,
+          price_paisa: Number(form.price_paisa),
+          compare_at_paisa: form.compare_at_paisa === "" ? null : Number(form.compare_at_paisa),
+          stock_qty: form.stock_qty === "" ? null : Number(form.stock_qty),
+          sku: form.sku || null, category_id: form.category_id || null, image_url: form.image_url || null,
+          sort_order: Number(form.sort_order), is_available: form.is_available !== "0", is_featured: form.is_featured === "1"
+        }, editingId || undefined);
+        setNotice("Product saved.");
+      }
+      resetForm(); await load();
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setBusy(false); }
+  }
+  function field(label: string, key: string, type = "text", required = false) {
+    return <label className="catalogue-field" key={key}><span>{label}</span><input type={type} required={required} value={form[key] ?? ""} onChange={event => setForm(current => ({ ...current, [key]: event.target.value }))} /></label>;
+  }
+
+  return <section className="catalogue-module">
+    <div className="module-heading"><div><span className="kicker">CATALOGUE MANAGEMENT</span><h1>Products &amp; categories</h1><p>Create and update store catalogue records. Prices are entered in paisa.</p></div><button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button></div>
+    <div className="filter-tabs"><button type="button" className={tab === "products" ? "selected" : ""} onClick={() => { setTab("products"); resetForm(); }}>Products ({products.length})</button><button type="button" className={tab === "categories" ? "selected" : ""} onClick={() => { setTab("categories"); resetForm(); }}>Categories ({categories.length})</button></div>
+    {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+    {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+    {canEdit ? <form className="catalogue-editor" onSubmit={submit}>
+      <h2>{editingId ? "Edit" : "Create"} {tab === "products" ? "product" : "category"}</h2>
+      <div className="catalogue-form-grid">
+        {field("English name", "name_en", "text", true)}{field("Urdu name", "name_ur", "text", true)}{field("URL slug", "slug", "text", true)}
+        {tab === "products" ? <>
+          {field("Price (paisa)", "price_paisa", "number", true)}{field("Compare-at price (paisa)", "compare_at_paisa", "number")}{field("Stock quantity (blank = unlimited)", "stock_qty", "number")}
+          {field("SKU (optional)", "sku")}{field("Image URL (HTTPS only)", "image_url")}
+          <label className="catalogue-field"><span>Category</span><select value={form.category_id ?? ""} onChange={event => setForm(current => ({ ...current, category_id: event.target.value }))}><option value="">Uncategorised</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_en}</option>)}</select></label>
+          <label className="catalogue-field"><span>Availability</span><select value={form.is_available ?? "1"} onChange={event => setForm(current => ({ ...current, is_available: event.target.value }))}><option value="1">Available</option><option value="0">Unavailable</option></select></label>
+          <label className="catalogue-field"><span>Featured</span><select value={form.is_featured ?? "0"} onChange={event => setForm(current => ({ ...current, is_featured: event.target.value }))}><option value="0">No</option><option value="1">Yes</option></select></label>
+        </> : <label className="catalogue-field"><span>Active</span><select value={form.is_active ?? "1"} onChange={event => setForm(current => ({ ...current, is_active: event.target.value }))}><option value="1">Active</option><option value="0">Inactive</option></select></label>}
+        {field("Sort order", "sort_order", "number")}
+        <label className="catalogue-field catalogue-wide"><span>English description</span><textarea value={form.description_en ?? ""} onChange={event => setForm(current => ({ ...current, description_en: event.target.value }))} rows={2} /></label>
+        <label className="catalogue-field catalogue-wide"><span>Urdu description</span><textarea value={form.description_ur ?? ""} onChange={event => setForm(current => ({ ...current, description_ur: event.target.value }))} rows={2} /></label>
+      </div>
+      <div className="catalogue-actions"><button type="submit" disabled={busy}>{busy ? "Saving…" : editingId ? "Save changes" : "Create record"}</button>{editingId ? <button type="button" className="refresh-button" onClick={resetForm}>Cancel edit</button> : null}</div>
+    </form> : <p className="orders-footnote">Your role can view catalogue records but cannot create or edit them.</p>}
+    <div className="orders-table-card">{loading ? <div className="orders-empty">Loading catalogue…</div> : tab === "products" ? products.length === 0 ? <div className="orders-empty"><strong>No products yet</strong><small>Add genuine products and prices before opening the store.</small></div> :
+      <div className="table-wrap"><table className="orders-table"><thead><tr><th>Product</th><th>SKU</th><th>Price</th><th>Stock</th><th>Availability</th><th>Action</th></tr></thead><tbody>{products.map(p => <tr key={p.id}><td><strong>{p.name_en}</strong><small>{p.name_ur} · {p.slug}</small></td><td>{p.sku || "—"}</td><td>{money(p.price_paisa)}</td><td>{p.stock_qty == null ? "Unlimited" : p.stock_qty}</td><td>{p.is_available ? "Available" : "Unavailable"}</td><td><button type="button" className="refresh-button" onClick={() => editProduct(p)} disabled={!canEdit}>Edit</button></td></tr>)}</tbody></table></div>
+      : categories.length === 0 ? <div className="orders-empty"><strong>No categories yet</strong><small>Create categories to organise the product catalogue.</small></div> :
+      <div className="table-wrap"><table className="orders-table"><thead><tr><th>Category</th><th>Slug</th><th>Status</th><th>Action</th></tr></thead><tbody>{categories.map(c => <tr key={c.id}><td><strong>{c.name_en}</strong><small>{c.name_ur}</small></td><td>{c.slug}</td><td>{c.is_active ? "Active" : "Inactive"}</td><td><button type="button" className="refresh-button" onClick={() => editCategory(c)} disabled={!canEdit}>Edit</button></td></tr>)}</tbody></table></div>}
+    </div>
+  </section>;
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
