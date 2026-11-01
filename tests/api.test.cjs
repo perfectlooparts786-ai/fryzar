@@ -132,6 +132,31 @@ function activeZone() {
   };
 }
 
+function checkoutRequestHash(overrides = {}) {
+  const body = {
+    customer_name: "Test Customer",
+    customer_phone: "03001234567",
+    delivery_address: "House 12, Main Road, Test Area",
+    delivery_zone_id: zoneId,
+    customer_language: "en",
+    payment_method: "cod",
+    notes: "",
+    items: [{ product_id: productId, quantity: 2 }],
+    ...overrides
+  };
+  const canonical = {
+    customer_name: body.customer_name,
+    customer_phone: body.customer_phone.replace(/\\D/g, ""),
+    delivery_address: body.delivery_address,
+    delivery_zone_id: body.delivery_zone_id,
+    customer_language: body.customer_language,
+    payment_method: body.payment_method,
+    notes: body.notes,
+    items: [...body.items].sort((left, right) => left.product_id.localeCompare(right.product_id))
+  };
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
+
 test("health is ready when the core schema exists", async () => {
   const { env } = createEnv({ firstResult: { name: "store_settings" } });
   const response = await worker.fetch(request("/api/v1/health"), env);
@@ -344,6 +369,59 @@ test("successful COD checkout uses server prices and creates an atomic batch", a
   assert.ok(stockReservation.sql.includes("stock_qty IS NULL OR stock_qty >= ?1"));
   assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO idempotency_keys")));
   assert.equal(state.batchStatements.length, 9);
+});
+
+test("checkout replays the original order for the same idempotency key and payload", async () => {
+  const key = "checkout-replay-test-0001";
+  const savedResponse = {
+    order: {
+      id: "saved-order-1",
+      order_number: "FRZ-20261101-ABC123",
+      status: "pending",
+      payment_method: "cod",
+      payment_status: "unpaid",
+      currency: "PKR",
+      subtotal_paisa: 30000,
+      delivery_fee_paisa: 25000,
+      total_paisa: 55000,
+      created_at: "2026-11-01T00:00:00.000Z"
+    }
+  };
+  const existing = {
+    request_hash: checkoutRequestHash(),
+    response_json: JSON.stringify(savedResponse),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  };
+  const { env, state } = createEnv({ firstResults: [existing] });
+
+  const response = await worker.fetch(checkoutRequest({}, key), env);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Idempotent-Replay"), "true");
+  assert.equal(body.order.id, "saved-order-1");
+  assert.equal(body.order.order_number, "FRZ-20261101-ABC123");
+  assert.equal(state.batchCount, 0);
+  assert.equal(state.firstCount, 1);
+});
+
+test("checkout rejects reusing an idempotency key with a different request payload", async () => {
+  const existing = {
+    request_hash: "f".repeat(64),
+    response_json: JSON.stringify({ order: { id: "saved-order-2" } }),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  };
+  const { env, state } = createEnv({ firstResults: [existing] });
+
+  const response = await worker.fetch(
+    checkoutRequest({ notes: "Changed request payload" }, "checkout-replay-test-0002"),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "idempotency_key_reused");
+  assert.equal(state.batchCount, 0);
+  assert.equal(state.firstCount, 1);
 });
 
 test("tracking returns order summary without customer phone or delivery address", async () => {
