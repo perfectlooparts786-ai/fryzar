@@ -19,7 +19,7 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | F-013 | Validate catalogue, inventory, delivery and settings source with CI | TESTED | GitHub Actions run 41270993539 on `ab5557a` passed strict TypeScript, 51/51 API tests, storefront build and admin build |
 | F-014 | Deploy current API source to isolated Worker | NOT STARTED | Worker source must exactly match validated GitHub commit |
 | F-015 | Live API health/catalog/zone/admin smoke tests | BLOCKED | Tool environment could not externally fetch workers.dev; verify through browser/device |
-| A-001 | Staff user CRUD/invites/role management | NOT STARTED | Owner/manager APIs, role matrix, audit |
+| A-001 | Staff access lifecycle and role management | TESTED | Owner/manager create/list/update, reset-password, PBKDF2 hashing, session revocation and audit; 62/62 CI tests. Email invitations and live Worker integration remain pending |
 | A-002 | Product/category CRUD | TESTED | Owner/manager API + admin UI; validation and audit writes; initial stock logged atomically; CI passed. Live Worker test pending |
 | A-003 | Inventory adjustment | TESTED | Admin screen + owner/manager API, opening-stock ledger, non-negative guard, idempotency, movement history and audit; 39/39 CI tests; D1 0004 applied/read back. Real D1 concurrency and live Worker verification pending |
 | A-004 | Delivery zone management | TESTED | Owner/manager create/update/deactivate, operations/rider read, audit batch, validation and duplicate-code handling; admin UI; 45/45 CI tests. Live Worker verification pending |
@@ -29,7 +29,7 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | P-001 | Manual-transfer state machine | BLOCKED | Keep disabled until private proof storage/review exists |
 | P-002 | Private payment-proof storage | BLOCKED | R2 not activated; eligibility/cost review required |
 | P-003 | Payment verification/rejection/refund controls | NOT STARTED | Finance RBAC, replay protection, proof access, audit |
-| C-001 | Customer tracking page | NOT STARTED | Private token lookup with rate limiting |
+| C-001 | Customer order tracking page | TESTED | Bilingual tracking input and order lifecycle/amounts UI, mobile/desktop navigation and confirmation shortcut; 62/62 CI tests. Live Worker tracking check pending |
 | C-002 | Real catalogue, images and delivery configuration | BLOCKED | Genuine business/product data required; do not fabricate |
 | C-003 | Support and WhatsApp | BLOCKED | Genuine business contact/policies required |
 | M-001 | Android native app | NOT STARTED | Kotlin/Compose source, API integration, APK, device tests |
