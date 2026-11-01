@@ -1,0 +1,14 @@
+name = "fryzar-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+APP_ENV = "development"
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fryzar-core"
+database_id = "098238a6-1bda-4735-8f21-d925c7fe32de"
+migrations_dir = "migrations"

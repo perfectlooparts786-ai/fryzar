@@ -1,77 +1,61 @@
 # FRYZAR
 
-A bilingual Urdu and English food-ordering platform built on Cloudflare Workers and Cloudflare D1.
+**FRYZAR** is a fresh-build, bilingual Urdu and English ordering platform for food, grocery, and local products.
 
-## Project status
+The target is a complete product: customer website, Android app, admin portal, secure API, database, inventory, orders, payments, support, and production operations.
 
-This repository is the source-control home for the FRYZAR project. The existing customer and admin Workers and the production D1 database were audited before source recovery began.
+## Current build
 
-**Important:** This repository currently contains project documentation only. It does not yet contain the recovered deployed Worker source, original application source files, or a verified deployment configuration.
+This repository is the source of truth for the new application. The starting repository had documentation only. The new application is being developed separately from older Cloudflare demo resources.
 
-The production system is **not launch-ready**. Do not enable public ordering or manual bank-transfer payments until the outstanding payment, inventory, access-control, domain, and end-to-end testing issues are resolved.
+- Private GitHub repository: perfectlooparts786-ai/fryzar
+- New database: fryzar-core, Cloudflare D1, APAC
+- API: Cloudflare Worker + TypeScript
+- Web clients: React + TypeScript, planned
+- Android: Kotlin + Jetpack Compose, planned
+- Currency: PKR, stored as integer paisa
+- Languages: Urdu (RTL) and English (LTR)
+- Customer registration: not required for browsing or guest checkout
 
-## Existing architecture
+## Legacy resources
 
-- Customer-facing Cloudflare Worker: `fryzar-app`
-- Admin-facing Cloudflare Worker: `fryzar-admin`
-- Cloudflare D1 database: `fryzar-production`
-- D1 binding used by both Workers: `DB`
-- Intended languages: Urdu and English
-- Intended currency: PKR
+Older resources named fryzar-app, fryzar-admin, and fryzar-production were found in Cloudflare. They are treated as legacy/unverified resources, not as the source of truth for this fresh build. They have not been modified by this branch.
 
-## Repository layout
+The new D1 database fryzar-core is separate. Existing fryzar.com domain-verification records must be preserved.
 
-The source-recovery work will organize the project into these areas:
+## Development principles
 
-```text
-fryzar/
-├── apps/
-│   ├── customer-worker/
-│   └── admin-worker/
-├── database/
-│   ├── migrations/
-│   └── docs/
-├── docs/
-│   ├── architecture/
-│   ├── audits/
-│   ├── operations/
-│   └── recovery/
-├── tests/
-├── .gitignore
-└── README.md
-```
+1. Do not base the new product on unverified demo code.
+2. Keep old deployments and data untouched until replacement is tested.
+3. Prefer free tiers. No paid plans or billable services without approval.
+4. Keep development and production data separate.
+5. Never commit secrets, payment proof files, or customer personal data.
+6. Server-side pricing, inventory, payment state, and authorization are authoritative.
+7. Keep manual transfer disabled until secure proof storage and payment review are fully tested.
+8. Do not declare production readiness without evidence.
 
-This is the planned layout, not a claim that those source files have already been recovered.
+## API quick start
 
-## Critical known issues from the initial audit
+~~~bash
+npm install
+npm run db:migrate:local
+npm run dev:api
+npm run typecheck
+~~~
 
-1. Manual-transfer checkout does not create the payment record required by the admin verification workflow. Keep manual transfer disabled until the end-to-end workflow is implemented and tested.
-2. Cancelling an order does not restore reserved stock.
-3. The backend idempotency key is optional, allowing duplicate orders on retries without a key.
-4. Admin order-list access lacks the required role-specific restriction for sensitive customer order data.
-5. Admin login has no demonstrated failed-login throttling.
-6. Customer delivery-fee display uses a hard-coded value rather than the database setting.
-7. Product image URLs and the store WhatsApp number are not populated.
-8. The production zone has not yet been configured with verified Worker custom-domain routes.
-9. The Android application source and build status have not yet been established.
+Remote migrations and deployments are separate operations. Follow docs/DEPLOYMENT.md before using them.
 
-See the audit notes as they are added under `docs/audits/`.
+## Project documents
 
-## Security rules
-
-- Never commit API tokens, passwords, session secrets, bootstrap tokens, private keys, customer personal data, payment proofs, or production database exports.
-- Use Cloudflare secrets or an approved secret manager for runtime credentials.
-- Keep this repository private.
-- Review every recovered file for embedded credentials and sensitive data before committing it.
-
-## Recovery and development principles
-
-1. Preserve the existing production deployment and database while source recovery is in progress.
-2. Recover source files and database schema/migrations before making application changes.
-3. Keep a sanitized, reproducible record of the deployed configuration. Do not store secret values.
-4. Make fixes in version control and validate them in a non-production environment before production deployment.
-5. Do not claim production readiness until customer, admin, inventory, payment, security, localization, and domain tests pass.
+- docs/PROJECT_STATE.md
+- docs/ARCHITECTURE.md
+- docs/IMPLEMENTATION_PLAN.md
+- docs/TASK_BACKLOG.md
+- docs/SECURITY_REVIEW.md
+- docs/TESTING.md
+- docs/DEPLOYMENT.md
+- docs/RELEASE_READINESS.md
 
 ## License
 
-No open-source license has been selected. All rights remain reserved by the project owner unless a license is added.
+No open-source license has been selected. All rights are reserved by the project owner unless a license is added.

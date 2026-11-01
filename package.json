@@ -1,0 +1,18 @@
+{
+  "name": "fryzar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FRYZAR customer ordering platform and operations system",
+  "scripts": {
+    "dev:api": "wrangler dev --config apps/api/wrangler.toml",
+    "deploy:api": "wrangler deploy --config apps/api/wrangler.toml",
+    "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply fryzar-core --local --config apps/api/wrangler.toml",
+    "db:migrate:remote": "wrangler d1 migrations apply fryzar-core --remote --config apps/api/wrangler.toml"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "typescript": "^5.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
