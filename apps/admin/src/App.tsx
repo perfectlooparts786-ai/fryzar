@@ -55,6 +55,9 @@ function messageFor(error: unknown): string {
       case "cannot_deactivate_self": return "You cannot deactivate your own account.";
       case "invalid_staff_update": return "Select a valid staff update before saving.";
       case "staff_changed_retry": return "This staff account changed during the update. Refresh the directory and try again.";
+      case "invalid_payment_filter": return "Choose a valid payment status filter."; 
+      case "invalid_order_id": return "The order reference is invalid. Refresh the payment list."; 
+      case "idempotency_key_required": return "The collection request needs a retry-protection key. Refresh and try again."; 
       case "payment_not_found": return "This payment record was not found. Refresh the list."; 
       case "not_cod_payment": return "This workflow only records cash-on-delivery collections."; 
       case "order_not_delivered": return "A COD payment can only be collected after the order is marked delivered."; 
