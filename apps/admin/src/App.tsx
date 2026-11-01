@@ -3,7 +3,8 @@ import {
   AdminApiError,
   adminApi,
   type AdminOrder,
-  type AdminPayment,\n  type DashboardMetrics,
+  type AdminPayment,
+  type DashboardMetrics,
   type Category,
   type InventoryMovement,
   type DeliveryZone,
@@ -229,6 +230,7 @@ function Overview({
   products,
   categories,
   zones,
+  metrics,
   loading,
   error
 }: {
@@ -237,6 +239,7 @@ function Overview({
   products: Product[];
   categories: Category[];
   zones: DeliveryZone[];
+  metrics: DashboardMetrics | null;
   loading: boolean;
   error: string;
 }) {
@@ -682,7 +685,7 @@ function InventoryModule({ user }: { user: StaffUser }) {
 }
 
 function DeliveryModule({ user }: { user: StaffUser }) {
-  const [zones, setZones] = useState<DeliveryZone[]>([]);\n  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1133,6 +1136,7 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [zones, setZones] = useState<DeliveryZone[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState("");
   const [logoutBusy, setLogoutBusy] = useState(false);
@@ -1164,7 +1168,8 @@ export default function App() {
       adminApi.settings(),
       adminApi.products(),
       adminApi.categories(),
-      adminApi.deliveryZones()
+      adminApi.deliveryZones(),
+      adminApi.dashboardMetrics()
     ]).then(results => {
       if (!active) return;
       if (results[0].status === "fulfilled") setSettings(results[0].value.settings);
@@ -1252,6 +1257,7 @@ export default function App() {
               products={products}
               categories={categories}
               zones={zones}
+              metrics={metrics}
               loading={dataLoading}
               error={dataError}
             />
