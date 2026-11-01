@@ -754,7 +754,7 @@ test("inventory adjustment rejects untracked stock quantities", async () => {
   const token = "c".repeat(64);
   const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
   const product = { id: productId, stock_qty: null };
-  const { env, state } = createEnv({ firstResults: [staff, product] });
+  const { env, state } = createEnv({ firstResults: [staff, null, product] });
   const response = await worker.fetch(
     request("/api/v1/admin/inventory/adjustments", {
       method: "POST",
@@ -960,4 +960,33 @@ test("inventory adjustment rejects reuse of a key with a different payload", asy
   assert.equal(response.status, 409);
   assert.equal((await response.json()).error, "idempotency_key_reused");
   assert.equal(state.batchCount, 0);
+});
+
+
+test("inventory adjustment detects a concurrent stock change inside the write batch", async () => {
+  const token = "5".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const product = { id: productId, stock_qty: 5 };
+  const { env, state } = createEnv({
+    firstResults: [staff, null, product],
+    batchChanges: [0, 0, 0, 0, 0, 0]
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "inventory-adjustment-race-0001",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ product_id: productId, delta_qty: 2, reason: "stock_received" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "stock_changed_retry");
+  assert.equal(state.batchCount, 1);
+  assert.match(state.batchStatements[2].sql, /changes\(\) = 1/);
 });
