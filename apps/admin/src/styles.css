@@ -273,3 +273,13 @@ td small { margin-top: 4px; color: #96a197; font-size: 9px; }
   .inventory-card-heading { align-items:flex-start; flex-direction:column; }
   .inventory-card-heading select { max-width:none; width:100%; }
 }
+
+.delivery-module { display:flex; flex-direction:column; gap:16px; }
+.delivery-module .catalogue-editor { margin:0; }
+.delivery-module .inventory-stock-card { margin-top:0; }
+.delivery-module .orders-table td { vertical-align:middle; }
+.delivery-module .orders-table td small { display:block; }
+@media (max-width:720px) {
+  .delivery-module .module-heading { align-items:flex-start; }
+  .delivery-module .catalogue-editor { padding:14px; }
+}
