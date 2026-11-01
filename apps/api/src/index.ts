@@ -1708,7 +1708,7 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
 }
 
 
-const SETTINGS_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+const SETTINGS_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "finance", "rider", "support"];
 const SETTINGS_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 const EDITABLE_STORE_SETTING_KEYS = [
   "store_name_en",
@@ -1724,7 +1724,7 @@ async function adminSettingsApi(request: Request, env: Env, url: URL, user: Sess
   if (request.method === "GET") {
     if (!hasRole(user, SETTINGS_READ_ROLES)) return roleDenied();
     const result = await env.DB.prepare(
-      "SELECT setting_key, value_json FROM store_settings ORDER BY setting_key"
+      "SELECT setting_key, value_json FROM store_settings WHERE is_public = 1 ORDER BY setting_key"
     ).all<SettingRow>();
     const settings: Record<string, unknown> = {};
     for (const row of result.results) settings[row.setting_key] = parseSetting(row.value_json);
