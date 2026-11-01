@@ -1163,3 +1163,134 @@ test("duplicate delivery zone code maps to a conflict response", async () => {
   assert.equal((await response.json()).error, "delivery_zone_code_conflict");
   assert.equal(state.batchCount, 1);
 });
+
+
+test("owner can read public store configuration through admin settings endpoint", async () => {
+  const token = "c".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const settings = [
+    { setting_key: "store_status", value_json: '"setup"' },
+    { setting_key: "launch_ready", value_json: "false" },
+    { setting_key: "manual_transfer_enabled", value_json: "false" },
+    { setting_key: "store_name_en", value_json: '"FRYZAR"' }
+  ];
+  const { env, state } = createEnv({ firstResult: staff, allResults: settings });
+  const response = await worker.fetch(
+    request("/api/v1/admin/settings", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.settings.store_status, "setup");
+  assert.equal(body.settings.launch_ready, false);
+  assert.equal(body.settings.manual_transfer_enabled, false);
+  assert.equal(body.settings.store_name_en, "FRYZAR");
+  assert.match(state.lastSql, /WHERE is_public = 1/);
+});
+
+test("manager can update allowed store settings with audit in one batch", async () => {
+  const token = "d".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, batchChanges: [1, 1, 1, 1, 1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/settings", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        store_name_en: "FRYZAR Market",
+        store_name_ur: "فریزر مارکیٹ",
+        default_language: "en",
+        cod_enabled: true,
+        whatsapp_number: "+923001234567",
+        store_status: "paused"
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.saved, true);
+  assert.deepEqual(body.updated_keys, [
+    "cod_enabled", "default_language", "store_name_en", "store_name_ur", "store_status", "whatsapp_number"
+  ]);
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 7);
+  assert.match(state.batchStatements[0].sql, /INSERT INTO store_settings/);
+  assert.equal(state.batchStatements[0].params[0], "store_name_en");
+  assert.equal(state.batchStatements[0].params[1], '"FRYZAR Market"');
+  assert.match(state.batchStatements[6].sql, /store.settings_updated/);
+});
+
+test("store settings cannot change launch readiness or enable manual transfer", async () => {
+  const token = "e".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/settings", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ launch_ready: true, manual_transfer_enabled: true })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "setting_requires_release_gate");
+  assert.equal(state.batchCount, 0);
+});
+
+test("store settings cannot open the store through the settings endpoint", async () => {
+  const token = "f".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/settings", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ store_status: "open" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "store_requires_release_gate");
+  assert.equal(state.batchCount, 0);
+});
+
+test("operator can read settings but cannot edit them", async () => {
+  const token = "1".repeat(64);
+  const staff = { id: "operator-1", email: "operator@example.test", display_name: "Operator", role: "operator", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/settings", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ cod_enabled: false })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.batchCount, 0);
+});
