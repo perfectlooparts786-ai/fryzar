@@ -1813,3 +1813,43 @@ test("different idempotency payload cannot reuse a COD collection key", async ()
   assert.equal((await response.json()).error, "idempotency_key_reused");
   assert.equal(state.batchCount, 0);
 });
+
+
+test("admin dashboard metrics returns aggregate operational counts without customer details", async () => {
+  const token = "8".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const metrics = {
+    total_orders: 12,
+    open_orders: 3,
+    delivered_orders: 8,
+    delivered_revenue_paisa: 123450,
+    unpaid_cod_count: 2,
+    active_products: 14,
+    low_stock_products: 4,
+    active_categories: 5,
+    active_delivery_zones: 3
+  };
+  const { env, state } = createEnv({ firstResults: [staff, metrics] });
+  const response = await worker.fetch(request("/api/v1/admin/metrics", {
+    headers: { Origin: "https://admin.example", Cookie: "__Host-fryzar_admin=" + token }
+  }), env);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).metrics, metrics);
+  assert.equal(state.firstCount, 2);
+  assert.match(state.lastSql, /delivered_revenue_paisa/);
+  assert.doesNotMatch(JSON.stringify(metrics), /customer_phone|delivery_address/);
+});
+
+test("dashboard metrics are denied to rider accounts", async () => {
+  const token = "9".repeat(64);
+  const rider = { id: "rider-1", email: "rider@example.test", display_name: "Rider", role: "rider", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: rider });
+  const response = await worker.fetch(request("/api/v1/admin/metrics", {
+    headers: { Origin: "https://admin.example", Cookie: "__Host-fryzar_admin=" + token }
+  }), env);
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.firstCount, 1);
+});
