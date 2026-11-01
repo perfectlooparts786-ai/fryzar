@@ -21,7 +21,7 @@ FRYZAR is a fresh-build bilingual Urdu and English ordering platform for food, g
 - New API Worker: \`fryzar-api\`, isolated workers.dev deployment
 - Customer React storefront source: implemented; its initial production build passed CI before the latest API/admin changes
 - Admin React portal source: authentication, overview, Orders, Catalogue and Inventory modules added; latest CI run passed 39/39 API tests and both web builds
-- Inventory: admin stock receipt/return/correction workflow, movement history, idempotency and audit implemented in source; migration 0004 applied to development D1\n- Android client: not started
+- Inventory: admin stock receipt/return/correction workflow, movement history, idempotency and audit implemented in source; migration 0004 applied to development D1\n- Delivery zones: owner/manager create/update/deactivate API and admin UI implemented; 45-test CI passed; not live-deployed\n- Android client: not started
 - Production domain routes: not configured
 - Store: remains in setup mode; checkout is closed
 
