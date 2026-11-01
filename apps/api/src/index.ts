@@ -894,6 +894,9 @@ async function createStaffSession(
   const tokenHash = await sha256Hex(token);
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + ADMIN_SESSION_SECONDS * 1000).toISOString();
+  const identityHash = await sha256Hex(staff.email.trim().toLowerCase());
+  const sourceHash = await sha256Hex(request.headers.get("CF-Connecting-IP") ?? "unknown");
+  const retentionCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   await env.DB.batch([
     env.DB.prepare(
@@ -911,7 +914,15 @@ async function createStaffSession(
       staff.id,
       staff.role,
       JSON.stringify({ source: "admin_api" })
-    )
+    ),
+    env.DB.prepare(
+      "INSERT INTO auth_login_attempts " +
+      "(id, identity_hash, source_hash, attempted_at, was_successful) " +
+      "VALUES (?1, ?2, ?3, ?4, 1)"
+    ).bind(crypto.randomUUID(), identityHash, sourceHash, createdAt),
+    env.DB.prepare(
+      "DELETE FROM auth_login_attempts WHERE attempted_at < ?1"
+    ).bind(retentionCutoff)
   ]);
 
   const response = json({
@@ -1070,6 +1081,82 @@ async function ownerBootstrap(request: Request, env: Env): Promise<Response> {
   }), request, env);
 }
 
+const ADMIN_LOGIN_FAILURE_LIMIT = 5;
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+async function countRecentLoginFailures(
+  env: Env,
+  identityHash: string,
+  windowStart: string
+): Promise<number | null> {
+  try {
+    const result = await env.DB.prepare(
+      "SELECT COUNT(*) AS failure_count FROM auth_login_attempts " +
+      "WHERE identity_hash = ?1 AND was_successful = 0 " +
+      "AND attempted_at > ?2 " +
+      "AND attempted_at > COALESCE((" +
+      "SELECT MAX(attempted_at) FROM auth_login_attempts " +
+      "WHERE identity_hash = ?1 AND was_successful = 1), ?2)"
+    ).bind(identityHash, windowStart).first<{ failure_count: number }>();
+
+    if (!result || !Number.isSafeInteger(result.failure_count) || result.failure_count < 0) {
+      return null;
+    }
+    return result.failure_count;
+  } catch {
+    return null;
+  }
+}
+
+async function recordFailedLoginAttempt(
+  env: Env,
+  identityHash: string,
+  sourceHash: string,
+  attemptedAt: string,
+  windowStart: string
+): Promise<boolean | null> {
+  const retentionCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO auth_login_attempts " +
+        "(id, identity_hash, source_hash, attempted_at, was_successful) " +
+        "SELECT ?1, ?2, ?3, ?4, 0 " +
+        "WHERE (" +
+        "SELECT COUNT(*) FROM auth_login_attempts " +
+        "WHERE identity_hash = ?2 AND was_successful = 0 " +
+        "AND attempted_at > ?5 " +
+        "AND attempted_at > COALESCE((" +
+        "SELECT MAX(attempted_at) FROM auth_login_attempts " +
+        "WHERE identity_hash = ?2 AND was_successful = 1), ?5)" +
+        ") < ?6"
+      ).bind(
+        crypto.randomUUID(),
+        identityHash,
+        sourceHash,
+        attemptedAt,
+        windowStart,
+        ADMIN_LOGIN_FAILURE_LIMIT
+      ),
+      env.DB.prepare(
+        "DELETE FROM auth_login_attempts WHERE attempted_at < ?1"
+      ).bind(retentionCutoff)
+    ]);
+
+    return (results[0]?.meta?.changes ?? 0) === 1;
+  } catch {
+    return null;
+  }
+}
+
+function loginTemporarilyUnavailable(): Response {
+  return json({ error: "login_temporarily_unavailable" }, 503);
+}
+
+function loginRateLimited(): Response {
+  return json({ error: "rate_limit_exceeded" }, 429, { "Retry-After": "900" });
+}
+
 async function adminLogin(request: Request, env: Env): Promise<Response> {
   if (!browserOriginAllowed(request, env)) {
     return json({ error: "origin_not_allowed" }, 403);
@@ -1089,6 +1176,20 @@ async function adminLogin(request: Request, env: Env): Promise<Response> {
     return json({ error: "invalid_credentials" }, 401);
   }
 
+  const identityHash = await sha256Hex(email);
+  const sourceHash = await sha256Hex(request.headers.get("CF-Connecting-IP") ?? "unknown");
+  const now = Date.now();
+  const attemptedAt = new Date(now).toISOString();
+  const windowStart = new Date(now - ADMIN_LOGIN_WINDOW_MS).toISOString();
+  const failureCount = await countRecentLoginFailures(env, identityHash, windowStart);
+
+  if (failureCount === null) {
+    return env.APP_ENV === "production" ? loginTemporarilyUnavailable() : loginTemporarilyUnavailable();
+  }
+  if (failureCount >= ADMIN_LOGIN_FAILURE_LIMIT) {
+    return loginRateLimited();
+  }
+
   const staff = await env.DB.prepare(
     "SELECT id, email, password_hash, display_name, role, is_active " +
     "FROM staff_users WHERE email = ?1 COLLATE NOCASE LIMIT 1"
@@ -1096,11 +1197,19 @@ async function adminLogin(request: Request, env: Env): Promise<Response> {
 
   if (!staff || staff.is_active !== 1 || !staff.password_hash) {
     await verifyPassword(password, DUMMY_PASSWORD_HASH);
+    const recorded = await recordFailedLoginAttempt(env, identityHash, sourceHash, attemptedAt, windowStart);
+    if (recorded === null) return loginTemporarilyUnavailable();
+    if (!recorded) return loginRateLimited();
     return json({ error: "invalid_credentials" }, 401);
   }
 
   const valid = await verifyPassword(password, staff.password_hash);
-  if (!valid) return json({ error: "invalid_credentials" }, 401);
+  if (!valid) {
+    const recorded = await recordFailedLoginAttempt(env, identityHash, sourceHash, attemptedAt, windowStart);
+    if (recorded === null) return loginTemporarilyUnavailable();
+    if (!recorded) return loginRateLimited();
+    return json({ error: "invalid_credentials" }, 401);
+  }
 
   return createStaffSession(env, {
     id: staff.id,
