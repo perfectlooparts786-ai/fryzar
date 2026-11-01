@@ -1410,6 +1410,108 @@ async function orderAdminApi(
   return null;
 }
 
+
+const CATALOG_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+
+function validSlug(value: string): boolean {
+  return value.length >= 2 && value.length <= 100 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+async function adminCatalogueApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  const categoryPath = url.pathname === "/api/v1/admin/categories";
+  const categoryMatch = url.pathname.match(/^\/api\/v1\/admin\/categories\/([0-9a-f-]{36})$/i);
+  const productPath = url.pathname === "/api/v1/admin/products";
+  const productMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})$/i);
+  if (!(categoryPath || categoryMatch || productPath || productMatch)) return null;
+  if (!hasRole(user, CATALOG_WRITE_ROLES)) return roleDenied();
+  if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+  const isCategory = categoryPath || Boolean(categoryMatch);
+  const collection = isCategory ? categoryPath : productPath;
+  const entityId = (categoryMatch?.[1] ?? productMatch?.[1] ?? "").toLowerCase();
+
+  if (request.method === "GET" && collection) {
+    if (isCategory) {
+      const result = await env.DB.prepare(
+        "SELECT id, slug, name_en, name_ur, description_en, description_ur, sort_order, is_active, created_at, updated_at FROM categories ORDER BY sort_order, name_en LIMIT 500"
+      ).all<JsonRecord>();
+      return json({ categories: result.results });
+    }
+    const result = await env.DB.prepare(
+      "SELECT id, category_id, sku, slug, name_en, name_ur, description_en, description_ur, price_paisa, compare_at_paisa, image_url, stock_qty, is_available, is_featured, sort_order, created_at, updated_at FROM products ORDER BY sort_order, name_en LIMIT 500"
+    ).all<JsonRecord>();
+    return json({ products: result.results });
+  }
+
+  if (request.method !== "POST" && request.method !== "PATCH") return json({ error: "method_not_allowed" }, 405);
+  if (request.method === "POST" && !collection) return json({ error: "not_found" }, 404);
+  if (request.method === "PATCH" && (!entityId || !validUuid(entityId))) return json({ error: "not_found" }, 404);
+
+  const body = await parseJsonBody(request, 12000);
+  if (!body) return json({ error: "invalid_request" }, 400);
+  const slug = safeString(body.slug);
+  const nameEn = safeString(body.name_en);
+  const nameUr = safeString(body.name_ur);
+  const descriptionEn = safeString(body.description_en);
+  const descriptionUr = safeString(body.description_ur);
+  const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+  const active = body.is_active === undefined ? true : body.is_active === true;
+  const id = request.method === "POST" ? crypto.randomUUID() : entityId;
+  const now = new Date().toISOString();
+
+  if (!validSlug(slug) || !nameEn || nameEn.length > 160 || !nameUr || nameUr.length > 160 ||
+      descriptionEn.length > 2000 || descriptionUr.length > 2000 || Math.abs(sortOrder) > 100000) {
+    return json({ error: "validation_failed" }, 400);
+  }
+
+  try {
+    if (isCategory) {
+      const statement = request.method === "POST"
+        ? env.DB.prepare("INSERT INTO categories (id, slug, name_en, name_ur, description_en, description_ur, sort_order, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)")
+            .bind(id, slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now)
+        : env.DB.prepare("UPDATE categories SET slug=?1, name_en=?2, name_ur=?3, description_en=?4, description_ur=?5, sort_order=?6, is_active=?7, updated_at=?8 WHERE id=?9")
+            .bind(slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now, id);
+      const result = await statement.run();
+      if (request.method === "PATCH" && (result.meta?.changes ?? 0) !== 1) return json({ error: "category_not_found" }, 404);
+      await env.DB.prepare("INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) VALUES (?1, ?2, ?3, ?4, 'category', ?5, ?6)")
+        .bind(crypto.randomUUID(), user.id, user.role, request.method === "POST" ? "category.created" : "category.updated", id, JSON.stringify({ slug, is_active: active })).run();
+      return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
+    }
+
+    const price = Number(body.price_paisa);
+    const compareAt = body.compare_at_paisa === null || body.compare_at_paisa === undefined || body.compare_at_paisa === "" ? null : Number(body.compare_at_paisa);
+    const stock = body.stock_qty === null || body.stock_qty === undefined || body.stock_qty === "" ? null : Number(body.stock_qty);
+    const categoryId = safeString(body.category_id) || null;
+    const sku = safeString(body.sku) || null;
+    const imageUrl = safeString(body.image_url) || null;
+    if (!Number.isSafeInteger(price) || price < 0 || price > 100000000000 ||
+        (compareAt !== null && (!Number.isSafeInteger(compareAt) || compareAt < 0)) ||
+        (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 100000000)) ||
+        (categoryId !== null && !validUuid(categoryId)) ||
+        (sku !== null && sku.length > 100) ||
+        (imageUrl !== null && (imageUrl.length > 2000 || !/^https:\/\//i.test(imageUrl)))) {
+      return json({ error: "validation_failed" }, 400);
+    }
+    const available = body.is_available === undefined ? true : body.is_available === true;
+    const featured = body.is_featured === true;
+    const statement = request.method === "POST"
+      ? env.DB.prepare("INSERT INTO products (id, category_id, sku, slug, name_en, name_ur, description_en, description_ur, price_paisa, compare_at_paisa, image_url, stock_qty, is_available, is_featured, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)")
+          .bind(id, categoryId, sku, slug, nameEn, nameUr, descriptionEn, descriptionUr, price, compareAt, imageUrl, stock, available ? 1 : 0, featured ? 1 : 0, sortOrder, now)
+      : env.DB.prepare("UPDATE products SET category_id=?1, sku=?2, slug=?3, name_en=?4, name_ur=?5, description_en=?6, description_ur=?7, price_paisa=?8, compare_at_paisa=?9, image_url=?10, stock_qty=?11, is_available=?12, is_featured=?13, sort_order=?14, updated_at=?15 WHERE id=?16")
+          .bind(categoryId, sku, slug, nameEn, nameUr, descriptionEn, descriptionUr, price, compareAt, imageUrl, stock, available ? 1 : 0, featured ? 1 : 0, sortOrder, now, id);
+    const result = await statement.run();
+    if (request.method === "PATCH" && (result.meta?.changes ?? 0) !== 1) return json({ error: "product_not_found" }, 404);
+    await env.DB.prepare("INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) VALUES (?1, ?2, ?3, ?4, 'product', ?5, ?6)")
+      .bind(crypto.randomUUID(), user.id, user.role, request.method === "POST" ? "product.created" : "product.updated", id, JSON.stringify({ slug, price_paisa: price, is_available: available, stock_qty: stock })).run();
+    return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/UNIQUE constraint failed/i.test(message)) return json({ error: "slug_or_sku_conflict" }, 409);
+    if (/FOREIGN KEY constraint failed/i.test(message)) return json({ error: "invalid_category" }, 400);
+    throw error;
+  }
+}
+
 async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
     return ownerBootstrap(request, env);
@@ -1426,6 +1528,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const catalogueResponse = await adminCatalogueApi(request, env, url, user);
+  if (catalogueResponse) return catalogueResponse;
 
   const orderResponse = await orderAdminApi(request, env, url, user);
   if (orderResponse) return orderResponse;
