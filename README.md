@@ -6,20 +6,23 @@ The target is a complete product: customer website, Android app, admin portal, s
 
 ## Current build
 
-This repository is the source of truth for the new application. The starting repository had documentation only. The new application is being developed separately from older Cloudflare demo resources.
-
 - Private GitHub repository: perfectlooparts786-ai/fryzar
+- Active development branch: foundation/fresh-build
 - New database: fryzar-core, Cloudflare D1, APAC
-- API: Cloudflare Worker + TypeScript
-- Web clients: React + TypeScript, planned
-- Android: Kotlin + Jetpack Compose, planned
+- API Worker: fryzar-api, deployed to its isolated workers.dev hostname
+- API foundation: TypeScript source and four public read endpoints
+- Customer web: planned React + TypeScript application
+- Admin web: planned React + TypeScript application
+- Android: planned Kotlin + Jetpack Compose application
 - Currency: PKR, stored as integer paisa
 - Languages: Urdu (RTL) and English (LTR)
 - Customer registration: not required for browsing or guest checkout
 
+The initial schema is applied to the new D1 database. The API source has passed a local strict TypeScript check and six local smoke/unit scenarios. Live HTTP behavior remains unverified from the current tool environment.
+
 ## Legacy resources
 
-Older resources named fryzar-app, fryzar-admin, and fryzar-production were found in Cloudflare. They are treated as legacy/unverified resources, not as the source of truth for this fresh build. They have not been modified by this branch.
+Older resources named fryzar-app, fryzar-admin, and fryzar-production were found in Cloudflare. They are treated as legacy/unverified resources, not as the source of truth for this fresh build. They have not been modified.
 
 The new D1 database fryzar-core is separate. Existing fryzar.com domain-verification records must be preserved.
 
@@ -43,7 +46,7 @@ npm run dev:api
 npm run typecheck
 ~~~
 
-Remote migrations and deployments are separate operations. Follow docs/DEPLOYMENT.md before using them.
+Before running future remote migrations, reconcile Wrangler migration tracking because the first schema migration was applied directly through the Cloudflare D1 API.
 
 ## Project documents
 
