@@ -16,12 +16,12 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | F-010 | Admin portal | TESTED | Auth screens, live overview and Orders UI build passed CI; real API/browser integration pending |
 | F-011 | Role-aware order list/detail | IMPLEMENTED | Role checks in source; finance/rider/support excluded; D1 integration tests pending |
 | F-012 | Order status transition and cancellation restock | IMPLEMENTED | Conditional D1 batch with stock restoration, movement, history and audit; concurrency test pending |
-| F-013 | Run latest CI on complete API/customer/admin source | NOT STARTED | Must pass strict API TS, API tests, customer build and admin build |
+| F-013 | Validate catalogue API + admin UI changes with CI | IN PROGRESS | CI passed API catalogue changes at commit `507cd77`; latest admin UI and follow-up fixes are newer and require a fresh successful run |
 | F-014 | Deploy current API source to isolated Worker | NOT STARTED | Worker source must exactly match validated GitHub commit |
 | F-015 | Live API health/catalog/zone/admin smoke tests | BLOCKED | Tool environment could not externally fetch workers.dev; verify through browser/device |
 | A-001 | Staff user CRUD/invites/role management | NOT STARTED | Owner/manager APIs, role matrix, audit |
-| A-002 | Product/category CRUD | NOT STARTED | Server validation, slugs, prices, image references, audit |
-| A-003 | Inventory adjustment | NOT STARTED | Reasoned movement records and non-negative stock |
+| A-002 | Product/category CRUD | IMPLEMENTED | Owner/manager-only create/update + list endpoints, validation and audit writes; admin UI form/list added; fresh CI and live D1 integration verification pending |
+| A-003 | Inventory adjustment | NOT STARTED | Reasoned movement records and non-negative stock; product stock field can be edited in catalogue but this is not a substitute for an audited inventory-adjustment workflow |
 | A-004 | Delivery zone management | NOT STARTED | Owner/manager CRUD and public allowlisted read |
 | A-005 | Store settings management | NOT STARTED | Validate origin, payments, delivery, languages, launch state |
 | A-006 | Admin dashboard operational metrics | NOT STARTED | Only metrics derived from real D1 rows |
