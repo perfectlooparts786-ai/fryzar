@@ -12,12 +12,12 @@
 
 **Approval:** No production cutover is proposed or approved.
 
-## 2026-11-01 — Do not substitute candidate development code for deployed source
+## 2026-11-01 — Preserve exact deployed Worker source separately from development source
 
-**Status:** Exact-source recovery remains blocked on source retrieval capability.
+**Status:** Source recovery recorded in draft PR #3; review pending.
 
-**Context:** Cloudflare lists three active Fryzar Workers, but the connected script-download call returned no body. The GitHub repository has a candidate implementation on `foundation/fresh-build` with draft PR #1; its exact match to deployed Workers is not established.
+**Context:** The Cloudflare download endpoint returned the exact deployed module bodies for `fryzar-app`, `fryzar-admin`, and `fryzar-api`. The modules were preserved in `recovery/cloudflare-worker-source-2026-11-01` with deployment/version IDs and SHA-256 digests. Git tree read-back confirms the full blob sizes. The separate `foundation/fresh-build` branch contains a newer candidate implementation, but its architecture and routes differ from the deployed Workers.
 
-**Decision:** Do not claim source recovery or deploy candidate source as a replacement. Preserve the original modules and deployment provenance when a connector path provides exact script payloads.
+**Decision:** Keep the recovered snapshots immutable and separate from the candidate source. Do not deploy or overwrite live Workers from either branch until source review, schema/data reconciliation, D1-specific rollback testing, preview verification, and owner approval are complete.
 
-**Approval:** Not applicable.
+**Approval:** No production deployment, binding change, or migration is approved by this record.
