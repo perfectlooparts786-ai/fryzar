@@ -589,8 +589,7 @@ function InventoryModule({ user }: { user: StaffUser }) {
         note: note.trim()
       });
       const product = products.find(item => item.id === selectedProduct);
-      const nextQty = result.previous_stock_qty + result.requested_delta_qty;
-      setNotice((product?.name_en ?? "Product") + ": " + result.previous_stock_qty + " → " + nextQty + " units.");
+      setNotice((product?.name_en ?? "Product") + ": movement recorded (" + (result.delta_qty > 0 ? "+" : "") + result.delta_qty + " units).");
       setDelta(""); setNote("");
       await load(filterProduct);
     } catch (cause) { setError(messageFor(cause)); }
