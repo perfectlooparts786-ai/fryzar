@@ -2,22 +2,22 @@
 
 ## 2026-11-01 — Keep database choice open
 
-**Status:** Pending owner approval after evidence.
+**Status:** Pending complete reconciliation and owner sign-off before any cutover.
 
-**Context:** fryzar-app and fryzar-admin use fryzar-production; fryzar-api uses fryzar-core. The refreshed read-only count shows 4 products and 3 categories in fryzar-production, while those tables are empty in fryzar-core. Schemas differ in payments, status events, inventory, store settings, sessions, and other structures. Core has four migration records; production has no migration ledger.
+**Context:** fryzar-app and fryzar-admin use fryzar-production; fryzar-api uses fryzar-core. Read-only counts show 4 products, 3 categories, and 215 tracked stock units in fryzar-production; those catalogue tables are empty in fryzar-core. Schemas differ across payments, order status events, inventory, store settings, sessions, and other structures. Core has four migration records; production has no migration ledger. Both databases have exported SQL backups that replayed successfully in local SQLite. A Cloudflare D1 managed-restore drill is not yet complete.
 
-**Decision:** No canonical D1 is selected in this audit. Keep both databases intact and do not change bindings or migrate rows until both have verified backups and restore evidence, and a complete reconciliation plan is reviewed.
+**Decision:** No canonical D1 is selected. Keep both databases intact and do not change bindings or migrate rows until full schema/data/index/relationship reconciliation, a D1-specific rollback test, and owner sign-off.
 
-**Alternatives considered:** Select fryzar-core based on its newer schema; retain fryzar-production based on current catalogue data. Neither is justified without full row, relationship, schema, and restore analysis.
+**Alternatives considered:** Select fryzar-core based on its newer schema; retain fryzar-production based on current catalogue/stock. Neither is justified without complete reconciliation and D1-specific rollback evidence.
 
-**Approval:** Not requested for a production cutover; no cutover is proposed here.
+**Approval:** No production cutover is proposed or approved.
 
-## 2026-11-01 — Do not reconstruct deployed Worker source
+## 2026-11-01 — Do not substitute candidate development code for deployed source
 
-**Status:** Recovery blocked on source retrieval capability.
+**Status:** Exact-source recovery remains blocked on source retrieval capability.
 
-**Context:** Cloudflare lists three active Fryzar Workers, but the connected script download call returned no body. GitHub currently contains documentation only.
+**Context:** Cloudflare lists three active Fryzar Workers, but the connected script-download call returned no body. The GitHub repository has a candidate implementation on `foundation/fresh-build` with draft PR #1; its exact match to deployed Workers is not established.
 
-**Decision:** Do not commit inferred/reconstructed source or claim source recovery. Preserve original Worker modules and deployment provenance when a connector path provides the exact script payload.
+**Decision:** Do not claim source recovery or deploy candidate source as a replacement. Preserve the original modules and deployment provenance when a connector path provides exact script payloads.
 
 **Approval:** Not applicable.
