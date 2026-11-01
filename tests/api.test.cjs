@@ -583,7 +583,7 @@ test("admin login creates a secure HttpOnly session after password verification"
     is_active: 1,
     password_hash: passwordHash
   };
-  const { env, state } = createEnv({ firstResults: [staff] });
+  const { env, state } = createEnv({ firstResults: [{ failure_count: 0 }, staff] });
   const response = await worker.fetch(
     request("/api/v1/admin/login", {
       method: "POST",
@@ -606,6 +606,10 @@ test("admin login creates a secure HttpOnly session after password verification"
   assert.match(cookie, /Secure/);
   assert.match(cookie, /SameSite=Strict/);
   assert.equal(state.batchCount, 1);
+  const successfulAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
+  assert.ok(successfulAttempt);
+  assert.equal(successfulAttempt.params[4], 1);
+  assert.match(successfulAttempt.sql, /was_successful/);
 });
 
 test("admin login returns the same generic failure for a wrong password", async () => {
@@ -618,7 +622,7 @@ test("admin login returns the same generic failure for a wrong password", async 
     is_active: 1,
     password_hash: passwordHash
   };
-  const { env, state } = createEnv({ firstResults: [staff] });
+  const { env, state } = createEnv({ firstResults: [{ failure_count: 0 }, staff] });
   const response = await worker.fetch(
     request("/api/v1/admin/login", {
       method: "POST",
@@ -633,7 +637,78 @@ test("admin login returns the same generic failure for a wrong password", async 
 
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "invalid_credentials");
+  assert.equal(state.batchCount, 1);
+  const failedAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
+  assert.ok(failedAttempt);
+  assert.equal(failedAttempt.params[4], 0);
+  assert.equal(failedAttempt.params.includes("owner@example.test"), false);
+  assert.match(failedAttempt.params[1], /^[a-f0-9]{64}$/);
+  assert.match(failedAttempt.params[2], /^[a-f0-9]{64}$/);
+});
+
+test("admin login enforces the rolling per-identity failure limit before password lookup", async () => {
+  const { env, state } = createEnv({ firstResults: [{ failure_count: 5 }] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "owner@example.test", password: "incorrect-password" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error, "rate_limit_exceeded");
+  assert.equal(response.headers.get("Retry-After"), "900");
+  assert.equal(state.firstCount, 1);
   assert.equal(state.batchCount, 0);
+});
+
+test("admin login records failures for unknown identities without storing raw identifiers", async () => {
+  const { env, state } = createEnv({ firstResults: [{ failure_count: 0 }, null] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "missing@example.test", password: "incorrect-password" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).error, "invalid_credentials");
+  assert.equal(state.batchCount, 1);
+  const failedAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
+  assert.ok(failedAttempt);
+  assert.equal(failedAttempt.params[4], 0);
+  assert.equal(JSON.stringify(failedAttempt.params).includes("missing@example.test"), false);
+});
+
+test("admin login fails closed when durable failed-attempt recording is unavailable", async () => {
+  const { env } = createEnv({
+    firstResults: [{ failure_count: 0 }, null],
+    batchError: new Error("database write unavailable")
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "missing@example.test", password: "incorrect-password" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "login_temporarily_unavailable");
 });
 
 
