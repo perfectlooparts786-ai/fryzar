@@ -1802,6 +1802,9 @@ async function adminStaffApi(request: Request, env: Env, url: URL, user: Session
       "SELECT id, role, is_active FROM staff_users WHERE id = ?1 LIMIT 1"
     ).bind(staffId).first<{ id: string; role: StaffUserRow["role"]; is_active: number }>();
     if (!target) return json({ error: "staff_not_found" }, 404);
+    if (staffId === user.id && body.is_active === false) {
+      return json({ error: "cannot_deactivate_self" }, 409);
+    }
     if (!canManageStaffTarget(user, target.role)) return roleDenied();
 
     const displayName = body.display_name === undefined ? null : safeString(body.display_name);
