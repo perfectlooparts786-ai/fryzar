@@ -148,3 +148,14 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - Latest GitHub Actions run 41271949570 passed on commit \`8633e41d8a284c95713cefde5be5ac7543aeeb51\`: 70/70 API tests, strict TypeScript, customer storefront build and admin build.
 - No real payments or orders have been inserted or marked collected in the development D1. No live Worker deployment or authenticated payment integration test has been performed.
 - This is COD collection recording only. Online gateway integration, manual bank-transfer proof, finance review/rejection, refunds, reconciliation and receipt exports remain unimplemented. Manual transfer remains disabled.
+
+
+## Development update — operational dashboard metrics (2026-11-01)
+
+- Added `GET /api/v1/admin/metrics`, returning aggregate-only metrics from D1: total/open/delivered orders, delivered order revenue, unpaid COD count, active products/categories/zones, and tracked low-stock product count (threshold quantity <= 5).
+- Dashboard endpoint requires an authenticated staff session and is restricted to owner, manager, operator, kitchen and finance roles; rider/support roles are denied. The response does not select or return customer contact/address fields.
+- Admin API client now has a typed metrics response. Overview loads metrics from the API and displays order, revenue, COD and low-stock cards alongside store readiness.
+- Updated stale overview checklist copy to reflect that order management and COD collection recording are available in source.
+- Added two API tests for aggregate metrics response and rider-role denial. These tests and the combined latest source still require a fresh CI run; do not label this change CI-tested until that run succeeds.
+- Latest known completed CI evidence remains run 41271949570 on commit `8633e41d8a284c95713cefde5be5ac7543aeeb51` (70/70 API tests and both builds), which predates the dashboard metrics change.
+- No deployment, live D1 write, live account creation, or real payment mutation was performed.
