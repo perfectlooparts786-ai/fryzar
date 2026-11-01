@@ -1148,6 +1148,265 @@ async function adminSession(request: Request, env: Env): Promise<Response> {
   });
 }
 
+
+const ORDER_READ_ROLES: readonly StaffUserRow["role"][] = [
+  "owner", "manager", "operator", "kitchen"
+];
+const ORDER_STATUS_VALUES = [
+  "pending", "confirmed", "preparing", "ready",
+  "out_for_delivery", "delivered", "cancelled", "rejected"
+] as const;
+type OrderStatus = typeof ORDER_STATUS_VALUES[number];
+
+const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
+  pending: ["confirmed", "cancelled", "rejected"],
+  confirmed: ["preparing", "cancelled"],
+  preparing: ["ready", "cancelled"],
+  ready: ["out_for_delivery", "cancelled"],
+  out_for_delivery: ["delivered", "cancelled"],
+  delivered: [],
+  cancelled: [],
+  rejected: []
+};
+
+function isOrderStatus(value: string): value is OrderStatus {
+  return ORDER_STATUS_VALUES.includes(value as OrderStatus);
+}
+
+function canChangeOrderStatus(
+  user: SessionUser,
+  current: OrderStatus,
+  next: OrderStatus
+): boolean {
+  if (!ORDER_TRANSITIONS[current].includes(next)) return false;
+  if (user.role === "owner" || user.role === "manager") return true;
+  if (user.role === "operator") {
+    return next !== "rejected" && next !== "cancelled";
+  }
+  if (user.role === "kitchen") {
+    return (
+      (current === "confirmed" && next === "preparing") ||
+      (current === "preparing" && next === "ready")
+    );
+  }
+  return false;
+}
+
+async function listAdminOrders(
+  request: Request,
+  env: Env,
+  user: SessionUser
+): Promise<Response> {
+  if (!hasRole(user, ORDER_READ_ROLES)) return roleDenied();
+
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status")?.trim() ?? "";
+  if (status && !isOrderStatus(status)) {
+    return json({ error: "invalid_order_status" }, 400);
+  }
+
+  const rawLimit = Number(url.searchParams.get("limit") ?? "25");
+  const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 25;
+  const rawOffset = Number(url.searchParams.get("offset") ?? "0");
+  const offset = Number.isInteger(rawOffset) ? Math.max(rawOffset, 0) : 0;
+  const includeCustomerDetails = user.role !== "kitchen";
+
+  const customerColumns = includeCustomerDetails
+    ? "customer_name, customer_phone, delivery_address, delivery_area, "
+    : "NULL AS customer_name, NULL AS customer_phone, NULL AS delivery_address, NULL AS delivery_area, ";
+
+  const result = await env.DB.prepare(
+    "SELECT id, order_number, status, payment_method, payment_status, " +
+    customerColumns +
+    "subtotal_paisa, delivery_fee_paisa, discount_paisa, total_paisa, " +
+    "customer_language, created_at, updated_at " +
+    "FROM orders WHERE (?1 = '' OR status = ?1) " +
+    "ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
+  ).bind(status, limit, offset).all<JsonRecord>();
+
+  return json({
+    orders: result.results,
+    pagination: {
+      limit,
+      offset,
+      returned: result.results.length
+    }
+  });
+}
+
+async function getAdminOrder(
+  env: Env,
+  user: SessionUser,
+  orderId: string
+): Promise<Response> {
+  if (!hasRole(user, ORDER_READ_ROLES)) return roleDenied();
+
+  const includeCustomerDetails = user.role !== "kitchen";
+  const customerColumns = includeCustomerDetails
+    ? "customer_name, customer_phone, delivery_address, delivery_area, "
+    : "NULL AS customer_name, NULL AS customer_phone, NULL AS delivery_address, NULL AS delivery_area, ";
+
+  const order = await env.DB.prepare(
+    "SELECT id, order_number, status, payment_method, payment_status, " +
+    customerColumns +
+    "subtotal_paisa, delivery_fee_paisa, discount_paisa, total_paisa, " +
+    "customer_language, notes, created_at, updated_at " +
+    "FROM orders WHERE id = ?1 LIMIT 1"
+  ).bind(orderId).first<JsonRecord>();
+
+  if (!order) return json({ error: "order_not_found" }, 404);
+
+  const [items, history] = await Promise.all([
+    env.DB.prepare(
+      "SELECT product_name_ur_snapshot, product_name_en_snapshot, sku_snapshot, " +
+      "unit_price_paisa, quantity, line_total_paisa " +
+      "FROM order_items WHERE order_id = ?1 ORDER BY rowid ASC"
+    ).bind(orderId).all<JsonRecord>(),
+    env.DB.prepare(
+      "SELECT old_status, new_status, actor_type, note, created_at " +
+      "FROM order_status_events WHERE order_id = ?1 ORDER BY created_at ASC, rowid ASC"
+    ).bind(orderId).all<JsonRecord>()
+  ]);
+
+  return json({
+    order,
+    items: items.results,
+    history: history.results
+  });
+}
+
+async function changeAdminOrderStatus(
+  request: Request,
+  env: Env,
+  user: SessionUser,
+  orderId: string
+): Promise<Response> {
+  if (!hasRole(user, ORDER_READ_ROLES)) return roleDenied();
+  if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+  const body = await parseJsonBody(request, 4096);
+  if (!body) return json({ error: "invalid_request" }, 400);
+
+  const nextStatusText = safeString(body.status);
+  const note = safeString(body.note);
+  if (!isOrderStatus(nextStatusText)) return json({ error: "invalid_order_status" }, 400);
+  if (note.length > 500) return json({ error: "note_too_long" }, 400);
+
+  const order = await env.DB.prepare(
+    "SELECT id, status, payment_status FROM orders WHERE id = ?1 LIMIT 1"
+  ).bind(orderId).first<{ id: string; status: string; payment_status: string }>();
+
+  if (!order) return json({ error: "order_not_found" }, 404);
+  if (!isOrderStatus(order.status)) return json({ error: "stored_order_status_invalid" }, 409);
+  if (!canChangeOrderStatus(user, order.status, nextStatusText)) {
+    return json({ error: "order_transition_not_allowed" }, 403);
+  }
+
+  if (nextStatusText === "cancelled" && user.role !== "owner" && user.role !== "manager") {
+    return json({ error: "insufficient_permissions" }, 403);
+  }
+
+  const timestamp = new Date().toISOString();
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "UPDATE orders SET status = ?1, updated_at = ?2 WHERE id = ?3 AND status = ?4"
+    ).bind(nextStatusText, timestamp, orderId, order.status)
+  ];
+
+  if (nextStatusText === "cancelled") {
+    statements.push(
+      env.DB.prepare(
+        "UPDATE products SET stock_qty = stock_qty + (" +
+        "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi " +
+        "WHERE oi.order_id = ?1 AND oi.product_id = products.id" +
+        "), updated_at = CURRENT_TIMESTAMP " +
+        "WHERE stock_qty IS NOT NULL " +
+        "AND EXISTS (SELECT 1 FROM orders WHERE id = ?1 AND status = 'cancelled' AND updated_at = ?2) " +
+        "AND EXISTS (SELECT 1 FROM order_items WHERE order_id = ?1 AND product_id = products.id) " +
+        "AND NOT EXISTS (SELECT 1 FROM inventory_movements im " +
+        "WHERE im.reference_type = 'order' AND im.reference_id = ?1 " +
+        "AND im.reason = 'order_cancelled' AND im.product_id = products.id)"
+      ).bind(orderId, timestamp),
+      env.DB.prepare(
+        "INSERT INTO inventory_movements " +
+        "(id, product_id, delta_qty, reason, reference_type, reference_id, note) " +
+        "SELECT lower(hex(randomblob(16))), oi.product_id, SUM(oi.quantity), " +
+        "'order_cancelled', 'order', ?1, 'Stock restored after order cancellation' " +
+        "FROM order_items oi JOIN products p ON p.id = oi.product_id " +
+        "WHERE oi.order_id = ?1 AND p.stock_qty IS NOT NULL " +
+        "AND EXISTS (SELECT 1 FROM orders WHERE id = ?1 AND status = 'cancelled' AND updated_at = ?2) " +
+        "AND NOT EXISTS (SELECT 1 FROM inventory_movements im " +
+        "WHERE im.reference_type = 'order' AND im.reference_id = ?1 " +
+        "AND im.reason = 'order_cancelled' AND im.product_id = oi.product_id) " +
+        "GROUP BY oi.product_id"
+      ).bind(orderId, timestamp)
+    );
+  }
+
+  statements.push(
+    env.DB.prepare(
+      "INSERT INTO order_status_events " +
+      "(id, order_id, old_status, new_status, actor_staff_id, actor_type, note) " +
+      "SELECT lower(hex(randomblob(16))), id, ?1, ?2, ?3, 'staff', ?4 " +
+      "FROM orders WHERE id = ?5 AND status = ?2 AND updated_at = ?6"
+    ).bind(order.status, nextStatusText, user.id, note || null, orderId, timestamp),
+    env.DB.prepare(
+      "INSERT INTO audit_logs " +
+      "(id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) " +
+      "SELECT lower(hex(randomblob(16))), ?1, ?2, 'order.status_changed', 'order', id, ?3 " +
+      "FROM orders WHERE id = ?4 AND status = ?5 AND updated_at = ?6"
+    ).bind(
+      user.id,
+      user.role,
+      JSON.stringify({ old_status: order.status, new_status: nextStatusText }),
+      orderId,
+      nextStatusText,
+      timestamp
+    )
+  );
+
+  try {
+    const results = await env.DB.batch(statements);
+    const changedRows = results[0]?.meta?.changes ?? 0;
+    if (changedRows !== 1) {
+      return json({ error: "order_changed_retry" }, 409);
+    }
+  } catch {
+    return json({ error: "order_transition_failed" }, 409);
+  }
+
+  return json({
+    updated: true,
+    order_id: orderId,
+    old_status: order.status,
+    status: nextStatusText
+  });
+}
+
+async function orderAdminApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/orders") {
+    return listAdminOrders(request, env, user);
+  }
+
+  const match = url.pathname.match(/^\/api\/v1\/admin\/orders\/([0-9a-f-]{36})(?:\/status)?$/i);
+  if (!match || !validUuid(match[1])) return null;
+
+  const orderId = match[1].toLowerCase();
+  if (request.method === "GET" && url.pathname.endsWith("/" + orderId)) {
+    return getAdminOrder(env, user, orderId);
+  }
+  if (request.method === "PATCH" && url.pathname.endsWith("/status")) {
+    return changeAdminOrderStatus(request, env, user, orderId);
+  }
+
+  return null;
+}
+
 async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
     return ownerBootstrap(request, env);
@@ -1161,6 +1420,12 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   if (request.method === "GET" && url.pathname === "/api/v1/admin/session") {
     return adminSession(request, env);
   }
+
+  const user = await currentStaff(request, env);
+  if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const orderResponse = await orderAdminApi(request, env, url, user);
+  if (orderResponse) return orderResponse;
 
   return json({ error: "not_found" }, 404);
 }
