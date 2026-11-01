@@ -1,21 +1,3 @@
-interface QueryResult<T> {
-  success: boolean;
-  results: T[];
-  meta?: { changes?: number; [key: string]: unknown };
-}
-
-interface PreparedStatement {
-  bind(...values: unknown[]): PreparedStatement;
-  first<T = Record<string, unknown>>(columnName?: string): Promise<T | null>;
-  all<T = Record<string, unknown>>(): Promise<QueryResult<T>>;
-  run<T = Record<string, unknown>>(): Promise<QueryResult<T>>;
-}
-
-interface D1Database {
-  prepare(query: string): PreparedStatement;
-  batch<T = Record<string, unknown>>(statements: PreparedStatement[]): Promise<QueryResult<T>[]>;
-}
-
 interface Env {
   DB: D1Database;
   APP_ENV?: string;
@@ -585,7 +567,7 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     }
   };
 
-  const statements: PreparedStatement[] = [
+  const statements: D1PreparedStatement[] = [
     env.DB.prepare(
       "DELETE FROM idempotency_keys WHERE scope = 'checkout' AND idempotency_key = ?1 AND expires_at <= ?2"
     ).bind(idempotencyKey, createdAt),
