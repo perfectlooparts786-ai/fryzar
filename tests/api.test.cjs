@@ -315,14 +315,38 @@ test("successful COD checkout uses server prices and creates an atomic batch", a
   assert.equal(state.batchStatements.length, 9);
 });
 
-test("tracking endpoint never returns customer phone or delivery address", async () => {
+test("tracking returns order summary without customer phone or delivery address", async () => {
   const token = "a".repeat(64);
-  const { env } = createEnv({ firstResult: null });
+  const savedOrder = {
+    id: "order-1",
+    order_number: "FRZ-20261101-ABC123",
+    status: "pending",
+    payment_method: "cod",
+    payment_status: "unpaid",
+    subtotal_paisa: 30000,
+    delivery_fee_paisa: 25000,
+    discount_paisa: 0,
+    total_paisa: 55000,
+    customer_language: "en",
+    created_at: "2026-11-01T00:00:00.000Z",
+    updated_at: "2026-11-01T00:00:00.000Z"
+  };
+  const savedItems = [{
+    product_name_en_snapshot: "Test Product",
+    unit_price_paisa: 15000,
+    quantity: 2,
+    line_total_paisa: 30000
+  }];
+  const { env } = createEnv({ firstResult: savedOrder, allResults: savedItems });
   const response = await worker.fetch(
     request("/api/v1/orders/track/" + token),
     env
   );
+  const body = await response.json();
 
-  assert.equal(response.status, 404);
-  assert.equal((await response.json()).error, "order_not_found");
+  assert.equal(response.status, 200);
+  assert.equal(body.order.order_number, savedOrder.order_number);
+  assert.deepEqual(body.items, savedItems);
+  assert.equal("customer_phone" in body.order, false);
+  assert.equal("delivery_address" in body.order, false);
 });
