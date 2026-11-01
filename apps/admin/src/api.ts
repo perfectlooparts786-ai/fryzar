@@ -26,15 +26,28 @@ export interface Category {
   slug: string;
   name_en: string;
   name_ur: string;
+  description_en?: string;
+  description_ur?: string;
+  sort_order?: number;
+  is_active?: number;
 }
 
 export interface Product {
   id: string;
+  category_id?: string | null;
+  sku?: string | null;
   slug: string;
   name_en: string;
   name_ur: string;
+  description_en?: string;
+  description_ur?: string;
   price_paisa: number;
+  compare_at_paisa?: number | null;
+  image_url?: string | null;
+  stock_qty?: number | null;
   is_available: number;
+  is_featured?: number;
+  sort_order?: number;
 }
 
 export interface DeliveryZone {
@@ -157,6 +170,24 @@ export const adminApi = {
     apiRequest<{ orders: AdminOrder[]; pagination: { limit: number; offset: number; returned: number } }>(
       "/admin/orders" + (status ? "?status=" + encodeURIComponent(status) : "")
     ),
+
+  adminCategories: () =>
+    apiRequest<{ categories: Category[] }>("/admin/categories"),
+
+  saveCategory: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>("/admin/categories" + (id ? "/" + encodeURIComponent(id) : ""), {
+      method: id ? "PATCH" : "POST",
+      body: JSON.stringify(data)
+    }),
+
+  adminProducts: () =>
+    apiRequest<{ products: Product[] }>("/admin/products"),
+
+  saveProduct: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>("/admin/products" + (id ? "/" + encodeURIComponent(id) : ""), {
+      method: id ? "PATCH" : "POST",
+      body: JSON.stringify(data)
+    }),
 
   updateOrderStatus: (orderId: string, status: string, note = "") =>
     apiRequest<{ updated: boolean; order_id: string; old_status: string; status: string }>(
