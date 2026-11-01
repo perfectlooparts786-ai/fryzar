@@ -17,7 +17,7 @@ type Section = "overview" | "orders" | "catalogue" | "inventory" | "payments" | 
 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
-  { id: "orders", label: "Orders", icon: "▤", note: "API pending" },
+  { id: "orders", label: "Orders", icon: "▤" },
   { id: "catalogue", label: "Catalogue", icon: "▦" },
   { id: "inventory", label: "Inventory", icon: "▧" },
   { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
@@ -34,6 +34,14 @@ function messageFor(error: unknown): string {
   if (error instanceof AdminApiError) {
     switch (error.code) {
       case "network_error": return "The FRYZAR API could not be reached. Check the API service and try again.";
+      case "insufficient_stock": return "This adjustment would make stock negative. Refresh the inventory and review the quantity.";
+      case "inventory_not_tracked": return "This product does not have stock tracking enabled. Set an opening quantity when creating a product.";
+      case "inventory_adjustment_required": return "Stock quantities must be changed through the Inventory module so the movement is recorded.";
+      case "stock_changed_retry": return "Stock changed while this adjustment was being saved. Refresh the inventory and try again.";
+      case "idempotency_key_required": return "The adjustment request is missing its retry-protection key. Refresh the page and retry.";
+      case "idempotency_key_reused": return "This request key was already used with different adjustment details. Refresh and submit again.";
+      case "request_already_processing": return "This adjustment is still being processed. Check movement history before retrying.";
+      case "product_not_found": return "The selected product no longer exists. Refresh the inventory list.";
       case "invalid_credentials": return "Email or password is incorrect.";
       case "owner_bootstrap_unavailable": return "First-owner setup is not enabled on the API yet. The one-time bootstrap secret must be configured securely in Cloudflare.";
       case "invalid_bootstrap_token": return "The bootstrap token was not accepted.";
