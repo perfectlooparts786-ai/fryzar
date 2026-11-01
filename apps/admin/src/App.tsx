@@ -17,7 +17,7 @@ type Section = "overview" | "orders" | "catalogue" | "inventory" | "payments" | 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
   { id: "orders", label: "Orders", icon: "▤", note: "API pending" },
-  { id: "catalogue", label: "Catalogue", icon: "▦", note: "API pending" },
+  { id: "catalogue", label: "Catalogue", icon: "▦" },
   { id: "inventory", label: "Inventory", icon: "▧", note: "API pending" },
   { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
   { id: "delivery", label: "Delivery", icon: "⌖", note: "Read only" },
