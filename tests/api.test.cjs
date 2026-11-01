@@ -608,8 +608,10 @@ test("admin login creates a secure HttpOnly session after password verification"
   assert.equal(state.batchCount, 1);
   const successfulAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
   assert.ok(successfulAttempt);
-  assert.equal(successfulAttempt.params[4], 1);
-  assert.match(successfulAttempt.sql, /was_successful/);
+  assert.equal(successfulAttempt.params.length, 4);
+  assert.match(successfulAttempt.sql, /VALUES \\(?1, \\?2, \\?3, \\?4, 1\\)/);
+  assert.match(successfulAttempt.params[1], /^[a-f0-9]{64}$/);
+  assert.match(successfulAttempt.params[2], /^[a-f0-9]{64}$/);
 });
 
 test("admin login returns the same generic failure for a wrong password", async () => {
@@ -640,7 +642,8 @@ test("admin login returns the same generic failure for a wrong password", async 
   assert.equal(state.batchCount, 1);
   const failedAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
   assert.ok(failedAttempt);
-  assert.equal(failedAttempt.params[4], 0);
+  assert.equal(failedAttempt.params.length, 6);
+  assert.match(failedAttempt.sql, /SELECT \\?1, \\?2, \\?3, \\?4, 0/);
   assert.equal(failedAttempt.params.includes("owner@example.test"), false);
   assert.match(failedAttempt.params[1], /^[a-f0-9]{64}$/);
   assert.match(failedAttempt.params[2], /^[a-f0-9]{64}$/);
@@ -686,7 +689,8 @@ test("admin login records failures for unknown identities without storing raw id
   assert.equal(state.batchCount, 1);
   const failedAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
   assert.ok(failedAttempt);
-  assert.equal(failedAttempt.params[4], 0);
+  assert.equal(failedAttempt.params.length, 6);
+  assert.match(failedAttempt.sql, /SELECT \\?1, \\?2, \\?3, \\?4, 0/);
   assert.equal(JSON.stringify(failedAttempt.params).includes("missing@example.test"), false);
 });
 
