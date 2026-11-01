@@ -1184,7 +1184,7 @@ async function adminLogin(request: Request, env: Env): Promise<Response> {
   const failureCount = await countRecentLoginFailures(env, identityHash, windowStart);
 
   if (failureCount === null) {
-    return env.APP_ENV === "production" ? loginTemporarilyUnavailable() : loginTemporarilyUnavailable();
+    return loginTemporarilyUnavailable();
   }
   if (failureCount >= ADMIN_LOGIN_FAILURE_LIMIT) {
     return loginRateLimited();
