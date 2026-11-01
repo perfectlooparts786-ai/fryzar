@@ -218,8 +218,7 @@ export const adminApi = {
       adjusted: boolean;
       adjustment_id: string;
       product_id: string;
-      previous_stock_qty: number;
-      requested_delta_qty: number;
+      delta_qty: number;
       reason: string;
     }>("/admin/inventory/adjustments", {
       method: "POST",
