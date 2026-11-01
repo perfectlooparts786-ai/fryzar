@@ -24,7 +24,7 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | A-003 | Inventory adjustment | TESTED | Admin screen + owner/manager API, opening-stock ledger, non-negative guard, idempotency, movement history and audit; 39/39 CI tests; D1 0004 applied/read back. Real D1 concurrency and live Worker verification pending |
 | A-004 | Delivery zone management | TESTED | Owner/manager create/update/deactivate, operations/rider read, audit batch, validation and duplicate-code handling; admin UI; 45/45 CI tests. Live Worker verification pending |
 | A-005 | Store settings management | TESTED | Public settings read; owner/manager allowlisted update and audit; names, language, COD, WhatsApp, setup/paused. Launch readiness, manual transfer and store opening release-gated. 51/51 CI tests; live Worker verification pending |
-| A-006 | Admin dashboard operational metrics | IMPLEMENTED | Authenticated aggregate API and overview cards for order counts, delivered revenue, unpaid COD, low stock, active products and launch status; two role/response tests added, including query PII exclusion; latest CI pending |
+| A-006 | Admin dashboard operational metrics | TESTED | Authenticated aggregate API, typed admin API client, Overview state/data loading and dashboard cards; role and PII-exclusion tests; GitHub Actions run 41278344214 passed 72/72 API tests, strict TypeScript and both web builds. Live Worker/D1 integration pending |
 | O-001 | COD collection | TESTED | Owner/manager/finance can mark only delivered unpaid COD as collected; order/payment updates, collector ID, timestamp, audit and idempotency are atomic; 70/70 CI tests. Live Worker integration pending |
 | P-001 | Manual-transfer state machine | BLOCKED | Keep disabled until private proof storage/review exists |
 | P-002 | Private payment-proof storage | BLOCKED | R2 not activated; eligibility/cost review required |
@@ -40,3 +40,11 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | R-002 | Production release sign-off | NOT STARTED | Every critical release gate passes |
 
 Do not calculate a completion percentage until the backlog is weighted and test evidence is recorded.
+
+
+## Development update — dashboard metrics and CI stabilization (2026-11-01)
+
+- Corrected malformed escaped newlines in API route dispatch and admin portal source.
+- Completed dashboard metrics frontend integration: typed API method, top-level state, overview prop and authenticated data loading.
+- A-006 is now TESTED based on GitHub Actions run 41278344214 (commit 1c7d8a86cd25cff5b117757296344ef2977c457e): 72/72 API tests, API strict TypeScript validation, storefront build and admin build passed.
+- Deployment and real-service integration tasks remain open; do not treat CI success as deployment evidence.
