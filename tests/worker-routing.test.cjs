@@ -131,11 +131,12 @@ test("preview Wrangler configs route both /api and /api/* through the central AP
   );
 
   for (const config of [customerConfig, adminConfig]) {
-    assert.match(config, /run_worker_first\\s*=\\s*\\[\\s*"\\/api"\\s*,\\s*"\\/api\\/\\*"\\s*\\]/);
-    assert.match(config, /service\\s*=\\s*"fryzar-api-preview"/);
+    assert.ok(config.includes('run_worker_first = ["/api", "/api/*"]'));
+    assert.ok(config.includes('service = "fryzar-api-preview"'));
   }
 
-  assert.match(apiConfig, /name\\s*=\\s*"fryzar-api-preview"/);
-  assert.match(apiConfig, /database_name\\s*=\\s*"fryzar-preview"/);
-  assert.doesNotMatch(apiConfig, /fryzar-production|fryzar-core/);
+  assert.ok(apiConfig.includes('name = "fryzar-api-preview"'));
+  assert.ok(apiConfig.includes('database_name = "fryzar-preview"'));
+  assert.ok(!apiConfig.includes("fryzar-production"));
+  assert.ok(!apiConfig.includes("fryzar-core"));
 });
