@@ -14,8 +14,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply fryzar-core --remote --config apps/api/wrangler.toml"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.0.0",
-    "typescript": "^5.0.0",
-    "wrangler": "^4.0.0"
+    "@cloudflare/workers-types": "5.20261101.1",
+    "typescript": "5.9.3",
+    "wrangler": "4.156.0"
   }
 }
