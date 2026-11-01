@@ -1708,6 +1708,198 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
 }
 
 
+const STAFF_MANAGEMENT_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+const STAFF_ASSIGNABLE_ROLES: readonly StaffUserRow["role"][] = [
+  "manager", "operator", "kitchen", "finance", "rider", "support"
+];
+const STAFF_MANAGER_ASSIGNABLE_ROLES: readonly StaffUserRow["role"][] = [
+  "operator", "kitchen", "finance", "rider", "support"
+];
+
+function canManageStaffTarget(actor: SessionUser, targetRole: StaffUserRow["role"]): boolean {
+  if (actor.role !== "owner" && actor.role !== "manager") return false;
+  if (targetRole === "owner") return false;
+  if (actor.role === "manager" && targetRole === "manager") return false;
+  return true;
+}
+
+function canAssignStaffRole(actor: SessionUser, role: string): role is StaffUserRow["role"] {
+  const allowed = actor.role === "owner" ? STAFF_ASSIGNABLE_ROLES : STAFF_MANAGER_ASSIGNABLE_ROLES;
+  return allowed.includes(role as StaffUserRow["role"]);
+}
+
+async function adminStaffApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  const collection = url.pathname === "/api/v1/admin/staff";
+  const resetMatch = url.pathname.match(/^\/api\/v1\/admin\/staff\/([0-9a-f-]{36})\/reset-password$/i);
+  const staffMatch = url.pathname.match(/^\/api\/v1\/admin\/staff\/([0-9a-f-]{36})$/i);
+  if (!collection && !resetMatch && !staffMatch) return null;
+  if (!hasRole(user, STAFF_MANAGEMENT_ROLES)) return roleDenied();
+
+  if (request.method === "GET" && collection) {
+    const result = await env.DB.prepare(
+      "SELECT id, email, display_name, role, is_active, last_login_at, created_at, updated_at " +
+      "FROM staff_users ORDER BY role, display_name LIMIT 200"
+    ).all<JsonRecord>();
+    return json({ staff: result.results });
+  }
+
+  if (request.method === "POST" && collection) {
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const email = safeString(body.email).toLowerCase();
+    const displayName = safeString(body.display_name);
+    const roleText = safeString(body.role);
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!validEmail(email)) return json({ error: "invalid_email" }, 400);
+    if (displayName.length < 2 || displayName.length > 100) return json({ error: "invalid_display_name" }, 400);
+    if (!canAssignStaffRole(user, roleText)) return json({ error: "role_assignment_denied" }, 403);
+    if (!validPassword(password)) return json({ error: "password_policy_failed" }, 400);
+
+    const id = crypto.randomUUID();
+    const passwordHash = await hashPassword(password);
+    const timestamp = new Date().toISOString();
+    try {
+      const results = await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO staff_users (id, email, password_hash, display_name, role, is_active, password_changed_at, created_at, updated_at) " +
+          "VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6, ?6)"
+        ).bind(id, email, passwordHash, displayName, roleText, timestamp),
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "SELECT ?1, ?2, ?3, 'staff.user_created', 'staff_user', id, ?4, ?5 FROM staff_users WHERE id = ?6"
+        ).bind(
+          crypto.randomUUID(),
+          user.id,
+          user.role,
+          JSON.stringify({ email, role: roleText }),
+          timestamp,
+          id
+        )
+      ]);
+      if ((results[0]?.meta?.changes ?? 0) !== 1) return json({ error: "staff_create_conflict" }, 409);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/UNIQUE constraint failed/i.test(message)) return json({ error: "staff_email_conflict" }, 409);
+      throw error;
+    }
+    return json({ created: true, id, role: roleText }, 201);
+  }
+
+  if (request.method === "PATCH" && staffMatch) {
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+    const allowedKeys = ["display_name", "role", "is_active"];
+    const keys = Object.keys(body);
+    if (keys.length === 0 || keys.some(key => !allowedKeys.includes(key))) {
+      return json({ error: "invalid_staff_update" }, 400);
+    }
+
+    const staffId = staffMatch[1].toLowerCase();
+    const target = await env.DB.prepare(
+      "SELECT id, role, is_active FROM staff_users WHERE id = ?1 LIMIT 1"
+    ).bind(staffId).first<{ id: string; role: StaffUserRow["role"]; is_active: number }>();
+    if (!target) return json({ error: "staff_not_found" }, 404);
+    if (!canManageStaffTarget(user, target.role)) return roleDenied();
+
+    const displayName = body.display_name === undefined ? null : safeString(body.display_name);
+    if (displayName !== null && (displayName.length < 2 || displayName.length > 100)) {
+      return json({ error: "invalid_display_name" }, 400);
+    }
+    let nextRole: StaffUserRow["role"] | null = null;
+    if (body.role !== undefined) {
+      const roleText = safeString(body.role);
+      if (!canAssignStaffRole(user, roleText)) return json({ error: "role_assignment_denied" }, 403);
+      nextRole = roleText;
+    }
+    let nextActive: number | null = null;
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") return json({ error: "invalid_active_flag" }, 400);
+      nextActive = body.is_active ? 1 : 0;
+      if (staffId === user.id && nextActive === 0) {
+        return json({ error: "cannot_deactivate_self" }, 409);
+      }
+    }
+    if (displayName === null && nextRole === null && nextActive === null) {
+      return json({ error: "empty_staff_update" }, 400);
+    }
+
+    const timestamp = new Date().toISOString();
+    const accessChanged = nextRole !== null || nextActive !== null;
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        "UPDATE staff_users SET display_name=COALESCE(?1, display_name), " +
+        "role=COALESCE(?2, role), is_active=COALESCE(?3, is_active), updated_at=?4 " +
+        "WHERE id=?5 AND role=?6"
+      ).bind(displayName, nextRole, nextActive, timestamp, staffId, target.role)
+    ];
+    if (accessChanged) {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE staff_sessions SET revoked_at=?1 WHERE staff_user_id=?2 AND revoked_at IS NULL " +
+          "AND EXISTS (SELECT 1 FROM staff_users WHERE id=?2 AND updated_at=?3)"
+        ).bind(timestamp, staffId, timestamp)
+      );
+    }
+    statements.push(
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "SELECT ?1, ?2, ?3, 'staff.user_updated', 'staff_user', id, ?4, ?5 " +
+        "FROM staff_users WHERE id=?6 AND updated_at=?5"
+      ).bind(
+        crypto.randomUUID(),
+        user.id,
+        user.role,
+        JSON.stringify({ updated_fields: keys.sort(), role: nextRole, is_active: nextActive }),
+        timestamp,
+        staffId
+      )
+    );
+
+    const results = await env.DB.batch(statements);
+    if ((results[0]?.meta?.changes ?? 0) !== 1) return json({ error: "staff_changed_retry" }, 409);
+    return json({ updated: true, id: staffId, sessions_revoked: accessChanged });
+  }
+
+  if (request.method === "POST" && resetMatch) {
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+    const body = await parseJsonBody(request, 4096);
+    if (!body || typeof body.new_password !== "string" || !validPassword(body.new_password)) {
+      return json({ error: "password_policy_failed" }, 400);
+    }
+    const staffId = resetMatch[1].toLowerCase();
+    const target = await env.DB.prepare(
+      "SELECT id, role FROM staff_users WHERE id = ?1 LIMIT 1"
+    ).bind(staffId).first<{ id: string; role: StaffUserRow["role"] }>();
+    if (!target) return json({ error: "staff_not_found" }, 404);
+    if (!canManageStaffTarget(user, target.role)) return roleDenied();
+
+    const timestamp = new Date().toISOString();
+    const passwordHash = await hashPassword(body.new_password);
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE staff_users SET password_hash=?1, password_changed_at=?2, updated_at=?2 " +
+        "WHERE id=?3 AND role=?4"
+      ).bind(passwordHash, timestamp, staffId, target.role),
+      env.DB.prepare(
+        "UPDATE staff_sessions SET revoked_at=?1 WHERE staff_user_id=?2 AND revoked_at IS NULL " +
+        "AND EXISTS (SELECT 1 FROM staff_users WHERE id=?2 AND updated_at=?1)"
+      ).bind(timestamp, staffId),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "SELECT ?1, ?2, ?3, 'staff.password_reset', 'staff_user', id, '{\"sessions_revoked\":true}', ?4 " +
+        "FROM staff_users WHERE id=?5 AND updated_at=?4"
+      ).bind(crypto.randomUUID(), user.id, user.role, timestamp, staffId)
+    ]);
+    if ((results[0]?.meta?.changes ?? 0) !== 1) return json({ error: "staff_changed_retry" }, 409);
+    return json({ password_reset: true, id: staffId, sessions_revoked: true });
+  }
+
+  return json({ error: "method_not_allowed" }, 405);
+}
+
 const SETTINGS_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "finance", "rider", "support"];
 const SETTINGS_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 const EDITABLE_STORE_SETTING_KEYS = [
@@ -1919,6 +2111,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const staffResponse = await adminStaffApi(request, env, url, user);
+  if (staffResponse) return staffResponse;
 
   const settingsResponse = await adminSettingsApi(request, env, url, user);
   if (settingsResponse) return settingsResponse;
