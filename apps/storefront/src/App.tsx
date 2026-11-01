@@ -321,6 +321,10 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [orderComplete, setOrderComplete] = useState<OrderResponse | null>(null);
+  const [trackingToken, setTrackingToken] = useState("");
+  const [trackingResult, setTrackingResult] = useState<TrackedOrderResponse | null>(null);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState("");
   const [copied, setCopied] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
@@ -473,6 +477,52 @@ export default function App() {
     } catch {
       setCopied(false);
     }
+  }
+
+  async function lookupTracking(token = trackingToken) {
+    const normalized = token.trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(normalized)) {
+      setTrackingError(t.trackInvalid);
+      setTrackingResult(null);
+      return;
+    }
+    setTrackingLoading(true);
+    setTrackingError("");
+    setTrackingResult(null);
+    try {
+      const result = await api.trackOrder(normalized);
+      setTrackingToken(normalized);
+      setTrackingResult(result);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "order_not_found") {
+        setTrackingError(t.trackNotFound);
+      } else if (error instanceof ApiError && error.code === "rate_limit_exceeded") {
+        setTrackingError(t.trackRateLimited);
+      } else {
+        setTrackingError(t.trackGenericError);
+      }
+    } finally {
+      setTrackingLoading(false);
+    }
+  }
+
+  function submitTracking(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void lookupTracking();
+  }
+
+  function trackingStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      pending: t.statusPending,
+      confirmed: t.statusConfirmed,
+      preparing: t.statusPreparing,
+      ready: t.statusReady,
+      out_for_delivery: t.statusOutForDelivery,
+      delivered: t.statusDelivered,
+      cancelled: t.statusCancelled,
+      rejected: t.statusRejected
+    };
+    return labels[status] ?? status.replaceAll("_", " ");
   }
 
   const supportNumber = (settings.whatsapp_number ?? "").replace(/\D/g, "");
