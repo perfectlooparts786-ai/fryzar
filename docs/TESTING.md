@@ -113,3 +113,10 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - Tests cover delivered gate, non-COD gate, unauthorized list access, response replay and key-payload mismatch.
 - GitHub Actions run 41271949570 passed 70/70 mocked API tests plus TypeScript and both web builds.
 - Live D1 transaction rollback/concurrency and live Worker API verification remain pending. No real payment state was changed.
+
+
+## Dashboard metrics validation — pending CI
+- Added mocked API coverage for aggregate dashboard metrics and access denial for rider accounts.
+- The metrics endpoint is designed to return counts and aggregate delivered revenue only, with no customer contact/address fields.
+- Latest dashboard-metrics tests are committed but have not yet been confirmed in a successful CI run.
+- Real D1 query execution and live authenticated Worker integration remain pending.
