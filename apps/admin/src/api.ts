@@ -74,6 +74,19 @@ export interface DeliveryZone {
   updated_at?: string;
 }
 
+export interface AdminPayment {
+  payment_id: string;
+  order_id: string;
+  order_number: string;
+  order_status: string;
+  method: "cod";
+  payment_status: "unpaid" | "collected";
+  amount_paisa: number;
+  created_at: string;
+  reviewed_at: string | null;
+  collected_by: string | null;
+}
+
 export interface InventoryMovement {
   id: string;
   product_id: string;
@@ -215,6 +228,23 @@ export const adminApi = {
     apiRequest<{ saved: boolean; id: string }>("/admin/products" + (id ? "/" + encodeURIComponent(id) : ""), {
       method: id ? "PATCH" : "POST",
       body: JSON.stringify(data)
+    }),
+
+  payments: (status = "") =>
+    apiRequest<{ payments: AdminPayment[] }>("/admin/payments" + (status ? "?status=" + encodeURIComponent(status) : "")),
+
+  collectCodPayment: (orderId: string, idempotencyKey: string) =>
+    apiRequest<{
+      collected: boolean;
+      order_id: string;
+      order_number: string;
+      payment_id: string;
+      payment_status: string;
+      amount_paisa: number;
+    }>("/admin/payments/cod-collection", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ order_id: orderId })
     }),
 
   staffDirectory: () =>
