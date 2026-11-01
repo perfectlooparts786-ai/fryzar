@@ -2,7 +2,7 @@
 
 ## Current status
 
-A Node test suite contains 16 mocked API scenarios and a GitHub Actions workflow has been committed. The expanded suite has not yet returned a verified CI result. Mock tests are not D1 integration or live Worker runtime tests.
+A Node test suite contains 16 mocked API scenarios. GitHub Actions run 41265458517 completed successfully for commit 8962efbad6d050b55b6f0c3e5cddc842fff46583: strict TypeScript type-check passed and all 16 tests passed. Mock tests are not D1 integration or live Worker runtime tests.
 
 ## Current test coverage
 
@@ -19,7 +19,7 @@ A Node test suite contains 16 mocked API scenarios and a GitHub Actions workflow
 - Store setup/launch gate.
 - Manual-transfer-disabled gate.
 - Mocked COD checkout total, payment status, and batch statement composition.
-- Unknown tracking token rejection.
+- Successful tracking response excludes customer phone and delivery address.
 
 ## Required database integration tests
 
