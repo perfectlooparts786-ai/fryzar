@@ -467,3 +467,47 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (max-width:740px) {
   .track-mobile-link { display:inline-flex; align-items:center; min-height:36px; }
 }
+
+
+/* Catalogue refinement: distinguish an empty store from an empty search result. */
+.catalog-no-results {
+  min-height: 270px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 34px 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fffefa 0%, #f3f6ef 100%);
+  text-align: center;
+}
+.no-results-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px 15px 15px 5px;
+  background: #e7eee2;
+  color: var(--forest);
+}
+.no-results-icon svg { width: 22px; height: 22px; }
+.catalog-no-results h3 {
+  margin: 8px 0 0;
+  color: var(--forest-deep);
+  font: 700 21px/1.25 "Manrope", sans-serif;
+}
+.catalog-no-results p {
+  max-width: 390px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.catalog-no-results .outline-button { margin-top: 7px; }
+@media (max-width: 560px) {
+  .catalog-no-results { min-height: 230px; padding: 26px 17px; }
+  .catalog-no-results h3 { font-size: 18px; }
+  .catalog-no-results p { font-size: 12px; }
+}

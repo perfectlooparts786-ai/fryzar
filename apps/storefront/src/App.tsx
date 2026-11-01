@@ -36,6 +36,9 @@ const COPY = {
     featured: "Featured",
     emptyTitle: "Your store is getting ready",
     emptyBody: "The catalogue is being prepared. Check back soon for products and delivery areas.",
+    noResultsTitle: "No matching products",
+    noResultsBody: "Try another search or clear your category filter to see the full catalogue.",
+    clearFilters: "Clear filters",
     apiOffline: "We could not connect to the store service. Please try again shortly.",
     loading: "Preparing your store…",
     basket: "Basket",
@@ -140,6 +143,9 @@ const COPY = {
     featured: "نمایاں",
     emptyTitle: "آپ کا اسٹور تیار ہو رہا ہے",
     emptyBody: "مصنوعات کی فہرست تیار کی جا رہی ہے۔ جلد دوبارہ تشریف لائیں۔",
+    noResultsTitle: "مطلوبہ اشیا نہیں ملیں",
+    noResultsBody: "دوسرا لفظ تلاش کریں یا تمام اقسام دیکھنے کے لیے فلٹر ختم کریں۔",
+    clearFilters: "فلٹر ختم کریں",
     apiOffline: "اسٹور سروس سے رابطہ نہیں ہو سکا۔ کچھ دیر بعد دوبارہ کوشش کریں۔",
     loading: "اسٹور تیار ہو رہا ہے…",
     basket: "ٹوکری",
@@ -561,7 +567,7 @@ export default function App() {
           >
             {isUrdu ? "EN" : "اردو"}
           </button>
-          <button className="basket-button" type="button" onClick={() => setCartOpen(true)}>
+          <button className="basket-button" type="button" onClick={() => setCartOpen(true)} aria-label={t.basket + " (" + cartCount + ")"} aria-expanded={cartOpen}>
             <Icon name="bag" />
             <span>{t.basket}</span>
             <span className="basket-count">{cartCount}</span>
@@ -648,6 +654,7 @@ export default function App() {
             <button
               type="button"
               className={selectedCategory === "all" ? "category-chip active" : "category-chip"}
+              aria-pressed={selectedCategory === "all"}
               onClick={() => setSelectedCategory("all")}
             >
               {t.all}
@@ -657,6 +664,7 @@ export default function App() {
                 type="button"
                 key={category.id}
                 className={selectedCategory === category.slug ? "category-chip active" : "category-chip"}
+                aria-pressed={selectedCategory === category.slug}
                 onClick={() => setSelectedCategory(category.slug)}
               >
                 {language === "ur" ? category.name_ur : category.name_en}
@@ -687,9 +695,17 @@ export default function App() {
               </div>
             </div>
           ) : visibleProducts.length === 0 ? (
-            <div className="catalog-state">
-              <h3>{t.emptyTitle}</h3>
-              <p>{t.emptyBody}</p>
+            <div className="catalog-state catalog-no-results" role="status">
+              <div className="no-results-icon"><Icon name="search" /></div>
+              <h3>{t.noResultsTitle}</h3>
+              <p>{t.noResultsBody}</p>
+              <button
+                className="outline-button"
+                type="button"
+                onClick={() => { setSearch(""); setSelectedCategory("all"); }}
+              >
+                {t.clearFilters}
+              </button>
             </div>
           ) : (
             <div className="product-grid">
@@ -776,7 +792,7 @@ export default function App() {
                     setTrackingError("");
                     setTrackingResult(null);
                   }}
-                  placeholder="Enter your private tracking code"
+                  placeholder={t.trackingInput}
                   required
                 />
                 <button type="submit" className="primary-button" disabled={trackingLoading}>
