@@ -3,6 +3,7 @@ interface Env {
   APP_ENV?: string;
   ALLOWED_ORIGINS?: string;
   TRACKING_SECRET?: string;
+  OWNER_BOOTSTRAP_TOKEN?: string;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -108,7 +109,8 @@ function applySecurityHeaders(response: Response, request: Request, env: Env): R
   if (origin && originAllowed(origin, env)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, X-Request-ID");
+    headers.set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, X-Request-ID, X-Owner-Bootstrap-Token");
+    headers.set("Access-Control-Allow-Credentials", "true");
     headers.set("Access-Control-Max-Age", "600");
   }
 
@@ -724,8 +726,403 @@ async function trackOrder(request: Request, env: Env, token: string): Promise<Re
   return json({ order, items: items.results });
 }
 
+
+const ADMIN_COOKIE_NAME = "__Host-fryzar_admin";
+const ADMIN_SESSION_SECONDS = 8 * 60 * 60;
+const PASSWORD_ITERATIONS = 310000;
+const PASSWORD_HASH_FORMAT = "pbkdf2_sha256";
+
+interface StaffUserRow {
+  id: string;
+  email: string;
+  display_name: string;
+  role: "owner" | "manager" | "operator" | "kitchen" | "finance" | "rider" | "support";
+  is_active: number;
+  password_hash?: string;
+}
+
+interface SessionUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: StaffUserRow["role"];
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const value of bytes) binary += String.fromCharCode(value);
+  return btoa(binary);
+}
+
+function base64Decode(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left[index] ^ right[index];
+  }
+  return difference === 0;
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt,
+      iterations: PASSWORD_ITERATIONS
+    },
+    key,
+    256
+  );
+  return [
+    PASSWORD_HASH_FORMAT,
+    String(PASSWORD_ITERATIONS),
+    base64Encode(salt),
+    base64Encode(new Uint8Array(bits))
+  ].join("$");
+}
+
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const parts = stored.split("$");
+  if (parts.length !== 4 || parts[0] !== PASSWORD_HASH_FORMAT) return false;
+
+  const iterations = Number(parts[1]);
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) return false;
+
+  let salt: Uint8Array;
+  let expected: Uint8Array;
+  try {
+    salt = base64Decode(parts[2]);
+    expected = base64Decode(parts[3]);
+  } catch {
+    return false;
+  }
+
+  if (salt.length !== 16 || expected.length !== 32) return false;
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    key,
+    256
+  );
+  return constantTimeEqual(new Uint8Array(bits), expected);
+}
+
+function getCookie(request: Request, name: string): string | null {
+  const cookieHeader = request.headers.get("Cookie") ?? "";
+  for (const item of cookieHeader.split(";")) {
+    const separator = item.indexOf("=");
+    if (separator < 0) continue;
+    const cookieName = item.slice(0, separator).trim();
+    if (cookieName === name) return item.slice(separator + 1).trim();
+  }
+  return null;
+}
+
+function sessionCookie(token: string, maxAge: number): string {
+  return ADMIN_COOKIE_NAME + "=" + token +
+    "; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=" + String(maxAge);
+}
+
+function browserOriginAllowed(request: Request, env: Env): boolean {
+  const origin = request.headers.get("Origin");
+  return Boolean(origin && originAllowed(origin, env));
+}
+
+function validEmail(value: string): boolean {
+  return value.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validPassword(value: string): boolean {
+  const bytes = new TextEncoder().encode(value);
+  return bytes.length >= 12 && bytes.length <= 128;
+}
+
+async function parseJsonBody(request: Request, maximumBytes = 16384): Promise<Record<string, unknown> | null> {
+  const contentType = (request.headers.get("Content-Type") ?? "").split(";")[0].trim().toLowerCase();
+  if (contentType !== "application/json") return null;
+
+  const declaredLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (declaredLength > maximumBytes) return null;
+
+  try {
+    const text = await request.text();
+    if (text.length > maximumBytes) return null;
+    const parsed: unknown = JSON.parse(text);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function createStaffSession(
+  env: Env,
+  staff: SessionUser,
+  request: Request
+): Promise<Response> {
+  const sessionId = crypto.randomUUID();
+  const token = randomHex(32);
+  const tokenHash = await sha256Hex(token);
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_SECONDS * 1000).toISOString();
+
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO staff_sessions (id, staff_user_id, token_hash, expires_at) " +
+      "VALUES (?1, ?2, ?3, ?4)"
+    ).bind(sessionId, staff.id, tokenHash, expiresAt),
+    env.DB.prepare(
+      "UPDATE staff_users SET last_login_at = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2"
+    ).bind(createdAt, staff.id),
+    env.DB.prepare(
+      "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) " +
+      "VALUES (?1, ?2, ?3, 'staff.login', 'staff_user', ?2, ?4)"
+    ).bind(
+      crypto.randomUUID(),
+      staff.id,
+      staff.role,
+      JSON.stringify({ source: "admin_api" })
+    )
+  ]);
+
+  const headers = new Headers();
+  headers.append("Set-Cookie", sessionCookie(token, ADMIN_SESSION_SECONDS));
+  return applySecurityHeaders(json({
+    authenticated: true,
+    user: {
+      id: staff.id,
+      email: staff.email,
+      display_name: staff.display_name,
+      role: staff.role
+    },
+    expires_at: expiresAt
+  }), request, env);
+}
+
+async function currentStaff(request: Request, env: Env): Promise<SessionUser | null> {
+  const token = getCookie(request, ADMIN_COOKIE_NAME);
+  if (!token || !/^[a-f0-9]{64}$/i.test(token)) return null;
+
+  const tokenHash = await sha256Hex(token.toLowerCase());
+  const session = await env.DB.prepare(
+    "SELECT u.id, u.email, u.display_name, u.role, u.is_active " +
+    "FROM staff_sessions s JOIN staff_users u ON u.id = s.staff_user_id " +
+    "WHERE s.token_hash = ?1 AND s.revoked_at IS NULL " +
+    "AND s.expires_at > ?2 AND u.is_active = 1 LIMIT 1"
+  ).bind(tokenHash, new Date().toISOString()).first<StaffUserRow>();
+
+  if (!session) return null;
+
+  return {
+    id: session.id,
+    email: session.email,
+    display_name: session.display_name,
+    role: session.role
+  };
+}
+
+function hasRole(user: SessionUser, allowed: readonly StaffUserRow["role"][]): boolean {
+  return allowed.includes(user.role);
+}
+
+function roleDenied(): Response {
+  return json({ error: "insufficient_permissions" }, 403);
+}
+
+async function ownerBootstrap(request: Request, env: Env): Promise<Response> {
+  if (!browserOriginAllowed(request, env)) {
+    return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const configuredToken = env.OWNER_BOOTSTRAP_TOKEN ?? "";
+  const suppliedToken = request.headers.get("X-Owner-Bootstrap-Token") ?? "";
+  if (configuredToken.length < 32 || suppliedToken.length < 32) {
+    return json({ error: "owner_bootstrap_unavailable" }, 503);
+  }
+
+  const [expectedTokenHash, suppliedTokenHash] = await Promise.all([
+    sha256Hex(configuredToken),
+    sha256Hex(suppliedToken)
+  ]);
+  if (!constantTimeEqual(
+    new TextEncoder().encode(expectedTokenHash),
+    new TextEncoder().encode(suppliedTokenHash)
+  )) {
+    return json({ error: "invalid_bootstrap_token" }, 403);
+  }
+
+  const body = await parseJsonBody(request, 8192);
+  if (!body) return json({ error: "invalid_request" }, 400);
+
+  const email = safeString(body.email).toLowerCase();
+  const displayName = safeString(body.display_name);
+  const password = typeof body.password === "string" ? body.password : "";
+
+  if (!validEmail(email)) return json({ error: "invalid_email" }, 400);
+  if (displayName.length < 2 || displayName.length > 100) {
+    return json({ error: "invalid_display_name" }, 400);
+  }
+  if (!validPassword(password)) {
+    return json({ error: "password_policy_failed" }, 400);
+  }
+
+  const existing = await env.DB.prepare(
+    "SELECT COUNT(*) AS user_count FROM staff_users"
+  ).first<{ user_count: number }>();
+
+  if (!existing || existing.user_count !== 0) {
+    return json({ error: "owner_already_configured" }, 409);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const staff: SessionUser = {
+    id: crypto.randomUUID(),
+    email,
+    display_name: displayName,
+    role: "owner"
+  };
+
+  try {
+    await env.DB.prepare(
+      "INSERT INTO staff_users (id, email, password_hash, display_name, role, is_active) " +
+      "VALUES (?1, ?2, ?3, ?4, 'owner', 1)"
+    ).bind(staff.id, staff.email, passwordHash, staff.display_name).run();
+  } catch {
+    return json({ error: "owner_already_configured" }, 409);
+  }
+
+  const response = await createStaffSession(env, staff, request);
+  return new Response(response.body, {
+    status: 201,
+    headers: response.headers
+  });
+}
+
+async function adminLogin(request: Request, env: Env): Promise<Response> {
+  if (!browserOriginAllowed(request, env)) {
+    return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const allowed = await consumeRateLimit(request, env, "admin-login", 5, 15 * 60 * 1000);
+  if (!allowed) {
+    return json({ error: "rate_limit_exceeded" }, 429, { "Retry-After": "900" });
+  }
+
+  const body = await parseJsonBody(request, 8192);
+  if (!body) return json({ error: "invalid_request" }, 400);
+
+  const email = safeString(body.email).toLowerCase();
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!validEmail(email) || password.length === 0 || password.length > 128) {
+    return json({ error: "invalid_credentials" }, 401);
+  }
+
+  const staff = await env.DB.prepare(
+    "SELECT id, email, password_hash, display_name, role, is_active " +
+    "FROM staff_users WHERE email = ?1 COLLATE NOCASE LIMIT 1"
+  ).bind(email).first<StaffUserRow>();
+
+  if (!staff || staff.is_active !== 1 || !staff.password_hash) {
+    return json({ error: "invalid_credentials" }, 401);
+  }
+
+  const valid = await verifyPassword(password, staff.password_hash);
+  if (!valid) return json({ error: "invalid_credentials" }, 401);
+
+  return createStaffSession(env, {
+    id: staff.id,
+    email: staff.email,
+    display_name: staff.display_name,
+    role: staff.role
+  }, request);
+}
+
+async function adminLogout(request: Request, env: Env): Promise<Response> {
+  if (!browserOriginAllowed(request, env)) {
+    return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const token = getCookie(request, ADMIN_COOKIE_NAME);
+  if (token && /^[a-f0-9]{64}$/i.test(token)) {
+    const tokenHash = await sha256Hex(token.toLowerCase());
+    const staff = await currentStaff(request, env);
+    if (staff) {
+      await env.DB.batch([
+        env.DB.prepare(
+          "UPDATE staff_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = ?1 AND revoked_at IS NULL"
+        ).bind(tokenHash),
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id) " +
+          "VALUES (?1, ?2, ?3, 'staff.logout', 'staff_user', ?2)"
+        ).bind(crypto.randomUUID(), staff.id, staff.role)
+      ]);
+    }
+  }
+
+  const headers = new Headers();
+  headers.append("Set-Cookie", sessionCookie("", 0));
+  return json({ authenticated: false }, 200, headers);
+}
+
+async function adminSession(request: Request, env: Env): Promise<Response> {
+  const user = await currentStaff(request, env);
+  if (!user) return json({ authenticated: false }, 401);
+
+  return json({
+    authenticated: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      display_name: user.display_name,
+      role: user.role
+    }
+  });
+}
+
+async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
+    return ownerBootstrap(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/login") {
+    return adminLogin(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/logout") {
+    return adminLogout(request, env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/session") {
+    return adminSession(request, env);
+  }
+
+  return json({ error: "not_found" }, 404);
+}
+
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname.startsWith("/api/v1/admin/")) {
+    return adminApi(request, env, url);
+  }
 
   if (request.method === "GET" && url.pathname === "/api/v1/health") {
     return health(env);
