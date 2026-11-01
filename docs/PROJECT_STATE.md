@@ -38,7 +38,7 @@
 
 ### Admin portal
 - React + TypeScript source with owner setup/login, session restoration, overview, live public configuration data, role display, logout and order operations UI.
-- Product, inventory, payments, delivery management, staff management and editable settings screens are still pending.
+- Admin portal source now includes dashboard metrics, Orders, product/category catalogue, inventory, delivery zones, store settings, staff management and COD collection. These modules are CI-tested where recorded below; real authenticated Worker/browser integration is still pending.
 - The owner bootstrap UI requires an operator-provided token; no default password is created.
 
 ## Test state
@@ -162,3 +162,15 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 
 
 - Dashboard metrics follow-up commit: `4e0ac438e665d395e8959f4463f6edc77fe97805`; includes explicit test assertion that the aggregate SQL query does not select customer phone/address columns. Latest CI is still awaiting confirmation.
+
+
+## Development update — dashboard metrics integration and CI repair (2026-11-01)
+
+- Fixed a malformed literal newline in the API admin router that caused CI TypeScript errors at the dashboard metrics route dispatch.
+- Fixed malformed literal newline escapes in the admin portal import and dashboard data loader.
+- Corrected dashboard metrics ownership: metrics state now lives in the root App, is passed explicitly into Overview, and is not incorrectly declared inside DeliveryModule.
+- Added the missing typed `adminApi.dashboardMetrics()` client method for `GET /api/v1/admin/metrics` and included it in the authenticated admin overview data load.
+- Latest successful GitHub Actions run **41278344214** on commit `1c7d8a86cd25cff5b117757296344ef2977c457e`: API strict TypeScript validation passed, **72/72 API tests passed**, customer storefront production build passed and admin portal production build passed.
+- Run URL: https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41278344214
+- The passing CI establishes compilation and mocked API behavior, not live D1 transaction/concurrency behavior or authenticated Worker/browser integration.
+- No Cloudflare Worker deployment, D1 write, owner account creation, product fixture or real payment mutation was performed. The current `fryzar-api` Worker is still behind GitHub source.
