@@ -1418,11 +1418,119 @@ function validSlug(value: string): boolean {
   return value.length >= 2 && value.length <= 100 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
+
+const CATALOG_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen"];
+const CATALOG_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+const INVENTORY_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen"];
+const INVENTORY_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+
+async function adminInventoryApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  if (request.method === "GET" && url.pathname === "/api/v1/admin/inventory/movements") {
+    if (!hasRole(user, INVENTORY_READ_ROLES)) return roleDenied();
+    const productId = safeString(url.searchParams.get("product_id"));
+    if (productId && !validUuid(productId)) return json({ error: "invalid_product_id" }, 400);
+    const statement = productId
+      ? env.DB.prepare(
+          "SELECT a.id, a.product_id, p.name_en AS product_name_en, p.name_ur AS product_name_ur, " +
+          "a.reason, a.delta_qty, a.previous_stock_qty, a.new_stock_qty, a.note, " +
+          "s.display_name AS actor_name, a.created_at " +
+          "FROM inventory_adjustments a JOIN products p ON p.id = a.product_id " +
+          "LEFT JOIN staff_users s ON s.id = a.actor_staff_id " +
+          "WHERE a.product_id = ?1 ORDER BY a.created_at DESC, a.rowid DESC LIMIT 200"
+        ).bind(productId)
+      : env.DB.prepare(
+          "SELECT a.id, a.product_id, p.name_en AS product_name_en, p.name_ur AS product_name_ur, " +
+          "a.reason, a.delta_qty, a.previous_stock_qty, a.new_stock_qty, a.note, " +
+          "s.display_name AS actor_name, a.created_at " +
+          "FROM inventory_adjustments a JOIN products p ON p.id = a.product_id " +
+          "LEFT JOIN staff_users s ON s.id = a.actor_staff_id " +
+          "ORDER BY a.created_at DESC, a.rowid DESC LIMIT 200"
+        );
+    const result = await statement.all<JsonRecord>();
+    return json({ movements: result.results });
+  }
+
+  if (request.method !== "POST" || url.pathname !== "/api/v1/admin/inventory/adjustments") return null;
+  if (!hasRole(user, INVENTORY_WRITE_ROLES)) return roleDenied();
+  if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+  const body = await parseJsonBody(request, 2048);
+  if (!body) return json({ error: "invalid_request" }, 400);
+  const productId = safeString(body.product_id).toLowerCase();
+  const deltaQty = Number(body.delta_qty);
+  const reason = safeString(body.reason);
+  const note = safeString(body.note);
+  const allowedReasons = ["stock_received", "stock_adjustment", "return_received"];
+  if (!validUuid(productId) || !Number.isSafeInteger(deltaQty) || deltaQty === 0 ||
+      Math.abs(deltaQty) > 1000000 || !allowedReasons.includes(reason) || note.length > 500 ||
+      ((reason === "stock_received" || reason === "return_received") && deltaQty < 0)) {
+    return json({ error: "validation_failed" }, 400);
+  }
+
+  const product = await env.DB.prepare(
+    "SELECT id, stock_qty FROM products WHERE id = ?1 LIMIT 1"
+  ).bind(productId).first<{ id: string; stock_qty: number | null }>();
+  if (!product) return json({ error: "product_not_found" }, 404);
+  if (product.stock_qty === null) return json({ error: "inventory_not_tracked" }, 409);
+  if (product.stock_qty + deltaQty < 0) return json({ error: "insufficient_stock" }, 409);
+
+  const adjustmentId = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "UPDATE products SET stock_qty = stock_qty + ?1, updated_at = ?2 " +
+      "WHERE id = ?3 AND stock_qty IS NOT NULL AND stock_qty + ?1 >= 0"
+    ).bind(deltaQty, timestamp, productId),
+    env.DB.prepare(
+      "INSERT INTO inventory_adjustments " +
+      "(id, product_id, actor_staff_id, reason, delta_qty, previous_stock_qty, new_stock_qty, note, created_at) " +
+      "SELECT ?1, p.id, ?2, ?3, ?4, p.stock_qty - ?4, p.stock_qty, ?5, ?6 " +
+      "FROM products p WHERE p.id = ?7 AND p.stock_qty IS NOT NULL AND p.updated_at = ?6"
+    ).bind(adjustmentId, user.id, reason, deltaQty, note, timestamp, productId),
+    env.DB.prepare(
+      "INSERT INTO inventory_movements " +
+      "(id, product_id, delta_qty, reason, reference_type, reference_id, actor_staff_id, note, created_at) " +
+      "SELECT id, product_id, delta_qty, reason, 'inventory_adjustment', id, actor_staff_id, note, created_at " +
+      "FROM inventory_adjustments WHERE id = ?1"
+    ).bind(adjustmentId),
+    env.DB.prepare(
+      "INSERT INTO audit_logs " +
+      "(id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+      "SELECT ?1, ?2, ?3, 'inventory.stock_adjusted', 'inventory_adjustment', id, ?4, created_at " +
+      "FROM inventory_adjustments WHERE id = ?5"
+    ).bind(
+      crypto.randomUUID(),
+      user.id,
+      user.role,
+      JSON.stringify({ product_id: productId, delta_qty: deltaQty, reason }),
+      adjustmentId
+    )
+  ];
+
+  try {
+    const results = await env.DB.batch(statements);
+    if ((results[0]?.meta?.changes ?? 0) !== 1 || (results[1]?.meta?.changes ?? 0) !== 1) {
+      return json({ error: "stock_changed_retry" }, 409);
+    }
+  } catch {
+    return json({ error: "inventory_adjustment_failed" }, 409);
+  }
+
+  return json({
+    adjusted: true,
+    adjustment_id: adjustmentId,
+    product_id: productId,
+    previous_stock_qty: product.stock_qty,
+    requested_delta_qty: deltaQty,
+    reason
+  }, 201);
+}
+
 async function adminCatalogueApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
   const categoryPath = url.pathname === "/api/v1/admin/categories";
-  const categoryMatch = url.pathname.match(/^\/api\/v1\/admin\/categories\/([0-9a-f-]{36})$/i);
+  const categoryMatch = url.pathname.match(/^\\/api\\/v1\\/admin\\/categories\\/([0-9a-f-]{36})$/i);
   const productPath = url.pathname === "/api/v1/admin/products";
-  const productMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})$/i);
+  const productMatch = url.pathname.match(/^\\/api\\/v1\\/admin\\/products\\/([0-9a-f-]{36})$/i);
   if (!(categoryPath || categoryMatch || productPath || productMatch)) return null;
   if (request.method === "GET") {
     if (!hasRole(user, CATALOG_READ_ROLES)) return roleDenied();
@@ -1471,15 +1579,24 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
 
   try {
     if (isCategory) {
-      const statement = request.method === "POST"
+      const write = request.method === "POST"
         ? env.DB.prepare("INSERT INTO categories (id, slug, name_en, name_ur, description_en, description_ur, sort_order, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)")
             .bind(id, slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now)
         : env.DB.prepare("UPDATE categories SET slug=?1, name_en=?2, name_ur=?3, description_en=?4, description_ur=?5, sort_order=?6, is_active=?7, updated_at=?8 WHERE id=?9")
             .bind(slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now, id);
-      const result = await statement.run();
-      if (request.method === "PATCH" && (result.meta?.changes ?? 0) !== 1) return json({ error: "category_not_found" }, 404);
-      await env.DB.prepare("INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) VALUES (?1, ?2, ?3, ?4, 'category', ?5, ?6)")
-        .bind(crypto.randomUUID(), user.id, user.role, request.method === "POST" ? "category.created" : "category.updated", id, JSON.stringify({ slug, is_active: active })).run();
+      const statements: D1PreparedStatement[] = [
+        write,
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "SELECT ?1, ?2, ?3, ?4, 'category', id, ?5, ?6 FROM categories WHERE id = ?7 AND updated_at = ?6"
+        ).bind(
+          crypto.randomUUID(), user.id, user.role,
+          request.method === "POST" ? "category.created" : "category.updated",
+          JSON.stringify({ slug, is_active: active }), now, id
+        )
+      ];
+      const results = await env.DB.batch(statements);
+      if ((results[0]?.meta?.changes ?? 0) !== 1) return json({ error: "category_not_found" }, request.method === "PATCH" ? 404 : 409);
       return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
     }
 
@@ -1489,25 +1606,53 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
     const categoryId = safeString(body.category_id) || null;
     const sku = safeString(body.sku) || null;
     const imageUrl = safeString(body.image_url) || null;
+    if (request.method === "PATCH" && Object.prototype.hasOwnProperty.call(body, "stock_qty")) {
+      return json({ error: "inventory_adjustment_required" }, 409);
+    }
     if (!Number.isSafeInteger(price) || price < 0 || price > 100000000000 ||
         (compareAt !== null && (!Number.isSafeInteger(compareAt) || compareAt < 0)) ||
         (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 100000000)) ||
         (categoryId !== null && !validUuid(categoryId)) ||
         (sku !== null && sku.length > 100) ||
-        (imageUrl !== null && (imageUrl.length > 2000 || !/^https:\/\//i.test(imageUrl)))) {
+        (imageUrl !== null && (imageUrl.length > 2000 || !/^https:\\/\\//i.test(imageUrl)))) {
       return json({ error: "validation_failed" }, 400);
     }
     const available = body.is_available === undefined ? true : body.is_available === true;
     const featured = body.is_featured === true;
-    const statement = request.method === "POST"
+    const insertOrUpdate = request.method === "POST"
       ? env.DB.prepare("INSERT INTO products (id, category_id, sku, slug, name_en, name_ur, description_en, description_ur, price_paisa, compare_at_paisa, image_url, stock_qty, is_available, is_featured, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)")
           .bind(id, categoryId, sku, slug, nameEn, nameUr, descriptionEn, descriptionUr, price, compareAt, imageUrl, stock, available ? 1 : 0, featured ? 1 : 0, sortOrder, now)
-      : env.DB.prepare("UPDATE products SET category_id=?1, sku=?2, slug=?3, name_en=?4, name_ur=?5, description_en=?6, description_ur=?7, price_paisa=?8, compare_at_paisa=?9, image_url=?10, stock_qty=?11, is_available=?12, is_featured=?13, sort_order=?14, updated_at=?15 WHERE id=?16")
-          .bind(categoryId, sku, slug, nameEn, nameUr, descriptionEn, descriptionUr, price, compareAt, imageUrl, stock, available ? 1 : 0, featured ? 1 : 0, sortOrder, now, id);
-    const result = await statement.run();
-    if (request.method === "PATCH" && (result.meta?.changes ?? 0) !== 1) return json({ error: "product_not_found" }, 404);
-    await env.DB.prepare("INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) VALUES (?1, ?2, ?3, ?4, 'product', ?5, ?6)")
-      .bind(crypto.randomUUID(), user.id, user.role, request.method === "POST" ? "product.created" : "product.updated", id, JSON.stringify({ slug, price_paisa: price, is_available: available, stock_qty: stock })).run();
+      : env.DB.prepare("UPDATE products SET category_id=?1, sku=?2, slug=?3, name_en=?4, name_ur=?5, description_en=?6, description_ur=?7, price_paisa=?8, compare_at_paisa=?9, image_url=?10, is_available=?11, is_featured=?12, sort_order=?13, updated_at=?14 WHERE id=?15")
+          .bind(categoryId, sku, slug, nameEn, nameUr, descriptionEn, descriptionUr, price, compareAt, imageUrl, available ? 1 : 0, featured ? 1 : 0, sortOrder, now, id);
+
+    const statements: D1PreparedStatement[] = [insertOrUpdate];
+    if (request.method === "POST" && stock !== null && stock > 0) {
+      const openingId = crypto.randomUUID();
+      statements.push(
+        env.DB.prepare(
+          "INSERT INTO inventory_adjustments (id, product_id, actor_staff_id, reason, delta_qty, previous_stock_qty, new_stock_qty, note, created_at) " +
+          "VALUES (?1, ?2, ?3, 'stock_received', ?4, 0, ?4, 'Opening stock at product creation', ?5)"
+        ).bind(openingId, id, user.id, stock, now),
+        env.DB.prepare(
+          "INSERT INTO inventory_movements (id, product_id, delta_qty, reason, reference_type, reference_id, actor_staff_id, note, created_at) " +
+          "SELECT id, product_id, delta_qty, reason, 'inventory_adjustment', id, actor_staff_id, note, created_at " +
+          "FROM inventory_adjustments WHERE id = ?1"
+        ).bind(openingId)
+      );
+    }
+    statements.push(
+      request.method === "POST"
+        ? env.DB.prepare(
+            "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+            "SELECT ?1, ?2, ?3, 'product.created', 'product', id, ?4, ?5 FROM products WHERE id = ?6 AND created_at = ?5"
+          ).bind(crypto.randomUUID(), user.id, user.role, JSON.stringify({ slug, price_paisa: price, initial_stock_qty: stock }), now, id)
+        : env.DB.prepare(
+            "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+            "SELECT ?1, ?2, ?3, 'product.updated', 'product', id, ?4, ?5 FROM products WHERE id = ?6 AND updated_at = ?5"
+          ).bind(crypto.randomUUID(), user.id, user.role, JSON.stringify({ slug, price_paisa: price, is_available: available }), now, id)
+    );
+    const results = await env.DB.batch(statements);
+    if ((results[0]?.meta?.changes ?? 0) !== 1) return json({ error: "product_not_found" }, request.method === "PATCH" ? 404 : 409);
     return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
@@ -1533,6 +1678,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const inventoryResponse = await adminInventoryApi(request, env, url, user);
+  if (inventoryResponse) return inventoryResponse;
 
   const catalogueResponse = await adminCatalogueApi(request, env, url, user);
   if (catalogueResponse) return catalogueResponse;
