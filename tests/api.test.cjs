@@ -58,7 +58,7 @@ function createEnv(options = {}) {
       DB,
       APP_ENV: "test",
       ALLOWED_ORIGINS: "https://store.example,https://admin.example",
-      TRACKING_SECRET: options.trackingSecret
+      TRACKING_SECRET: options.trackingSecret ?? "test-only-tracking-secret-at-least-32-bytes-long"
     },
     state
   };
