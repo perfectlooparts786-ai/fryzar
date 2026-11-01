@@ -3,6 +3,7 @@ import {
   AdminApiError,
   adminApi,
   type AdminOrder,
+  type AdminPayment,
   type Category,
   type InventoryMovement,
   type DeliveryZone,
