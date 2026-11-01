@@ -1175,7 +1175,8 @@ export default function App() {
       if (results[0].status === "fulfilled") setSettings(results[0].value.settings);
       if (results[1].status === "fulfilled") setProducts(results[1].value.products);
       if (results[2].status === "fulfilled") setCategories(results[2].value.categories);
-      if (results[3].status === "fulfilled") setZones(results[3].value.delivery_zones);\n      if (results[4].status === "fulfilled") setMetrics(results[4].value.metrics);
+      if (results[3].status === "fulfilled") setZones(results[3].value.delivery_zones);
+      if (results[4].status === "fulfilled") setMetrics(results[4].value.metrics);
       const failed = results.filter(result => result.status === "rejected").length;
       if (failed) setDataError("Some public store data could not be loaded. Check API connectivity.");
       setDataLoading(false);
