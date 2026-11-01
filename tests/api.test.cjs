@@ -1294,3 +1294,26 @@ test("operator can read settings but cannot edit them", async () => {
   assert.equal((await response.json()).error, "insufficient_permissions");
   assert.equal(state.batchCount, 0);
 });
+
+
+test("invalid international store contact number is rejected before writes", async () => {
+  const token = "2".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/settings", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ whatsapp_number: "not-a-phone" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_whatsapp_number");
+  assert.equal(state.batchCount, 0);
+});
