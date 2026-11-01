@@ -12,8 +12,8 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | F-006 | Secure order tracking | IMPLEMENTED | HMAC-derived token, token hash stored, PII omitted in API response test |
 | F-007 | Delivery zone API | IMPLEMENTED | Source added and D1 SQL corrected to schema columns; latest live Worker deploy pending |
 | F-008 | Customer React storefront | IMPLEMENTED | Source and prior CI production build passed; live integration/deployment pending |
-| F-009 | Owner bootstrap/login/session | IMPLEMENTED | Atomic first-owner claim, PBKDF2, hashed session token, secure cookie source; CI/runtime verification pending |
-| F-010 | Admin portal | IMPLEMENTED | Auth screens, live overview and Orders UI source; current admin build CI pending |
+| F-009 | Owner bootstrap/login/session | TESTED | Source and mocked auth tests passed CI; real Worker session and bootstrap runtime test pending |
+| F-010 | Admin portal | TESTED | Auth screens, live overview and Orders UI build passed CI; real API/browser integration pending |
 | F-011 | Role-aware order list/detail | IMPLEMENTED | Role checks in source; finance/rider/support excluded; D1 integration tests pending |
 | F-012 | Order status transition and cancellation restock | IMPLEMENTED | Conditional D1 batch with stock restoration, movement, history and audit; concurrency test pending |
 | F-013 | Run latest CI on complete API/customer/admin source | NOT STARTED | Must pass strict API TS, API tests, customer build and admin build |
