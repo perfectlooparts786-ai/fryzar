@@ -26,7 +26,7 @@ jobs:
       - name: Check out candidate source
         uses: actions/checkout@v4
         with:
-          ref: ed48f1b061f41b3b009138d8cdf98ea856779b43
+          ref: d0dae7cd68610ec0b7ab5ad45ea672a7458aa41d
           path: candidate
 
       - name: Set up Node.js
