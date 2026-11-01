@@ -249,6 +249,8 @@ function Overview({
     { label: "Unpaid COD", value: String(metrics?.unpaid_cod_count ?? "—"), tone: "sand", note: "Awaiting collection" },
     { label: "Low stock", value: String(metrics?.low_stock_products ?? "—"), tone: "blue", note: "Tracked stock ≤ 5" },
     { label: "Active products", value: String(metrics?.active_products ?? products.length), tone: "mint", note: "Available catalogue items" },
+    { label: "Active categories", value: String(metrics?.active_categories ?? categories.length), tone: "sand", note: "Enabled catalogue groups" },
+    { label: "Delivery zones", value: String(metrics?.active_delivery_zones ?? zones.length), tone: "blue", note: "Enabled delivery areas" },
     { label: "Store readiness", value: open ? "Open" : "Setup", tone: "slate", note: "Server-controlled status" }
   ];
 
