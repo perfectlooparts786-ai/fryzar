@@ -4,7 +4,7 @@
 GitHub Actions previously passed strict TypeScript validation, 17/17 API tests and the customer storefront production build on commit \`1607be7\`.
 
 ## Latest verified combined validation
-GitHub Actions run 41271663890 on commit \\`f6be27b0d89ad19cc50347347495100cb48f22e9\\` passed all pipeline steps: API strict TypeScript validation, 62/62 Node API tests, customer storefront production build, and admin portal production build.
+GitHub Actions run 41271949570 on commit \\`8633e41d8a284c95713cefde5be5ac7543aeeb51\\` passed all pipeline steps: API strict TypeScript validation, 70/70 Node API tests, customer storefront production build, and admin portal production build.
 
 
 - Added first-owner bootstrap and secure session endpoints.
@@ -103,3 +103,13 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - Track page token is held in page state only and not written to local storage.
 - GitHub Actions run 41271663890 passed 62/62 mocked API tests, strict API TypeScript validation and both web builds.
 - The storefront build confirms compilation; no automated browser E2E run or live Worker tracking request has been completed.
+
+
+## COD collection validation
+- Finance can list COD records without customer contact/address columns. Operator access is denied.
+- Finance can collect a delivered unpaid COD order; the D1 batch writes order and payment state, collector identity, reviewed timestamp, audit record and idempotency response.
+- Non-delivered orders cannot be collected. Non-COD payment methods are rejected.
+- Collection requires an Idempotency-Key. Identical retry replays the same response; the same key with a different order payload is rejected.
+- Tests cover delivered gate, non-COD gate, unauthorized list access, response replay and key-payload mismatch.
+- GitHub Actions run 41271949570 passed 70/70 mocked API tests plus TypeScript and both web builds.
+- Live D1 transaction rollback/concurrency and live Worker API verification remain pending. No real payment state was changed.
