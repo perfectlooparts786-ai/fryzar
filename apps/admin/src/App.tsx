@@ -4,6 +4,7 @@ import {
   adminApi,
   type AdminOrder,
   type Category,
+  type InventoryMovement,
   type DeliveryZone,
   type Product,
   type StaffUser,
@@ -18,7 +19,7 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
   { id: "orders", label: "Orders", icon: "▤", note: "API pending" },
   { id: "catalogue", label: "Catalogue", icon: "▦" },
-  { id: "inventory", label: "Inventory", icon: "▧", note: "API pending" },
+  { id: "inventory", label: "Inventory", icon: "▧" },
   { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
   { id: "delivery", label: "Delivery", icon: "⌖", note: "Read only" },
   { id: "team", label: "Team access", icon: "♙", note: "API pending" },
@@ -490,7 +491,7 @@ function CatalogueModule({ user }: { user: StaffUser }) {
           description_en: form.description_en, description_ur: form.description_ur,
           price_paisa: Number(form.price_paisa),
           compare_at_paisa: form.compare_at_paisa === "" ? null : Number(form.compare_at_paisa),
-          stock_qty: form.stock_qty === "" ? null : Number(form.stock_qty),
+          ...(editingId ? {} : { stock_qty: form.stock_qty === "" ? null : Number(form.stock_qty) }),
           sku: form.sku || null, category_id: form.category_id || null, image_url: form.image_url || null,
           sort_order: Number(form.sort_order), is_available: form.is_available !== "0", is_featured: form.is_featured === "1"
         }, editingId || undefined);
@@ -514,7 +515,7 @@ function CatalogueModule({ user }: { user: StaffUser }) {
       <div className="catalogue-form-grid">
         {field("English name", "name_en", "text", true)}{field("Urdu name", "name_ur", "text", true)}{field("URL slug", "slug", "text", true)}
         {tab === "products" ? <>
-          {field("Price (paisa)", "price_paisa", "number", true)}{field("Compare-at price (paisa)", "compare_at_paisa", "number")}{field("Stock quantity (blank = unlimited)", "stock_qty", "number")}
+          {field("Price (paisa)", "price_paisa", "number", true)}{field("Compare-at price (paisa)", "compare_at_paisa", "number")}{!editingId ? field("Opening stock (blank = not tracked)", "stock_qty", "number") : null}
           {field("SKU (optional)", "sku")}{field("Image URL (HTTPS only)", "image_url")}
           <label className="catalogue-field"><span>Category</span><select value={form.category_id ?? ""} onChange={event => setForm(current => ({ ...current, category_id: event.target.value }))}><option value="">Uncategorised</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name_en}</option>)}</select></label>
           <label className="catalogue-field"><span>Availability</span><select value={form.is_available ?? "1"} onChange={event => setForm(current => ({ ...current, is_available: event.target.value }))}><option value="1">Available</option><option value="0">Unavailable</option></select></label>
@@ -531,6 +532,114 @@ function CatalogueModule({ user }: { user: StaffUser }) {
       : categories.length === 0 ? <div className="orders-empty"><strong>No categories yet</strong><small>Create categories to organise the product catalogue.</small></div> :
       <div className="table-wrap"><table className="orders-table"><thead><tr><th>Category</th><th>Slug</th><th>Status</th><th>Action</th></tr></thead><tbody>{categories.map(c => <tr key={c.id}><td><strong>{c.name_en}</strong><small>{c.name_ur}</small></td><td>{c.slug}</td><td>{c.is_active ? "Active" : "Inactive"}</td><td><button type="button" className="refresh-button" onClick={() => editCategory(c)} disabled={!canEdit}>Edit</button></td></tr>)}</tbody></table></div>}
     </div>
+  </section>;
+}
+
+
+function InventoryModule({ user }: { user: StaffUser }) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState("");
+  const [filterProduct, setFilterProduct] = useState("");
+  const [delta, setDelta] = useState("");
+  const [reason, setReason] = useState<"stock_received" | "stock_adjustment" | "return_received">("stock_received");
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const canAdjust = user.role === "owner" || user.role === "manager";
+  const trackedProducts = products.filter(product => product.stock_qty !== null && product.stock_qty !== undefined);
+
+  async function load(productFilter = filterProduct) {
+    setLoading(true); setError("");
+    try {
+      const [productResult, movementResult] = await Promise.all([
+        adminApi.adminProducts(),
+        adminApi.inventoryMovements(productFilter)
+      ]);
+      setProducts(productResult.products);
+      setMovements(movementResult.movements);
+      if (!selectedProduct && productResult.products.some(product => product.stock_qty !== null && product.stock_qty !== undefined)) {
+        setSelectedProduct(productResult.products.find(product => product.stock_qty !== null && product.stock_qty !== undefined)!.id);
+      }
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void load(""); }, []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const quantity = Number(delta);
+    if (!selectedProduct || !Number.isSafeInteger(quantity) || quantity === 0) {
+      setError("Choose a tracked product and enter a non-zero whole-number quantity.");
+      return;
+    }
+    if ((reason === "stock_received" || reason === "return_received") && quantity < 0) {
+      setError("Received stock and returns must use a positive quantity. Use Stock adjustment for reductions.");
+      return;
+    }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await adminApi.adjustInventory({
+        product_id: selectedProduct,
+        delta_qty: quantity,
+        reason,
+        note: note.trim()
+      });
+      const product = products.find(item => item.id === selectedProduct);
+      const nextQty = result.previous_stock_qty + result.requested_delta_qty;
+      setNotice((product?.name_en ?? "Product") + ": " + result.previous_stock_qty + " → " + nextQty + " units.");
+      setDelta(""); setNote("");
+      await load(filterProduct);
+    } catch (cause) { setError(messageFor(cause)); }
+    finally { setBusy(false); }
+  }
+
+  function reasonLabel(value: string) {
+    return value.replaceAll("_", " ");
+  }
+
+  return <section className="inventory-module">
+    <div className="module-heading">
+      <div><span className="kicker">STOCK CONTROL</span><h1>Inventory</h1><p>Record stock receipts, returns and corrections with a traceable movement history.</p></div>
+      <button className="refresh-button" type="button" disabled={loading} onClick={() => void load(filterProduct)}>↻ Refresh</button>
+    </div>
+    {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+    {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+    <div className="inventory-summary-grid">
+      <div className="inventory-summary"><span>Tracked products</span><strong>{trackedProducts.length}</strong></div>
+      <div className="inventory-summary"><span>Not tracked</span><strong>{products.length - trackedProducts.length}</strong></div>
+      <div className="inventory-summary"><span>Movement records loaded</span><strong>{movements.length}</strong></div>
+    </div>
+    {canAdjust ? <form className="catalogue-editor inventory-editor" onSubmit={submit}>
+      <h2>Record a stock movement</h2>
+      {trackedProducts.length === 0 ? <p className="orders-footnote">No products currently have stock tracking enabled. Set an opening stock quantity when creating a product. Existing untracked products need a separate stock-tracking activation step.</p> : <>
+        <div className="catalogue-form-grid">
+          <label className="catalogue-field catalogue-wide"><span>Product</span><select required value={selectedProduct} onChange={event => setSelectedProduct(event.target.value)}><option value="">Choose product…</option>{trackedProducts.map(product => <option key={product.id} value={product.id}>{product.name_en} · {product.stock_qty} units</option>)}</select></label>
+          <label className="catalogue-field"><span>Movement reason</span><select value={reason} onChange={event => setReason(event.target.value as typeof reason)}><option value="stock_received">Stock received</option><option value="return_received">Return received</option><option value="stock_adjustment">Stock adjustment</option></select></label>
+          <label className="catalogue-field"><span>Quantity change (+/-)</span><input type="number" step="1" required value={delta} onChange={event => setDelta(event.target.value)} placeholder={reason === "stock_adjustment" ? "e.g. -2 or 5" : "e.g. 10"} /></label>
+          <label className="catalogue-field catalogue-wide"><span>Note (optional)</span><textarea rows={2} maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="Supplier, count correction or return details" /></label>
+        </div>
+        <div className="catalogue-actions"><button type="submit" disabled={busy || loading}>{busy ? "Saving…" : "Record movement"}</button></div>
+      </>}
+    </form> : <p className="orders-footnote">Your role can view inventory history but cannot make stock adjustments.</p>}
+    <section className="inventory-stock-card">
+      <div className="inventory-card-heading"><div><h2>Current stock</h2><p>Live quantities from the catalogue</p></div></div>
+      {loading ? <div className="orders-empty">Loading stock…</div> : products.length === 0 ? <div className="orders-empty">No product records are available yet.</div> :
+        <div className="table-wrap"><table className="orders-table"><thead><tr><th>Product</th><th>SKU</th><th>Available stock</th><th>Tracking</th></tr></thead><tbody>{products.map(product => <tr key={product.id}><td><strong>{product.name_en}</strong><small>{product.name_ur}</small></td><td>{product.sku || "—"}</td><td>{product.stock_qty == null ? "—" : product.stock_qty}</td><td>{product.stock_qty == null ? "Not tracked" : "Tracked"}</td></tr>)}</tbody></table></div>}
+    </section>
+    <section className="inventory-stock-card">
+      <div className="inventory-card-heading">
+        <div><h2>Movement history</h2><p>Most recent 200 adjustments</p></div>
+        <select aria-label="Filter movements by product" value={filterProduct} onChange={event => { setFilterProduct(event.target.value); void load(event.target.value); }}>
+          <option value="">All products</option>{products.map(product => <option key={product.id} value={product.id}>{product.name_en}</option>)}
+        </select>
+      </div>
+      {loading ? <div className="orders-empty">Loading movement history…</div> : movements.length === 0 ? <div className="orders-empty"><strong>No inventory adjustments yet</strong><small>Stock movements will appear here after the first adjustment.</small></div> :
+        <div className="table-wrap"><table className="orders-table"><thead><tr><th>Product</th><th>Reason</th><th>Change</th><th>Before → after</th><th>Recorded by</th><th>Date</th></tr></thead><tbody>{movements.map(movement => <tr key={movement.id}><td><strong>{movement.product_name_en}</strong><small>{movement.product_name_ur}</small></td><td>{reasonLabel(movement.reason)}</td><td className={movement.delta_qty > 0 ? "inventory-positive" : "inventory-negative"}>{movement.delta_qty > 0 ? "+" : ""}{movement.delta_qty}</td><td>{movement.previous_stock_qty} → {movement.new_stock_qty}</td><td>{movement.actor_name || "Former staff"}</td><td><small>{new Date(movement.created_at).toLocaleString()}</small></td></tr>)}</tbody></table></div>}
+    </section>
   </section>;
 }
 
@@ -655,6 +764,10 @@ export default function App() {
         <div className="page-content">
           {section === "orders" ? (
             <OrdersModule user={user} />
+          ) : section === "catalogue" ? (
+            <CatalogueModule user={user} />
+          ) : section === "inventory" ? (
+            <InventoryModule user={user} />
           ) : section === "overview" ? (
             <Overview
               user={user}
