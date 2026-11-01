@@ -204,6 +204,7 @@ async function main() {
       "--config", config,
       "--persist-to", persistTo,
       "--env-file", envFile,
+      "--compatibility-date", "2026-10-30",
       "--ip", "127.0.0.1",
       "--port", String(port),
       "--log-level", "error"
