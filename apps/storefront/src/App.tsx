@@ -6,7 +6,8 @@ import type {
   Language,
   OrderResponse,
   Product,
-  StoreSettings
+  StoreSettings,
+  TrackedOrderResponse
 } from "./types";
 
 type CopyText = { [Key in keyof typeof COPY.en]: string };
@@ -87,7 +88,34 @@ const COPY = {
     notAvailable: "This item is no longer available.",
     minOrder: "Minimum order",
     zoneUnavailable: "Delivery is not configured for this area yet.",
-    setupMessage: "FRYZAR is preparing its catalogue and delivery setup."
+    setupMessage: "FRYZAR is preparing its catalogue and delivery setup.",
+    trackOrder: "Track order",
+    trackTitle: "Your order, clearly tracked.",
+    trackBody: "Enter the private tracking code you received after placing your order.",
+    trackingInput: "64-character private tracking code",
+    trackButton: "Find my order",
+    trackLoading: "Finding your order…",
+    trackNotFound: "No order matched this code. Check the code and try again.",
+    trackRateLimited: "Too many tracking checks. Wait a minute before trying again.",
+    trackInvalid: "Enter the complete 64-character tracking code.",
+    trackGenericError: "We could not retrieve this order. Please try again.",
+    trackResult: "Order details",
+    trackPlaced: "Placed",
+    trackUpdated: "Last updated",
+    trackItems: "Items",
+    trackPayment: "Payment",
+    trackStatus: "Current status",
+    statusPending: "Received",
+    statusConfirmed: "Confirmed",
+    statusPreparing: "Preparing",
+    statusReady: "Ready",
+    statusOutForDelivery: "Out for delivery",
+    statusDelivered: "Delivered",
+    statusCancelled: "Cancelled",
+    statusRejected: "Rejected",
+    paymentUnpaid: "Unpaid",
+    paymentCollected: "Collected",
+    trackingPrivacy: "This private code only shows order progress and item totals. Customer contact details and delivery address are not displayed."
   },
   ur: {
     announcement: "اپنے علاقے کی خریداری، اب زیادہ آسان",
@@ -164,7 +192,34 @@ const COPY = {
     notAvailable: "یہ چیز اب دستیاب نہیں ہے۔",
     minOrder: "کم از کم آرڈر",
     zoneUnavailable: "اس علاقے کے لیے ڈیلیوری ابھی ترتیب نہیں دی گئی۔",
-    setupMessage: "FRYZAR اپنی مصنوعات اور ڈیلیوری کی تیاری کر رہا ہے۔"
+    setupMessage: "FRYZAR اپنی مصنوعات اور ڈیلیوری کی تیاری کر رہا ہے۔",
+    trackOrder: "آرڈر ٹریک کریں",
+    trackTitle: "اپنے آرڈر کی پیش رفت دیکھیں۔",
+    trackBody: "آرڈر دیتے وقت ملنے والا نجی ٹریکنگ کوڈ درج کریں۔",
+    trackingInput: "64 حروف پر مشتمل نجی ٹریکنگ کوڈ",
+    trackButton: "میرا آرڈر تلاش کریں",
+    trackLoading: "آرڈر تلاش کیا جا رہا ہے…",
+    trackNotFound: "اس کوڈ سے کوئی آرڈر نہیں ملا۔ کوڈ چیک کر کے دوبارہ کوشش کریں۔",
+    trackRateLimited: "ٹریکنگ کی بہت زیادہ درخواستیں موصول ہوئیں۔ ایک منٹ بعد دوبارہ کوشش کریں۔",
+    trackInvalid: "مکمل 64 حروف کا ٹریکنگ کوڈ درج کریں۔",
+    trackGenericError: "آرڈر حاصل نہیں ہو سکا۔ دوبارہ کوشش کریں۔",
+    trackResult: "آرڈر کی تفصیل",
+    trackPlaced: "آرڈر کی تاریخ",
+    trackUpdated: "آخری تازہ کاری",
+    trackItems: "اشیا",
+    trackPayment: "ادائیگی",
+    trackStatus: "موجودہ حالت",
+    statusPending: "موصول",
+    statusConfirmed: "تصدیق شدہ",
+    statusPreparing: "تیاری جاری",
+    statusReady: "تیار",
+    statusOutForDelivery: "ڈیلیوری کے لیے روانہ",
+    statusDelivered: "ڈیلیور ہو گیا",
+    statusCancelled: "منسوخ",
+    statusRejected: "مسترد",
+    paymentUnpaid: "ادا نہیں ہوا",
+    paymentCollected: "وصول ہو گیا",
+    trackingPrivacy: "یہ نجی کوڈ صرف آرڈر کی پیش رفت اور اشیا کی رقم دکھاتا ہے۔ کسٹمر کا فون نمبر اور ڈیلیوری پتہ ظاہر نہیں کیا جاتا۔"
   }
 } as const;
 
