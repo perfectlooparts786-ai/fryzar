@@ -238,11 +238,16 @@ Branch: `feature/preview-worker-wrappers`
 
 The preview Worker secret bindings `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` are not yet provisioned. Do not reuse production secret values. Before testing private tracking, checkout or owner bootstrap, provision preview-only credentials through an approved secure route. The store remains setup/not-ready and manual transfer remains disabled.
 
+### GitHub tracking
+
+- Preview topology and migrations: [PR #9](https://github.com/perfectlooparts786-ai/fryzar/pull/9).
+- Preview credentials and live smoke-test gate: [Issue #10](https://github.com/perfectlooparts786-ai/fryzar/issues/10).
+
 ### Next steps
 
-1. Get successful CI and Wrangler dry-run validation on this branch.
+1. Confirm successful CI and Wrangler dry-run validation on the latest branch head.
 2. Review and merge the preview wrapper PR into `foundation/fresh-build` only after CI passes.
 3. Verify preview GitHub Actions environment credentials are configured without reading secret values.
-4. Manually dispatch the preview deployment workflow, then verify the three workers.dev endpoints and request routing.
+4. After the owner-configured preview environment has the required GitHub Actions secrets, manually dispatch the preview deployment workflow, then verify the three workers.dev endpoints and request routing.
 5. Add preview-only secrets through Cloudflare and test authentication/tracking/checkout only while the store remains closed; test successful checkout only in an explicitly controlled preview state.
 6. Keep the existing production/core D1 databases and legacy Workers unchanged while completing the transition plan.
