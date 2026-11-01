@@ -734,7 +734,7 @@ test("admin login records failures for unknown identities without storing raw id
   const failedAttempt = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
   assert.ok(failedAttempt);
   assert.equal(failedAttempt.params.length, 6);
-  assert.match(failedAttempt.sql, /SELECT \\?1, \\?2, \\?3, \\?4, 0/);
+  assert.ok(failedAttempt.sql.includes("SELECT ?1, ?2, ?3, ?4, 0"));
   assert.equal(JSON.stringify(failedAttempt.params).includes("missing@example.test"), false);
 });
 
