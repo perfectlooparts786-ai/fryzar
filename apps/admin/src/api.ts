@@ -213,7 +213,7 @@ export const adminApi = {
     delta_qty: number;
     reason: "stock_received" | "stock_adjustment" | "return_received";
     note?: string;
-  }) =>
+  }, idempotencyKey: string) =>
     apiRequest<{
       adjusted: boolean;
       adjustment_id: string;
@@ -222,6 +222,7 @@ export const adminApi = {
       reason: string;
     }>("/admin/inventory/adjustments", {
       method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(data)
     }),
 
