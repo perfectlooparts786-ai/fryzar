@@ -1526,9 +1526,9 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
 
 async function adminCatalogueApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
   const categoryPath = url.pathname === "/api/v1/admin/categories";
-  const categoryMatch = url.pathname.match(/^\\/api\\/v1\\/admin\\/categories\\/([0-9a-f-]{36})$/i);
+  const categoryMatch = url.pathname.match(/^\/api\/v1\/admin\/categories\/([0-9a-f-]{36})$/i);
   const productPath = url.pathname === "/api/v1/admin/products";
-  const productMatch = url.pathname.match(/^\\/api\\/v1\\/admin\\/products\\/([0-9a-f-]{36})$/i);
+  const productMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})$/i);
   if (!(categoryPath || categoryMatch || productPath || productMatch)) return null;
   if (request.method === "GET") {
     if (!hasRole(user, CATALOG_READ_ROLES)) return roleDenied();
@@ -1612,7 +1612,7 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
         (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 100000000)) ||
         (categoryId !== null && !validUuid(categoryId)) ||
         (sku !== null && sku.length > 100) ||
-        (imageUrl !== null && (imageUrl.length > 2000 || !/^https:\\/\\//i.test(imageUrl)))) {
+        (imageUrl !== null && (imageUrl.length > 2000 || !/^https:\/\//i.test(imageUrl)))) {
       return json({ error: "validation_failed" }, 400);
     }
     const available = body.is_available === undefined ? true : body.is_available === true;
