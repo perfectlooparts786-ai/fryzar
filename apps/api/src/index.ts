@@ -182,10 +182,14 @@ async function consumeRateLimit(
   maximum: number,
   windowMs: number
 ): Promise<boolean> {
+  if (env.APP_ENV !== "production") {
+    return true;
+  }
+
   const clientIp = request.headers.get("CF-Connecting-IP");
 
   if (!clientIp) {
-    return env.APP_ENV !== "production";
+    return false;
   }
 
   const now = Date.now();
