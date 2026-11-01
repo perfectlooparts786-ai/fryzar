@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-01  
 **Active branch:** \`foundation/fresh-build\`  
-**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory, delivery zones, guarded store settings, staff access management and customer order tracking source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
+**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory, delivery zones, guarded store settings, staff management, customer order tracking and COD collection source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
 
 ## Verified infrastructure
 
@@ -136,3 +136,15 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - Order confirmation includes a direct "Track order" action.
 - Latest GitHub Actions run 41271663890 passed on commit \`f6be27b0d89ad19cc50347347495100cb48f22e9\`: 62/62 API tests, API TypeScript validation, customer storefront build and admin build.
 - The public tracking API already had token hashing, response PII omission and rate limiting. The latest Worker still predates these features and has not been redeployed; no live customer tracking session has been tested.
+
+
+## Development update — COD collection (2026-11-01)
+
+- Added authenticated \`GET /api/v1/admin/payments\` for owner, manager and finance roles. It lists COD payment records only, with order/payment status and amount fields. Customer phone and delivery address are not selected.
+- Added \`POST /api/v1/admin/payments/cod-collection\` for owner, manager and finance. It requires a valid idempotency key and only collects a COD payment when the order status is \`delivered\` and both order/payment statuses are \`unpaid\`.
+- A successful collection updates \`orders.payment_status\`, \`payments.status\`, collector/reviewer staff ID and review timestamp, audit event \`payment.cod_collected\`, and the idempotency response in one D1 batch.
+- Duplicate request replay returns the saved response; a reused key with a different payload is rejected. A second collection or concurrent state change cannot silently repeat the payment update.
+- Admin portal Payments module lists COD records, filters unpaid/collected, and enables collection only for delivered unpaid orders. Owner/manager/finance can record collection; other roles are read-only or denied by API.
+- Latest GitHub Actions run 41271949570 passed on commit \`8633e41d8a284c95713cefde5be5ac7543aeeb51\`: 70/70 API tests, strict TypeScript, customer storefront build and admin build.
+- No real payments or orders have been inserted or marked collected in the development D1. No live Worker deployment or authenticated payment integration test has been performed.
+- This is COD collection recording only. Online gateway integration, manual bank-transfer proof, finance review/rejection, refunds, reconciliation and receipt exports remain unimplemented. Manual transfer remains disabled.
