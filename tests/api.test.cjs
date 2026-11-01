@@ -1349,7 +1349,7 @@ test("owner can create a manager account with a hashed password and audit record
   assert.equal(state.batchStatements.length, 2);
   assert.match(state.batchStatements[0].sql, /INSERT INTO staff_users/);
   assert.notEqual(state.batchStatements[0].params[2], "SecureManagerPass123");
-  assert.match(state.batchStatements[0].params[2], /^pbkdf2_sha256\\$/);
+  assert.match(state.batchStatements[0].params[2], /^pbkdf2_sha256\$/);
   assert.match(state.batchStatements[1].sql, /staff.user_created/);
 });
 
