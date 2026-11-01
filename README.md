@@ -20,8 +20,8 @@ FRYZAR is a fresh-build bilingual Urdu and English ordering platform for food, g
 - New D1 database: \`fryzar-core\`, APAC
 - New API Worker: \`fryzar-api\`, isolated workers.dev deployment
 - Customer React storefront source: implemented; its initial production build passed CI before the latest API/admin changes
-- Admin React portal source: authentication screens, live overview and Orders module added; latest combined CI run pending
-- Android client: not started
+- Admin React portal source: authentication, overview, Orders, Catalogue and Inventory modules added; latest CI run passed 39/39 API tests and both web builds
+- Inventory: admin stock receipt/return/correction workflow, movement history, idempotency and audit implemented in source; migration 0004 applied to development D1\n- Android client: not started
 - Production domain routes: not configured
 - Store: remains in setup mode; checkout is closed
 
@@ -42,9 +42,9 @@ This is a development branch. The draft pull request is intentionally not merged
 - \`GET /api/v1/admin/session\`
 - \`GET /api/v1/admin/orders\`
 - \`GET /api/v1/admin/orders/{id}\`
-- \`PATCH /api/v1/admin/orders/{id}/status\`
+- \`PATCH /api/v1/admin/orders/{id}/status\`\n- \`GET /api/v1/admin/categories\` and \`POST/PATCH /api/v1/admin/categories\`\n- \`GET /api/v1/admin/products\` and \`POST/PATCH /api/v1/admin/products\`\n- \`GET /api/v1/admin/inventory/movements\`\n- \`POST /api/v1/admin/inventory/adjustments\`
 
-The latest API source has not yet been redeployed to the Worker. Do not assume endpoints added after the recorded Worker version are live.
+The latest API source has not yet been redeployed to the Worker. Catalogue and inventory endpoints are source/CI-tested but not live. Do not assume endpoints added after the recorded Worker version are live.
 
 ## Safety and launch status
 
@@ -52,7 +52,7 @@ The latest API source has not yet been redeployed to the Worker. Do not assume e
 - Money is calculated from trusted D1 product prices and active delivery-zone settings.
 - COD creates an unpaid payment record.
 - Manual transfer remains disabled. Private proof storage and financial review are not implemented.
-- Order cancellation source includes an exactly-once stock-restoration design, but real D1 concurrency testing is pending.
+- Order cancellation source includes an exactly-once stock-restoration design, but real D1 concurrency testing is pending.\n- Manual inventory changes are owner/manager-only, require an idempotency key and use an adjustment ledger, inventory movement and audit record. Direct product stock edits are blocked after creation.
 - Staff passwords are PBKDF2-SHA256 hashes. Sessions use opaque tokens stored as hashes and an HttpOnly/Secure/SameSite=Strict cookie.
 - The first-owner bootstrap requires a separate Cloudflare secret named \`OWNER_BOOTSTRAP_TOKEN\`. It is not configured yet.
 - No seeded demo products or fake business details have been added.
