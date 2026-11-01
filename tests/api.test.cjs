@@ -51,7 +51,9 @@ function createEnv(options = {}) {
       if (options.batchError) throw options.batchError;
       return statements.map((_, index) => ({
         success: true,
-        meta: { changes: index === 0 ? 1 : 0 },
+        meta: { changes: Array.isArray(options.batchChanges)
+          ? (options.batchChanges[index] ?? 0)
+          : (index === 0 ? 1 : 0) },
         results: []
       }));
     }
@@ -686,4 +688,150 @@ test("manager cancellation atomically includes stock restoration and audit histo
   assert.ok(state.batchStatements.some(item => item.sql.includes("order_status_events")));
   assert.ok(state.batchStatements.some(item => item.sql.includes("order.status_changed")));
   assert.ok(state.batchStatements.some(item => item.sql.includes("updated_at = ?2")));
+});
+
+
+test("manager inventory adjustment writes quantity, adjustment ledger, movement and audit in one batch", async () => {
+  const token = "a".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const product = { id: productId, stock_qty: 8 };
+  const { env, state } = createEnv({ firstResults: [staff, product] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ product_id: productId, delta_qty: 12, reason: "stock_received", note: "Supplier delivery" })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(body.adjusted, true);
+  assert.equal(body.previous_stock_qty, 8);
+  assert.equal(body.requested_delta_qty, 12);
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 4);
+  assert.match(state.batchStatements[0].sql, /stock_qty = stock_qty \+ \?1/);
+  assert.match(state.batchStatements[0].sql, /stock_qty \+ \?1 >= 0/);
+  assert.match(state.batchStatements[1].sql, /INSERT INTO inventory_adjustments/);
+  assert.match(state.batchStatements[2].sql, /INSERT INTO inventory_movements/);
+  assert.match(state.batchStatements[3].sql, /inventory.stock_adjusted/);
+});
+
+test("inventory adjustment rejects a stock reduction below zero before writing", async () => {
+  const token = "b".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const product = { id: productId, stock_qty: 3 };
+  const { env, state } = createEnv({ firstResults: [staff, product] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ product_id: productId, delta_qty: -4, reason: "stock_adjustment" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "insufficient_stock");
+  assert.equal(state.batchCount, 0);
+});
+
+test("inventory adjustment rejects untracked stock quantities", async () => {
+  const token = "c".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const product = { id: productId, stock_qty: null };
+  const { env, state } = createEnv({ firstResults: [staff, product] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ product_id: productId, delta_qty: 4, reason: "stock_received" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "inventory_not_tracked");
+  assert.equal(state.batchCount, 0);
+});
+
+test("operator role cannot submit manual inventory adjustments", async () => {
+  const token = "d".repeat(64);
+  const staff = { id: "operator-1", email: "operator@example.test", display_name: "Operator", role: "operator", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ product_id: productId, delta_qty: 5, reason: "stock_received" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.batchCount, 0);
+});
+
+test("inventory movement history is restricted to authorized operations roles", async () => {
+  const token = "e".repeat(64);
+  const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/inventory/movements", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.allCount, 0);
+});
+
+test("product update cannot bypass the inventory adjustment ledger", async () => {
+  const token = "f".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const productIdToUpdate = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/products/" + productIdToUpdate, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        slug: "edited-product",
+        name_en: "Edited Product",
+        name_ur: "ترمیم شدہ",
+        price_paisa: 1200,
+        stock_qty: 99
+      })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "inventory_adjustment_required");
+  assert.equal(state.batchCount, 0);
 });
