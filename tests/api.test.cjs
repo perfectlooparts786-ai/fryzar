@@ -194,6 +194,27 @@ test("product list clamps excessive page size and binds query values", async () 
   assert.match(state.lastSql, /LIMIT \?2/);
 });
 
+test("delivery zones expose only active public zone details", async () => {
+  const zones = [{
+    id: "zone-1",
+    code: "city-centre",
+    name_en: "City Centre",
+    name_ur: "شہر کا مرکز",
+    city: "Test City",
+    region: "Punjab",
+    delivery_fee_paisa: 15000,
+    minimum_order_paisa: 50000
+  }];
+  const { env, state } = createEnv({ allResults: zones });
+  const response = await worker.fetch(request("/api/v1/delivery-zones"), env);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.delivery_zones, zones);
+  assert.equal(body.currency, "PKR");
+  assert.match(state.lastSql, /is_active = 1/);
+});
+
 test("public configuration parses JSON values from allowlisted rows", async () => {
   const rows = [
     { setting_key: "currency", value_json: '"PKR"' },
