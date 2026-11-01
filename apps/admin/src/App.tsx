@@ -544,6 +544,7 @@ function InventoryModule({ user }: { user: StaffUser }) {
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState<"stock_received" | "stock_adjustment" | "return_received">("stock_received");
   const [note, setNote] = useState("");
+  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -587,10 +588,11 @@ function InventoryModule({ user }: { user: StaffUser }) {
         delta_qty: quantity,
         reason,
         note: note.trim()
-      });
+      }, submissionKey);
       const product = products.find(item => item.id === selectedProduct);
       setNotice((product?.name_en ?? "Product") + ": movement recorded (" + (result.delta_qty > 0 ? "+" : "") + result.delta_qty + " units).");
       setDelta(""); setNote("");
+      setSubmissionKey(crypto.randomUUID());
       await load(filterProduct);
     } catch (cause) { setError(messageFor(cause)); }
     finally { setBusy(false); }
@@ -616,10 +618,10 @@ function InventoryModule({ user }: { user: StaffUser }) {
       <h2>Record a stock movement</h2>
       {trackedProducts.length === 0 ? <p className="orders-footnote">No products currently have stock tracking enabled. Set an opening stock quantity when creating a product. Existing untracked products need a separate stock-tracking activation step.</p> : <>
         <div className="catalogue-form-grid">
-          <label className="catalogue-field catalogue-wide"><span>Product</span><select required value={selectedProduct} onChange={event => setSelectedProduct(event.target.value)}><option value="">Choose product…</option>{trackedProducts.map(product => <option key={product.id} value={product.id}>{product.name_en} · {product.stock_qty} units</option>)}</select></label>
-          <label className="catalogue-field"><span>Movement reason</span><select value={reason} onChange={event => setReason(event.target.value as typeof reason)}><option value="stock_received">Stock received</option><option value="return_received">Return received</option><option value="stock_adjustment">Stock adjustment</option></select></label>
-          <label className="catalogue-field"><span>Quantity change (+/-)</span><input type="number" step="1" required value={delta} onChange={event => setDelta(event.target.value)} placeholder={reason === "stock_adjustment" ? "e.g. -2 or 5" : "e.g. 10"} /></label>
-          <label className="catalogue-field catalogue-wide"><span>Note (optional)</span><textarea rows={2} maxLength={500} value={note} onChange={event => setNote(event.target.value)} placeholder="Supplier, count correction or return details" /></label>
+          <label className="catalogue-field catalogue-wide"><span>Product</span><select required value={selectedProduct} onChange={event => { setSelectedProduct(event.target.value); setSubmissionKey(crypto.randomUUID()); }}><option value="">Choose product…</option>{trackedProducts.map(product => <option key={product.id} value={product.id}>{product.name_en} · {product.stock_qty} units</option>)}</select></label>
+          <label className="catalogue-field"><span>Movement reason</span><select value={reason} onChange={event => { setReason(event.target.value as typeof reason); setSubmissionKey(crypto.randomUUID()); }}><option value="stock_received">Stock received</option><option value="return_received">Return received</option><option value="stock_adjustment">Stock adjustment</option></select></label>
+          <label className="catalogue-field"><span>Quantity change (+/-)</span><input type="number" step="1" required value={delta} onChange={event => { setDelta(event.target.value); setSubmissionKey(crypto.randomUUID()); }} placeholder={reason === "stock_adjustment" ? "e.g. -2 or 5" : "e.g. 10"} /></label>
+          <label className="catalogue-field catalogue-wide"><span>Note (optional)</span><textarea rows={2} maxLength={500} value={note} onChange={event => { setNote(event.target.value); setSubmissionKey(crypto.randomUUID()); }} placeholder="Supplier, count correction or return details" /></label>
         </div>
         <div className="catalogue-actions"><button type="submit" disabled={busy || loading}>{busy ? "Saving…" : "Record movement"}</button></div>
       </>}
