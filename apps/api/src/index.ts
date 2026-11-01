@@ -663,7 +663,8 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       env.DB.prepare(
         "UPDATE products SET " +
         "stock_qty = CASE WHEN stock_qty IS NULL THEN NULL ELSE stock_qty - ?1 END, " +
-        "updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND is_available = 1"
+        "updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND is_available = 1 " +
+        "AND (stock_qty IS NULL OR stock_qty >= ?1)"
       ).bind(item.quantity, product.id),
       env.DB.prepare(
         "INSERT INTO inventory_movements (" +
