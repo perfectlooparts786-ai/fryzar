@@ -1761,7 +1761,7 @@ async function adminSettingsApi(request: Request, env: Env, url: URL, user: Sess
       updates.push({ key, value });
     } else if (key === "whatsapp_number") {
       const phone = safeString(value);
-      if (phone.length > 20 || (phone && !/^\\+?[1-9][0-9]{7,14}$/.test(phone))) {
+      if (phone.length > 20 || (phone && !/^\+?[1-9][0-9]{7,14}$/.test(phone))) {
         return json({ error: "invalid_whatsapp_number" }, 400);
       }
       updates.push({ key, value: phone });
