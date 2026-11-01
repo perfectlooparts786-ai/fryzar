@@ -3,15 +3,17 @@
 ## Earlier verified run
 GitHub Actions previously passed strict TypeScript validation, 17/17 API tests and the customer storefront production build on commit \`1607be7\`.
 
-## Latest source changes awaiting combined validation
-Since that run:
+## Latest verified combined validation
+GitHub Actions run 41266597656 on commit \\`44ce7ecd861f385dd636a7382ed861eeb24b5188\\` passed all pipeline steps: API strict TypeScript validation, 28/28 Node API tests, customer storefront production build, and admin portal production build.
+
+
 - Added first-owner bootstrap and secure session endpoints.
 - Added bootstrap claim migration 0003.
 - Added role-aware admin order list/detail and status transitions/cancellation restock.
 - Added six bootstrap/login/session tests and five order authorization/cancellation tests.
 - Added admin React portal, Orders UI and admin production build step.
 
-The expanded API suite now contains 28 tests. The latest full CI run for those source changes must be checked before claiming success.
+The expanded API suite contains 28 tests. All passed in the latest CI run. These are mocked API tests, not live D1 integration tests.
 
 ## Mock API coverage
 - Health and schema readiness.
