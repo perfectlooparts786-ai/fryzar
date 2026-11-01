@@ -4,7 +4,7 @@
 GitHub Actions previously passed strict TypeScript validation, 17/17 API tests and the customer storefront production build on commit \`1607be7\`.
 
 ## Latest verified combined validation
-GitHub Actions run 41270993539 on commit \\`ab5557a39c3cfa281cd425f882645efb263a6708\\` passed all pipeline steps: API strict TypeScript validation, 51/51 Node API tests, customer storefront production build, and admin portal production build.
+GitHub Actions run 41271663890 on commit \\`f6be27b0d89ad19cc50347347495100cb48f22e9\\` passed all pipeline steps: API strict TypeScript validation, 62/62 Node API tests, customer storefront production build, and admin portal production build.
 
 
 - Added first-owner bootstrap and secure session endpoints.
@@ -85,3 +85,21 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - Reject \`launch_ready\`, \`manual_transfer_enabled\`, currency and \`store_status=open\` changes from the admin settings endpoint.
 - The admin portal displays release-gated status read-only; no live settings were changed.
 - Latest CI run 41270993539 passed 51/51 mocked API tests plus TypeScript and both web builds. Authenticated live Worker/D1 integration is still pending.
+
+
+## Staff lifecycle and role tests
+- Owner can create a manager account; generated password hash is not stored as plaintext and create action is audited.
+- Manager can create operational roles but cannot create managers or owners.
+- Staff directory response does not select or expose password hashes; operational users cannot access the directory.
+- Managers cannot manage other managers. Owner-role targets are protected.
+- Self-deactivation is rejected. Role changes revoke all target sessions and are audited.
+- Password reset uses the existing PBKDF2-SHA256 hashing function, revokes sessions and creates an audit entry.
+- Staff feature is CI-tested only. No real staff accounts were added to D1, and owner bootstrap secret is still absent.
+
+## Customer order tracking
+- Existing API tracking test verifies returned order summary omits phone number and delivery address.
+- Client validates a 64-character hex token before requesting tracking data.
+- UI displays status and lifecycle, timestamps, item snapshots, line totals and payment state in English/Urdu, without showing delivery contact data.
+- Track page token is held in page state only and not written to local storage.
+- GitHub Actions run 41271663890 passed 62/62 mocked API tests, strict API TypeScript validation and both web builds.
+- The storefront build confirms compilation; no automated browser E2E run or live Worker tracking request has been completed.
