@@ -8,6 +8,7 @@ import {
   type DeliveryZone,
   type Product,
   type StaffUser,
+  type StaffMember,
   type StoreSettings
 } from "./api";
 
@@ -22,7 +23,7 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "inventory", label: "Inventory", icon: "▧" },
   { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
   { id: "delivery", label: "Delivery", icon: "⌖" },
-  { id: "team", label: "Team access", icon: "♙", note: "API pending" },
+  { id: "team", label: "Team access", icon: "♙" },
   { id: "settings", label: "Store settings", icon: "⚙" }
 ];
 
@@ -47,6 +48,12 @@ function messageFor(error: unknown): string {
       case "setting_requires_release_gate": return "Launch readiness, currency and payment-proof settings are controlled by release checks and cannot be changed here.";
       case "store_requires_release_gate": return "The store cannot be opened from this settings screen. Complete the release-readiness checks first.";
       case "invalid_whatsapp_number": return "Enter a valid international phone number, or leave the field empty.";
+      case "staff_email_conflict": return "An account with this email already exists.";
+      case "staff_not_found": return "This staff account no longer exists. Refresh the directory.";
+      case "role_assignment_denied": return "Your role cannot assign that staff role.";
+      case "cannot_deactivate_self": return "You cannot deactivate your own account.";
+      case "invalid_staff_update": return "Select a valid staff update before saving.";
+      case "staff_changed_retry": return "This staff account changed during the update. Refresh the directory and try again.";
       case "invalid_credentials": return "Email or password is incorrect.";
       case "owner_bootstrap_unavailable": return "First-owner setup is not enabled on the API yet. The one-time bootstrap secret must be configured securely in Cloudflare.";
       case "invalid_bootstrap_token": return "The bootstrap token was not accepted.";
