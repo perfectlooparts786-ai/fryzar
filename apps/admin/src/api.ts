@@ -60,6 +60,20 @@ export interface DeliveryZone {
   minimum_order_paisa: number;
 }
 
+export interface InventoryMovement {
+  id: string;
+  product_id: string;
+  product_name_en: string;
+  product_name_ur: string;
+  reason: "stock_received" | "stock_adjustment" | "return_received";
+  delta_qty: number;
+  previous_stock_qty: number;
+  new_stock_qty: number;
+  note: string;
+  actor_name: string | null;
+  created_at: string;
+}
+
 export interface AdminOrder {
   id: string;
   order_number: string;
@@ -186,6 +200,29 @@ export const adminApi = {
   saveProduct: (data: Record<string, unknown>, id?: string) =>
     apiRequest<{ saved: boolean; id: string }>("/admin/products" + (id ? "/" + encodeURIComponent(id) : ""), {
       method: id ? "PATCH" : "POST",
+      body: JSON.stringify(data)
+    }),
+
+  inventoryMovements: (productId = "") =>
+    apiRequest<{ movements: InventoryMovement[] }>(
+      "/admin/inventory/movements" + (productId ? "?product_id=" + encodeURIComponent(productId) : "")
+    ),
+
+  adjustInventory: (data: {
+    product_id: string;
+    delta_qty: number;
+    reason: "stock_received" | "stock_adjustment" | "return_received";
+    note?: string;
+  }) =>
+    apiRequest<{
+      adjusted: boolean;
+      adjustment_id: string;
+      product_id: string;
+      previous_stock_qty: number;
+      requested_delta_qty: number;
+      reason: string;
+    }>("/admin/inventory/adjustments", {
+      method: "POST",
       body: JSON.stringify(data)
     }),
 
