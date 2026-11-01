@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-01  
 **Active branch:** \`foundation/fresh-build\`  
-**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory and delivery-zone management source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
+**Current phase:** Fresh platform foundation plus CI-tested catalogue, inventory, delivery-zone and guarded store-settings management source. Development D1 migration 0004 is applied; Worker deployment is still behind GitHub source.
 
 ## Verified infrastructure
 
@@ -102,3 +102,15 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - GitHub Actions run 41270769486 passed on commit \`95af500df33e8c79981097bc22123da5f7a63aeb\`: 45/45 API tests, API strict TypeScript validation, storefront build and admin build.
 - Read-only Cloudflare D1 verification confirmed the existing \`delivery_zones\` schema matches the API columns and there are currently zero configured zones. No delivery-zone data was added.
 - No new D1 migration was needed for delivery zones. The current Worker is still behind GitHub source; Delivery APIs/UI are implemented and CI-tested, not deployed/live-verified.
+
+
+## Development update — guarded Store Settings (2026-11-01)
+
+- Added authenticated \`GET /api/v1/admin/settings\` for staff roles; the query is restricted to \`is_public = 1\` settings only.
+- Added owner/manager-only \`PATCH /api/v1/admin/settings\` for English/Urdu store names, default language, COD enablement, WhatsApp contact and non-open store mode (setup/paused).
+- Settings are strictly allowlisted and validated. All setting upserts and the \`store.settings_updated\` audit entry are sent in one D1 batch.
+- \`launch_ready\`, \`manual_transfer_enabled\`, and currency are release-gated and cannot be edited from this endpoint. \`store_status=open\` is rejected; only setup or paused can be selected here.
+- Admin portal now exposes Store Settings with launch-readiness and manual-transfer read-only status indicators. Supported Urdu/English languages and PKR remain fixed.
+- Added tests for public settings read, owner/manager update and audit, blocked launch/manual-transfer changes, blocked store opening, operator write denial, valid international phone acceptance, and invalid contact rejection.
+- Latest GitHub Actions run 41270993539 passed on commit \`ab5557a39c3cfa281cd425f882645efb263a6708\`: 51/51 API tests passed, TypeScript validation passed, storefront build passed and admin build passed.
+- No real store settings or contact number were changed in D1. The admin feature is source/CI-tested but has not been deployed to the Worker or tested against authenticated live D1 sessions.
