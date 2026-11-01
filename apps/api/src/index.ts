@@ -2251,6 +2251,47 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
   return json(responseBody, 201);
 }
 
+
+const DASHBOARD_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "finance"];
+
+async function adminDashboardMetrics(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  if (url.pathname !== "/api/v1/admin/metrics") return null;
+  if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+  if (!hasRole(user, DASHBOARD_READ_ROLES)) return roleDenied();
+
+  const metrics = await env.DB.prepare(`
+    SELECT
+      (SELECT COUNT(*) FROM orders) AS total_orders,
+      (SELECT COUNT(*) FROM orders WHERE status IN ('pending','confirmed','preparing','ready','out_for_delivery')) AS open_orders,
+      (SELECT COUNT(*) FROM orders WHERE status = 'delivered') AS delivered_orders,
+      (SELECT COALESCE(SUM(total_paisa), 0) FROM orders WHERE status = 'delivered') AS delivered_revenue_paisa,
+      (SELECT COUNT(*) FROM orders WHERE payment_method = 'cod' AND payment_status = 'unpaid') AS unpaid_cod_count,
+      (SELECT COUNT(*) FROM products WHERE is_available = 1) AS active_products,
+      (SELECT COUNT(*) FROM products WHERE stock_qty IS NOT NULL AND stock_qty <= 5 AND is_available = 1) AS low_stock_products,
+      (SELECT COUNT(*) FROM categories WHERE is_active = 1) AS active_categories,
+      (SELECT COUNT(*) FROM delivery_zones WHERE is_active = 1) AS active_delivery_zones
+  `).first<JsonRecord>();
+
+  const number = (key: string): number => {
+    const value = Number(metrics?.[key] ?? 0);
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  };
+
+  return json({
+    metrics: {
+      total_orders: number("total_orders"),
+      open_orders: number("open_orders"),
+      delivered_orders: number("delivered_orders"),
+      delivered_revenue_paisa: number("delivered_revenue_paisa"),
+      unpaid_cod_count: number("unpaid_cod_count"),
+      active_products: number("active_products"),
+      low_stock_products: number("low_stock_products"),
+      active_categories: number("active_categories"),
+      active_delivery_zones: number("active_delivery_zones")
+    }
+  });
+}
+
 async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
     return ownerBootstrap(request, env);
@@ -2268,7 +2309,7 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
 
-  const paymentsResponse = await adminPaymentsApi(request, env, url, user);
+  const metricsResponse = await adminDashboardMetrics(request, env, url, user);\n  if (metricsResponse) return metricsResponse;\n\n  const paymentsResponse = await adminPaymentsApi(request, env, url, user);
   if (paymentsResponse) return paymentsResponse;
 
   const staffResponse = await adminStaffApi(request, env, url, user);
