@@ -64,7 +64,7 @@ The latest API source has not yet been redeployed to the Worker. Catalogue and i
 ~~~bash
 npm install
 npm run db:migrate:local
-npm run dev:api
+npm run dev:api-preview
 npm run dev:storefront
 npm run dev:admin
 npm test
