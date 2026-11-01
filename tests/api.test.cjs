@@ -1443,7 +1443,7 @@ test("operator cannot read the staff directory", async () => {
 test("manager cannot update another manager or owner account", async () => {
   const token = "8".repeat(64);
   const actor = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
-  const target = { id: "manager-2", role: "manager", is_active: 1 };
+  const target = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", role: "manager", is_active: 1 };
   const { env, state } = createEnv({ firstResults: [actor, target] });
   const response = await worker.fetch(
     request("/api/v1/admin/staff/" + target.id, {
@@ -1465,8 +1465,8 @@ test("manager cannot update another manager or owner account", async () => {
 
 test("owner cannot deactivate the first owner account", async () => {
   const token = "9".repeat(64);
-  const actor = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
-  const target = { id: "owner-1", role: "owner", is_active: 1 };
+  const actor = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const target = { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", role: "owner", is_active: 1 };
   const { env, state } = createEnv({ firstResults: [actor, target] });
   const response = await worker.fetch(
     request("/api/v1/admin/staff/" + target.id, {
@@ -1489,7 +1489,7 @@ test("owner cannot deactivate the first owner account", async () => {
 test("role change revokes the target staff sessions and records an audit event", async () => {
   const token = "a".repeat(64);
   const actor = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
-  const target = { id: "operator-1", role: "operator", is_active: 1 };
+  const target = { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", role: "operator", is_active: 1 };
   const { env, state } = createEnv({ firstResults: [actor, target], batchChanges: [1, 1, 1] });
   const response = await worker.fetch(
     request("/api/v1/admin/staff/" + target.id, {
@@ -1515,8 +1515,8 @@ test("role change revokes the target staff sessions and records an audit event",
 
 test("staff cannot deactivate their own account", async () => {
   const token = "b".repeat(64);
-  const actor = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
-  const target = { id: "manager-1", role: "manager", is_active: 1 };
+  const actor = { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const target = { id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", role: "manager", is_active: 1 };
   const { env, state } = createEnv({ firstResults: [actor, target] });
   const response = await worker.fetch(
     request("/api/v1/admin/staff/" + target.id, {
@@ -1539,7 +1539,7 @@ test("staff cannot deactivate their own account", async () => {
 test("staff password reset revokes all active sessions and is audit logged", async () => {
   const token = "c".repeat(64);
   const actor = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
-  const target = { id: "operator-1", role: "operator" };
+  const target = { id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", role: "operator" };
   const { env, state } = createEnv({ firstResults: [actor, target], batchChanges: [1, 2, 1] });
   const response = await worker.fetch(
     request("/api/v1/admin/staff/" + target.id + "/reset-password", {
@@ -1567,7 +1567,7 @@ test("staff password reset revokes all active sessions and is audit logged", asy
 test("manager cannot reset another manager password", async () => {
   const token = "d".repeat(64);
   const actor = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
-  const target = { id: "manager-2", role: "manager" };
+  const target = { id: "ffffffff-ffff-4fff-8fff-ffffffffffff", role: "manager" };
   const { env, state } = createEnv({ firstResults: [actor, target] });
   const response = await worker.fetch(
     request("/api/v1/admin/staff/" + target.id + "/reset-password", {
