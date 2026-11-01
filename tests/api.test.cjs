@@ -1838,6 +1838,7 @@ test("admin dashboard metrics returns aggregate operational counts without custo
   assert.deepEqual((await response.json()).metrics, metrics);
   assert.equal(state.firstCount, 2);
   assert.match(state.lastSql, /delivered_revenue_paisa/);
+  assert.doesNotMatch(state.lastSql, /customer_phone|delivery_address/);
   assert.doesNotMatch(JSON.stringify(metrics), /customer_phone|delivery_address/);
 });
 
