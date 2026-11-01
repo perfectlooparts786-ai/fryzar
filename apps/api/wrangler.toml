@@ -11,6 +11,6 @@ ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:
 
 [[d1_databases]]
 binding = "DB"
-database_name = "fryzar-core"
-database_id = "098238a6-1bda-4735-8f21-d925c7fe32de"
+database_name = "fryzar-preview"
+database_id = "a6f528a3-4b36-43a9-8e77-31f7105a4aeb"
 migrations_dir = "migrations"
