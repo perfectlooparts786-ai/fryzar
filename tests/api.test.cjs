@@ -1586,3 +1586,230 @@ test("manager cannot reset another manager password", async () => {
   assert.equal((await response.json()).error, "insufficient_permissions");
   assert.equal(state.batchCount, 0);
 });
+
+
+test("finance can read COD payment records without customer contact fields", async () => {
+  const token = "c".repeat(64);
+  const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const payments = [{ payment_id: "payment-1", order_number: "FRY-00001", order_status: "delivered", method: "cod", payment_status: "unpaid", amount_paisa: 72000 }];
+  const { env, state } = createEnv({ firstResult: staff, allResults: payments });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments?status=unpaid", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.payments, payments);
+  assert.match(state.lastSql, /p.method = 'cod'/);
+  assert.doesNotMatch(state.lastSql, /customer_phone|delivery_address/);
+});
+
+test("operator cannot read payment records", async () => {
+  const token = "d".repeat(64);
+  const staff = { id: "operator-1", email: "operator@example.test", display_name: "Operator", role: "operator", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.allCount, 0);
+});
+
+test("finance can collect a delivered COD payment with atomic payment and audit records", async () => {
+  const token = "e".repeat(64);
+  const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const payment = {
+    payment_id: "payment-1",
+    payment_status: "unpaid",
+    method: "cod",
+    amount_paisa: 72000,
+    order_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    order_number: "FRY-00001",
+    order_status: "delivered",
+    order_payment_status: "unpaid"
+  };
+  const { env, state } = createEnv({
+    firstResults: [staff, null, payment],
+    batchChanges: [0, 1, 1, 1, 1]
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "cod-collection-test-0001",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: payment.order_id })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(body.collected, true);
+  assert.equal(body.payment_status, "collected");
+  assert.equal(body.amount_paisa, 72000);
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 5);
+  assert.match(state.batchStatements[1].sql, /UPDATE orders SET payment_status='collected'/);
+  assert.match(state.batchStatements[2].sql, /UPDATE payments SET status='collected'/);
+  assert.match(state.batchStatements[2].sql, /status='delivered' AND payment_status='collected'/);
+  assert.match(state.batchStatements[3].sql, /payment.cod_collected/);
+  assert.match(state.batchStatements[4].sql, /cod_collection/);
+});
+
+test("COD collection is rejected until the order is delivered", async () => {
+  const token = "f".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const payment = {
+    payment_id: "payment-2", payment_status: "unpaid", method: "cod", amount_paisa: 35000,
+    order_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", order_number: "FRY-00002",
+    order_status: "out_for_delivery", order_payment_status: "unpaid"
+  };
+  const { env, state } = createEnv({ firstResults: [staff, null, payment] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "cod-collection-test-0002",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: payment.order_id })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "order_not_delivered");
+  assert.equal(state.batchCount, 0);
+});
+
+test("COD collection rejects non-COD and already collected payments", async () => {
+  const token = "1".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const payment = {
+    payment_id: "payment-3", payment_status: "unpaid", method: "manual_transfer", amount_paisa: 25000,
+    order_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", order_number: "FRY-00003",
+    order_status: "delivered", order_payment_status: "unpaid"
+  };
+  const { env, state } = createEnv({ firstResults: [staff, null, payment] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "cod-collection-test-0003",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: payment.order_id })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "not_cod_payment");
+  assert.equal(state.batchCount, 0);
+});
+
+test("COD collection requires an idempotency key", async () => {
+  const token = "2".repeat(64);
+  const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "idempotency_key_required");
+  assert.equal(state.batchCount, 0);
+});
+
+test("COD collection replays a previously completed idempotent request", async () => {
+  const token = "3".repeat(64);
+  const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const orderId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const requestHash = createHash("sha256").update(JSON.stringify({ order_id: orderId })).digest("hex");
+  const stored = {
+    collected: true,
+    order_id: orderId,
+    order_number: "FRY-00004",
+    payment_id: "payment-4",
+    payment_status: "collected",
+    amount_paisa: 42000
+  };
+  const existing = {
+    request_hash: requestHash,
+    response_json: JSON.stringify(stored),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  };
+  const { env, state } = createEnv({ firstResults: [staff, existing] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "cod-collection-replay-0001",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: orderId })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Idempotent-Replay"), "true");
+  assert.deepEqual(await response.json(), stored);
+  assert.equal(state.batchCount, 0);
+});
+
+test("different idempotency payload cannot reuse a COD collection key", async () => {
+  const token = "4".repeat(64);
+  const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const requestHash = createHash("sha256").update(JSON.stringify({ order_id: "ffffffff-ffff-4fff-8fff-ffffffffffff" })).digest("hex");
+  const existing = {
+    request_hash: requestHash,
+    response_json: JSON.stringify({ collected: true }),
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  };
+  const { env, state } = createEnv({ firstResults: [staff, existing] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "cod-collection-replay-0002",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: "11111111-1111-4111-8111-111111111111" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "idempotency_key_reused");
+  assert.equal(state.batchCount, 0);
+});
