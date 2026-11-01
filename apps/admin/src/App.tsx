@@ -1002,6 +1002,107 @@ function TeamAccessModule({ user }: { user: StaffUser }) {
   </section>;
 }
 
+
+function PaymentsModule({ user }: { user: StaffUser }) {
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
+  const [filter, setFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [pendingKeys, setPendingKeys] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const canCollect = user.role === "owner" || user.role === "manager" || user.role === "finance";
+  const unpaid = payments.filter(payment => payment.payment_status === "unpaid");
+  const collected = payments.filter(payment => payment.payment_status === "collected");
+
+  async function load(nextFilter = filter) {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await adminApi.payments(nextFilter);
+      setPayments(result.payments);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(""); }, []);
+
+  async function collect(payment: AdminPayment) {
+    if (!canCollect || payment.payment_status !== "unpaid" || payment.order_status !== "delivered") return;
+    const key = pendingKeys[payment.order_id] || crypto.randomUUID();
+    setPendingKeys(current => ({ ...current, [payment.order_id]: key }));
+    setBusyId(payment.payment_id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await adminApi.collectCodPayment(payment.order_id, key);
+      setPendingKeys(current => {
+        const next = { ...current };
+        delete next[payment.order_id];
+        return next;
+      });
+      setNotice(result.order_number + " marked collected: " + money(result.amount_paisa) + ".");
+      await load(filter);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  return (
+    <section className="payments-module">
+      <div className="module-heading">
+        <div><span className="kicker">PAYMENT OPERATIONS</span><h1>Payments</h1><p>Review COD payment status and record collection only after delivery is confirmed.</p></div>
+        <button className="refresh-button" type="button" disabled={loading} onClick={() => void load(filter)}>↻ Refresh</button>
+      </div>
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+      {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+      <div className="inventory-summary-grid">
+        <div className="inventory-summary"><span>Unpaid records shown</span><strong>{unpaid.length}</strong></div>
+        <div className="inventory-summary"><span>Collected records shown</span><strong>{collected.length}</strong></div>
+        <div className="inventory-summary"><span>Collected amount shown</span><strong>{money(collected.reduce((sum, payment) => sum + payment.amount_paisa, 0))}</strong></div>
+      </div>
+      <div className="filter-tabs payments-filters">
+        <button type="button" className={filter === "" ? "selected" : ""} onClick={() => { setFilter(""); void load(""); }}>All COD</button>
+        <button type="button" className={filter === "unpaid" ? "selected" : ""} onClick={() => { setFilter("unpaid"); void load("unpaid"); }}>Unpaid</button>
+        <button type="button" className={filter === "collected" ? "selected" : ""} onClick={() => { setFilter("collected"); void load("collected"); }}>Collected</button>
+      </div>
+      {!canCollect ? <p className="orders-footnote">Your role has read-only access to payment records.</p> : null}
+      <section className="inventory-stock-card">
+        <div className="inventory-card-heading"><div><h2>Cash-on-delivery records</h2><p>Latest 200 COD payment records. Amounts are stored in paisa and shown in PKR.</p></div></div>
+        {loading ? <div className="orders-empty">Loading payments…</div> : payments.length === 0 ? <div className="orders-empty"><strong>No payment records in this view</strong><small>COD payments appear here after customer orders are created.</small></div> : (
+          <div className="table-wrap">
+            <table className="orders-table">
+              <thead><tr><th>Order</th><th>Order status</th><th>Payment status</th><th>Amount</th><th>Collected by</th><th>Action</th></tr></thead>
+              <tbody>{payments.map(payment => (
+                <tr key={payment.payment_id}>
+                  <td><strong>{payment.order_number}</strong><small>{new Date(payment.created_at).toLocaleString()}</small></td>
+                  <td><span className={"order-status status-" + payment.order_status}>{payment.order_status.replaceAll("_", " ")}</span></td>
+                  <td><span className={"order-status " + (payment.payment_status === "collected" ? "status-confirmed" : "status-pending")}>{payment.payment_status}</span></td>
+                  <td><strong>{money(payment.amount_paisa)}</strong></td>
+                  <td>{payment.collected_by || (payment.reviewed_at ? new Date(payment.reviewed_at).toLocaleString() : "Not collected")}</td>
+                  <td>
+                    {payment.payment_status === "collected"
+                      ? <small className="restricted-action">Collection recorded</small>
+                      : payment.order_status === "delivered"
+                        ? <button className="refresh-button payment-collect-button" type="button" disabled={!canCollect || busyId === payment.payment_id} onClick={() => void collect(payment)}>{busyId === payment.payment_id ? "Recording…" : "Mark collected"}</button>
+                        : <small className="restricted-action">Awaiting delivery</small>}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <p className="orders-footnote">This module records COD collection only. Online payments, bank transfers, refunds and proof uploads are separate workflows.</p>
+    </section>
+  );
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -1133,6 +1234,8 @@ export default function App() {
             <StoreSettingsModule user={user} />
           ) : section === "team" ? (
             <TeamAccessModule user={user} />
+          ) : section === "payments" ? (
+            <PaymentsModule user={user} />
           ) : section === "overview" ? (
             <Overview
               user={user}
