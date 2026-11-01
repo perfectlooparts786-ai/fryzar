@@ -781,7 +781,7 @@ async function hashPassword(password: string): Promise<string> {
     {
       name: "PBKDF2",
       hash: "SHA-256",
-      salt,
+      salt: salt.buffer.slice(salt.byteOffset, salt.byteOffset + salt.byteLength) as ArrayBuffer,
       iterations: PASSWORD_ITERATIONS
     },
     key,
@@ -821,7 +821,12 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
     ["deriveBits"]
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: salt.buffer.slice(salt.byteOffset, salt.byteOffset + salt.byteLength) as ArrayBuffer,
+      iterations
+    },
     key,
     256
   );
