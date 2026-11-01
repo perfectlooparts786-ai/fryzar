@@ -1708,6 +1708,102 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
 }
 
 
+const SETTINGS_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+const SETTINGS_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+const EDITABLE_STORE_SETTING_KEYS = [
+  "store_name_en",
+  "store_name_ur",
+  "default_language",
+  "cod_enabled",
+  "whatsapp_number",
+  "store_status"
+] as const;
+
+async function adminSettingsApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
+  if (url.pathname !== "/api/v1/admin/settings") return null;
+  if (request.method === "GET") {
+    if (!hasRole(user, SETTINGS_READ_ROLES)) return roleDenied();
+    const result = await env.DB.prepare(
+      "SELECT setting_key, value_json FROM store_settings ORDER BY setting_key"
+    ).all<SettingRow>();
+    const settings: Record<string, unknown> = {};
+    for (const row of result.results) settings[row.setting_key] = parseSetting(row.value_json);
+    return json({ settings });
+  }
+
+  if (request.method !== "PATCH") return json({ error: "method_not_allowed" }, 405);
+  if (!hasRole(user, SETTINGS_WRITE_ROLES)) return roleDenied();
+  if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+  const body = await parseJsonBody(request, 4096);
+  if (!body) return json({ error: "invalid_request" }, 400);
+  const keys = Object.keys(body);
+  if (keys.length === 0) return json({ error: "empty_settings_update" }, 400);
+  if (keys.some(key => key === "launch_ready" || key === "manual_transfer_enabled" || key === "currency")) {
+    return json({ error: "setting_requires_release_gate" }, 409);
+  }
+  if (keys.some(key => !(EDITABLE_STORE_SETTING_KEYS as readonly string[]).includes(key))) {
+    return json({ error: "unknown_setting" }, 400);
+  }
+
+  const updates: Array<{ key: string; value: unknown }> = [];
+  for (const key of keys) {
+    const value = body[key];
+    if (key === "store_name_en" || key === "store_name_ur") {
+      const name = safeString(value);
+      if (name.length < 2 || name.length > 80) return json({ error: "invalid_store_name" }, 400);
+      updates.push({ key, value: name });
+    } else if (key === "default_language") {
+      if (value !== "ur" && value !== "en") return json({ error: "invalid_default_language" }, 400);
+      updates.push({ key, value });
+    } else if (key === "cod_enabled") {
+      if (typeof value !== "boolean") return json({ error: "invalid_cod_setting" }, 400);
+      updates.push({ key, value });
+    } else if (key === "whatsapp_number") {
+      const phone = safeString(value);
+      if (phone.length > 20 || (phone && !/^\\+?[1-9][0-9]{7,14}$/.test(phone))) {
+        return json({ error: "invalid_whatsapp_number" }, 400);
+      }
+      updates.push({ key, value: phone });
+    } else if (key === "store_status") {
+      if (value !== "setup" && value !== "paused") {
+        return json({ error: "store_requires_release_gate" }, 409);
+      }
+      updates.push({ key, value });
+    }
+  }
+
+  const timestamp = new Date().toISOString();
+  const statements: D1PreparedStatement[] = updates.map(({ key, value }) =>
+    env.DB.prepare(
+      "INSERT INTO store_settings (setting_key, value_json, is_public, updated_at) " +
+      "VALUES (?1, ?2, 1, ?3) " +
+      "ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json, " +
+      "is_public=1, updated_at=excluded.updated_at"
+    ).bind(key, JSON.stringify(value), timestamp)
+  );
+  statements.push(
+    env.DB.prepare(
+      "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+      "VALUES (?1, ?2, ?3, 'store.settings_updated', 'store_settings', NULL, ?4, ?5)"
+    ).bind(
+      crypto.randomUUID(),
+      user.id,
+      user.role,
+      JSON.stringify({ updated_keys: updates.map(item => item.key).sort() }),
+      timestamp
+    )
+  );
+
+  try {
+    await env.DB.batch(statements);
+  } catch {
+    return json({ error: "settings_update_failed" }, 409);
+  }
+
+  return json({ saved: true, updated_keys: updates.map(item => item.key).sort() });
+}
+
 const DELIVERY_READ_ROLES: readonly StaffUserRow["role"][] = [
   "owner", "manager", "operator", "kitchen", "rider"
 ];
@@ -1823,6 +1919,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const user = await currentStaff(request, env);
   if (!user) return json({ error: "unauthenticated" }, 401);
+
+  const settingsResponse = await adminSettingsApi(request, env, url, user);
+  if (settingsResponse) return settingsResponse;
 
   const deliveryResponse = await adminDeliveryApi(request, env, url, user);
   if (deliveryResponse) return deliveryResponse;
