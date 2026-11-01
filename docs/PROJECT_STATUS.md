@@ -9,7 +9,7 @@ Updated: 1 November 2026
 - Draft PR [#1](https://github.com/perfectlooparts786-ai/fryzar/pull/1) is open from `foundation/fresh-build` to `main`. Do not merge until source review and runtime/database checks pass.
 - Audit PR [#2](https://github.com/perfectlooparts786-ai/fryzar/pull/2) records infrastructure, backup, branch, and runtime comparison findings.
 - Recovery draft PR [#3](https://github.com/perfectlooparts786-ai/fryzar/pull/3) preserves exact deployed source for all three Workers on `recovery/cloudflare-worker-source-2026-11-01`.
-- Foundation head observed: `5527ed812e9c6fb6dea85182aad768b50c686fe4`. CI run [41278429752](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41278429752) succeeded. Code commit `1c7d8a86cd25cff5b117757296344ef2977c457e` passed [run 41278344214](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41278344214): 72/72 mocked API tests, strict API TypeScript validation, and both web builds.
+- Foundation head refreshed: `0511993397744b827946fb2fa0c929004fd5d848`. CI run [41284629075](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41284629075) completed successfully on this head; API TypeScript validation/tests and customer/admin builds passed. The branch remains unmerged and undeployed.
 
 ## Completed in this audit
 
@@ -21,6 +21,9 @@ Updated: 1 November 2026
 - Reviewed the committed D1 backup manifest: it records SQL exports, sizes/hashes, local SQLite replay and post-export live probes. Raw dumps are outside GitHub and this execution workspace; D1-managed restore is still outstanding.
 - Recorded findings in [CLOUDFLARE_BASELINE_2026-11-01.md](audits/CLOUDFLARE_BASELINE_2026-11-01.md), [FOUNDATION_BRANCH_REVIEW_2026-11-01.md](audits/FOUNDATION_BRANCH_REVIEW_2026-11-01.md), [DEPLOYED_VS_FOUNDATION_2026-11-01.md](audits/DEPLOYED_VS_FOUNDATION_2026-11-01.md), [LEGACY_RUNTIME_FINDINGS_2026-11-01.md](audits/LEGACY_RUNTIME_FINDINGS_2026-11-01.md), and the full [D1_SCHEMA_DIFF_2026-11-01.md](audits/D1_SCHEMA_DIFF_2026-11-01.md).
 - Confirmed current launch guards: both databases are in setup/not-ready state; production manual transfer is disabled. The current store is not configured to accept checkout.
+- Reviewed the newly uploaded documentation pack. Its v2.0 PRD remains the product baseline; its historical infrastructure statements are superseded by the current audit. Review recorded in [UPLOADED_DOCUMENT_PACK_REVIEW_2026-11-01.md](audits/UPLOADED_DOCUMENT_PACK_REVIEW_2026-11-01.md). Updated the audit-branch README to match verified source/recovery status.
+- Rechecked D1 aggregates and launch settings: production remains 15 application tables, 4 products, 3 categories, 215 tracked stock units, zero orders/payments/staff; core remains 22 application tables, no catalogue/orders/payments/staff. Both stores remain setup/not-ready, and manual transfer remains disabled.
+- Rechecked all three active Worker deployment/version IDs and source sizes/SHA-256 hashes. They still match the recovery manifest; no new deployment was observed.
 - No Worker, DNS, D1 schema/data/binding, route, or secret was changed. No secret values or customer records were queried or committed.
 
 ## GitHub work items
@@ -44,7 +47,7 @@ Updated: 1 November 2026
 
 ## System status
 
-- **GitHub:** `main` remains documentation-only. Candidate implementation is in `foundation/fresh-build` with draft PR #1 and green mocked CI. Exact deployed Worker snapshots are in recovery PR #3. Audit records are in PR #2. No production deployment workflow was found in the candidate branch.
+- **GitHub:** `main` currently contains `README.md` and `FRYZAR_Documentation_Pack_v2.0.zip`. Candidate implementation is in `foundation/fresh-build` at `0511993397744b827946fb2fa0c929004fd5d848` with draft PR #1 and a successful latest CI run. Exact deployed Worker snapshots are in recovery PR #3. Current audit records and README correction are in PR #2. No production deployment workflow was found in the candidate branch.
 - **Worker alignment:** `fryzar-app` and `fryzar-admin` use `fryzar-production`; `fryzar-api` uses `fryzar-core`. Deployed sources are now preserved in GitHub and tied to Cloudflare deployment/version identifiers. API remains `APP_ENV=development` with localhost-only origins.
 - **D1:** `fryzar-production` has 4 products, 3 categories, 215 tracked stock units, and zero orders, payment records, staff, or inventory movements. `fryzar-core` has zero products, categories, orders, payments, staff, and inventory movements, plus four applied migrations. The structural comparison found 15 production tables, 22 core tables, 13 common tables, two production-only tables and nine core-only tables, plus material column/index/trigger/constraint differences. SQL exports and local SQLite replay are recorded in the manifest; a D1 managed-restore test is not yet proven. No canonical D1 is selected.
 - **Customer/admin/API:** deployed customer and admin Workers have direct legacy D1-backed handlers. The deployed API currently contains health, catalogue, checkout, and tracking routes. The candidate branch adds central API and expanded admin functionality, but its live D1/Worker/browser integration is unverified. Production and core databases both indicate setup/not-ready; manual transfer is disabled in both.
@@ -65,4 +68,4 @@ Updated: 1 November 2026
 
 ## Next action
 
-Perform isolated D1 restore and full schema/data reconciliation using the two backup artifacts; keep both live databases and all deployed Workers unchanged while preparing the evidence-based migration proposal.
+Verify access to the two raw SQL backup artifacts recorded in the existing backup manifest, independently recompute their hashes, and perform D1-managed restores into isolated non-production databases. Until those artifacts are accessible and the restore passes, keep both live databases, all Worker bindings, and public routing unchanged.
