@@ -69,3 +69,30 @@ export interface OrderResponse {
   tracking_token: string;
   tracking_url: string;
 }
+
+
+export interface TrackedOrderItem {
+  product_name_ur_snapshot: string;
+  product_name_en_snapshot: string;
+  unit_price_paisa: number;
+  quantity: number;
+  line_total_paisa: number;
+}
+
+export interface TrackedOrderResponse {
+  order: {
+    id: string;
+    order_number: string;
+    status: string;
+    payment_method: string;
+    payment_status: string;
+    subtotal_paisa: number;
+    delivery_fee_paisa: number;
+    discount_paisa: number;
+    total_paisa: number;
+    customer_language: Language;
+    created_at: string;
+    updated_at: string;
+  };
+  items: TrackedOrderItem[];
+}
