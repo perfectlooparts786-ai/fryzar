@@ -670,6 +670,50 @@ test("admin login enforces the rolling per-identity failure limit before passwor
   assert.equal(state.batchCount, 0);
 });
 
+test("admin login atomically rejects a concurrent failure when the identity cap is reached", async () => {
+  const { env, state } = createEnv({
+    firstResults: [{ failure_count: 4 }, null],
+    batchChanges: [0, 0]
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "owner@example.test", password: "incorrect-password" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error, "rate_limit_exceeded");
+  assert.equal(state.batchCount, 1);
+  const attemptedInsert = state.batchStatements.find((item) => item.sql.includes("INSERT INTO auth_login_attempts"));
+  assert.ok(attemptedInsert);
+  assert.ok(attemptedInsert.sql.includes("SELECT COUNT(*)"));
+  assert.ok(attemptedInsert.sql.includes("< ?6"));
+});
+
+test("admin login fails closed when the identity throttle cannot be read", async () => {
+  const { env } = createEnv({ throwDb: true });
+  const response = await worker.fetch(
+    request("/api/v1/admin/login", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: "owner@example.test", password: "incorrect-password" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, "login_temporarily_unavailable");
+});
+
 test("admin login records failures for unknown identities without storing raw identifiers", async () => {
   const { env, state } = createEnv({ firstResults: [{ failure_count: 0 }, null] });
   const response = await worker.fetch(
