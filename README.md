@@ -86,3 +86,8 @@ The remote database already has migrations \`0001_core.sql\`, \`0002_checkout_in
 
 ## License
 No open-source license has been selected. All rights remain reserved by the project owner unless a license is added.
+
+
+## Latest development note
+- Dashboard metrics API/UI has been added on the development branch: aggregate order counts, delivered revenue, unpaid COD, low stock, active products/categories/zones, and store readiness.
+- API tests cover metrics output, PII exclusion in the query, and rider access denial. Latest source is committed, but a fresh successful CI run for these dashboard changes still needs confirmation.
