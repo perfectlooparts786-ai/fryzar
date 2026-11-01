@@ -195,3 +195,59 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 3. Plan the legacy-to-central API cutover, with exact rollback and owner approval.
 4. Resolve CORS/origins, preview routing, and deployment workflow.
 5. Populate genuine catalogue/delivery/support configuration only when owner-provided data is available; keep the store closed until all release gates pass.
+
+
+## Isolated preview environment execution — 2026-11-01
+
+### Resources created
+
+A new Cloudflare D1 database was created for preview only:
+
+- Name: `fryzar-preview`
+- ID: `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`
+- Primary location: APAC
+- Read replication: disabled
+- No existing D1 database was modified or repointed.
+
+The four candidate GitHub migrations from `foundation/fresh-build` were applied to this empty database in order. The D1 migration ledger contains exactly four entries matching `0001_core.sql` through `0004_inventory_adjustments.sql`. Read-only verification found 22 application tables, 19 application indexes, and the expected two triggers. Business row counts remain zero for products, categories, orders, payments, staff, inventory movements, delivery zones and inventory adjustments. Default store settings remain setup/not-ready; manual transfer remains false.
+
+SQLite PRAGMA integrity checks are not supported through the current D1 query API and returned `SQLITE_AUTH`; normal read-only table, migration, settings and non-negative-stock queries succeeded. Do not record PRAGMA-based validation as passed.
+
+### GitHub preview wrapper work
+
+Branch: `feature/preview-worker-wrappers`
+
+- Added a customer Worker entrypoint and Wrangler config. It serves the built React storefront through Workers Static Assets and forwards `/api/*` to service binding `API` targeting `fryzar-api-preview`.
+- Added an equivalent admin Worker entrypoint/config for the built admin portal.
+- Changed the candidate API Wrangler config to deploy as `fryzar-api-preview` and bind only to `fryzar-preview`; added preview app/admin origins.
+- Changed npm migration/deployment scripts to explicitly use preview names. Ambiguous generic API deploy script names were removed.
+- Added mocked Worker routing tests for API pass-through, request/body preservation, OPTIONS pass-through and static assets.
+- Updated CI to validate API, customer and admin Worker Wrangler bundles with `--dry-run`, after tests and builds.
+- Added a manual-only `deploy-preview.yml` workflow. It deploys API first, then customer/admin Workers, only to preview resource names. It requires the GitHub Actions `preview` environment and secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`; existence of those secrets has not been verified. It does not deploy to production or change DNS.
+- Detailed resource and deployment instructions are in `docs/operations/PREVIEW_ENVIRONMENT.md`.
+
+### Deployment and testing state
+
+- Preview D1 creation: **created**.
+- Four preview migrations: **applied and read back**.
+- Preview Worker wrapper source/config: **committed to feature branch**.
+- CI and Wrangler dry-run validation: **in progress; require a successful run on the latest feature-branch head**.
+- Preview Worker deployment: **not yet performed**.
+- Live preview HTTP/browser/D1 integration: **not yet verified**.
+- Production Worker, D1, secrets, DNS, routes, store settings and payment settings: **unchanged**.
+
+The preview Worker secret bindings `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` are not yet provisioned. Do not reuse production secret values. Before testing private tracking, checkout or owner bootstrap, provision preview-only credentials through an approved secure route. The store remains setup/not-ready and manual transfer remains disabled.
+
+### GitHub tracking
+
+- Preview topology and migrations: [PR #9](https://github.com/perfectlooparts786-ai/fryzar/pull/9).
+- Preview credentials and live smoke-test gate: [Issue #10](https://github.com/perfectlooparts786-ai/fryzar/issues/10).
+
+### Next steps
+
+1. Confirm successful CI and Wrangler dry-run validation on the latest branch head.
+2. Review and merge the preview wrapper PR into `foundation/fresh-build` only after CI passes.
+3. Verify preview GitHub Actions environment credentials are configured without reading secret values.
+4. After the owner-configured preview environment has the required GitHub Actions secrets, manually dispatch the preview deployment workflow, then verify the three workers.dev endpoints and request routing.
+5. Add preview-only secrets through Cloudflare and test authentication/tracking/checkout only while the store remains closed; test successful checkout only in an explicitly controlled preview state.
+6. Keep the existing production/core D1 databases and legacy Workers unchanged while completing the transition plan.

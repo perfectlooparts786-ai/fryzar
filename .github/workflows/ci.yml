@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "foundation/**"
+      - "feature/**"
   pull_request:
     branches:
       - main
@@ -15,7 +16,7 @@ permissions:
 
 jobs:
   validate:
-    name: Type-check, API tests, and storefront build
+    name: Validate API, Worker routing, and web builds
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -29,7 +30,7 @@ jobs:
       - name: Install development dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Validate API
+      - name: Validate API and Worker routing tests
         run: npm test
 
       - name: Build customer storefront
@@ -37,3 +38,12 @@ jobs:
 
       - name: Build admin portal
         run: npm run build:admin
+
+      - name: Validate API preview Worker bundle
+        run: npx wrangler deploy --dry-run --config apps/api/wrangler.toml
+
+      - name: Validate customer preview Worker and static assets
+        run: npx wrangler deploy --dry-run --config apps/customer-worker/wrangler.toml
+
+      - name: Validate admin preview Worker and static assets
+        run: npx wrangler deploy --dry-run --config apps/admin-worker/wrangler.toml

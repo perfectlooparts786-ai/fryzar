@@ -82,12 +82,12 @@ The code uses mocked D1 tests in CI. These do not prove live D1 transaction roll
 
 ## Configuration
 
-`wrangler.toml` currently targets the isolated `fryzar-core` database and development mode. Its allowed origins are local development origins only. Before any deployment, use a reviewed environment-specific configuration, exact approved origin list, and a configured `OWNER_BOOTSTRAP_TOKEN` secret. Do not set production mode or change bindings as part of a routine CI run.
+`wrangler.toml` on the preview deployment branch targets only the isolated `fryzar-preview` database and uses `APP_ENV=development`. The allowed origins include the local Vite ports plus the two preview Workers.dev origins. The manual-only `.github/workflows/deploy-preview.yml` workflow deploys `fryzar-api-preview`, `fryzar-app-preview`, and `fryzar-admin-preview`; it does not target production Worker names, existing production/core D1 databases, custom domains, or DNS routes. It requires the GitHub Actions `preview` environment secrets `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. The preview API also requires separately provisioned preview-only `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` Worker secrets before the corresponding protected flows can be tested. Never reuse production secrets. Do not set production mode or change bindings as part of a routine CI run.
 
 ## Current limitations
 
 - The latest candidate source is not deployed to the live Worker; the runtime is behind the GitHub branch.
-- No production or preview deployment workflow is present in this repository branch.
+- The preview deployment workflow is manual-only and has not yet been dispatched; the three preview Workers are not yet confirmed deployed.
 - Core D1 currently has no real products, categories, delivery zones, staff or orders. Do not fabricate business records.
 - Real D1 rollback/concurrency tests, browser E2E, live Worker authentication and external HTTP smoke tests remain outstanding.
 - Manual-transfer proof storage/review is blocked until private storage is approved and verified.
