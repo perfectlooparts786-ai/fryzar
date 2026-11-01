@@ -219,6 +219,9 @@ export const adminApi = {
   deliveryZones: () =>
     apiRequest<{ delivery_zones: DeliveryZone[] }>("/delivery-zones"),
 
+  dashboardMetrics: () =>
+    apiRequest<{ metrics: DashboardMetrics }>("/admin/metrics"),
+
   orders: (status = "") =>
     apiRequest<{ orders: AdminOrder[]; pagination: { limit: number; offset: number; returned: number } }>(
       "/admin/orders" + (status ? "?status=" + encodeURIComponent(status) : "")
