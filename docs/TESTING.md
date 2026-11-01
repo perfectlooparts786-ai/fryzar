@@ -4,7 +4,7 @@
 GitHub Actions previously passed strict TypeScript validation, 17/17 API tests and the customer storefront production build on commit \`1607be7\`.
 
 ## Latest verified combined validation
-GitHub Actions run 41270769486 on commit \\`95af500df33e8c79981097bc22123da5f7a63aeb\\` passed all pipeline steps: API strict TypeScript validation, 45/45 Node API tests, customer storefront production build, and admin portal production build.
+GitHub Actions run 41270993539 on commit \\`ab5557a39c3cfa281cd425f882645efb263a6708\\` passed all pipeline steps: API strict TypeScript validation, 51/51 Node API tests, customer storefront production build, and admin portal production build.
 
 
 - Added first-owner bootstrap and secure session endpoints.
@@ -75,3 +75,13 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - Duplicate zone code conflict mapping.
 - Read-only D1 schema verification confirms the API fields align with the existing \`delivery_zones\` schema. No live zone records were created.
 - Live Worker HTTP and real D1 audit-batch tests remain pending because the current Worker deployment is behind the GitHub source.
+
+
+## Store-settings validation coverage
+- Read settings through the authenticated admin endpoint, restricted to public setting rows.
+- Owner/manager update of store names, default language, COD flag, WhatsApp contact, and setup/paused mode.
+- Audit log write is included in the settings D1 batch.
+- Reject malformed international contact numbers and unknown settings.
+- Reject \`launch_ready\`, \`manual_transfer_enabled\`, currency and \`store_status=open\` changes from the admin settings endpoint.
+- The admin portal displays release-gated status read-only; no live settings were changed.
+- Latest CI run 41270993539 passed 51/51 mocked API tests plus TypeScript and both web builds. Authenticated live Worker/D1 integration is still pending.
