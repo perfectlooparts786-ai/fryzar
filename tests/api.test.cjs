@@ -146,7 +146,7 @@ function checkoutRequestHash(overrides = {}) {
   };
   const canonical = {
     customer_name: body.customer_name,
-    customer_phone: body.customer_phone.replace(/\\D/g, ""),
+    customer_phone: body.customer_phone,
     delivery_address: body.delivery_address,
     delivery_zone_id: body.delivery_zone_id,
     customer_language: body.customer_language,
