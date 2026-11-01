@@ -1,7 +1,8 @@
 name: FRYZAR Preview Deployment
 
 # This workflow lives on main so GitHub can expose workflow_dispatch.
-# It always deploys the candidate source from foundation/fresh-build.
+# Pin the reviewed candidate commit so deployment credentials are never exposed to unreviewed branch changes.
+# Update this SHA only after the replacement candidate commit has passed CI and review.
 on:
   workflow_dispatch:
 
@@ -19,17 +20,13 @@ jobs:
     timeout-minutes: 45
     environment: preview
     env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      TRACKING_SECRET: ${{ secrets.TRACKING_SECRET }}
-      OWNER_BOOTSTRAP_TOKEN: ${{ secrets.OWNER_BOOTSTRAP_TOKEN }}
       WRANGLER_SEND_METRICS: "false"
 
     steps:
       - name: Check out candidate source
         uses: actions/checkout@v4
         with:
-          ref: foundation/fresh-build
+          ref: bc3d3f30de7ec59f5ebb7aa5bd0d9fc43eed1eb7
           path: candidate
 
       - name: Set up Node.js
@@ -70,6 +67,9 @@ jobs:
 
       - name: Verify Cloudflare authentication
         working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler whoami
 
       - name: Verify deployment targets are preview-only
@@ -101,26 +101,52 @@ jobs:
 
       - name: Apply migrations to isolated preview D1 only
         working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run db:migrate:preview
+
+      # First deployment creates the Worker so Wrangler can attach its initial secrets.
+      - name: Bootstrap isolated central API Worker
+        working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy:api-preview
 
       - name: Provision preview-only API secrets
         working-directory: candidate
         shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TRACKING_SECRET: ${{ secrets.TRACKING_SECRET }}
+          OWNER_BOOTSTRAP_TOKEN: ${{ secrets.OWNER_BOOTSTRAP_TOKEN }}
         run: |
           set -euo pipefail
           printf '%s' "$TRACKING_SECRET" | npx wrangler secret put TRACKING_SECRET --config apps/api/wrangler.toml
           printf '%s' "$OWNER_BOOTSTRAP_TOKEN" | npx wrangler secret put OWNER_BOOTSTRAP_TOKEN --config apps/api/wrangler.toml
 
-      - name: Deploy isolated central API Worker
+      # Secret updates create new Worker versions, so finish with a deployment of the reviewed source.
+      - name: Deploy isolated central API Worker with secrets attached
         working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run deploy:api-preview
 
       - name: Deploy customer preview Worker
         working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy --config apps/customer-worker/wrangler.toml
 
       - name: Deploy admin preview Worker
         working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy --config apps/admin-worker/wrangler.toml
 
       - name: Smoke-test preview API, CORS, static apps and service bindings
