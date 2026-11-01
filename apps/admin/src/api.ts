@@ -74,6 +74,18 @@ export interface DeliveryZone {
   updated_at?: string;
 }
 
+export interface DashboardMetrics {
+  total_orders: number;
+  open_orders: number;
+  delivered_orders: number;
+  delivered_revenue_paisa: number;
+  unpaid_cod_count: number;
+  active_products: number;
+  low_stock_products: number;
+  active_categories: number;
+  active_delivery_zones: number;
+}
+
 export interface AdminPayment {
   payment_id: string;
   order_id: string;
