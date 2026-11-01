@@ -3,7 +3,8 @@ import type {
   DeliveryZone,
   OrderResponse,
   Product,
-  StoreSettings
+  StoreSettings,
+  TrackedOrderResponse
 } from "./types";
 
 const configuredBase = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
@@ -72,6 +73,13 @@ export const api = {
 
   deliveryZones: (signal?: AbortSignal) =>
     getJson<{ delivery_zones: DeliveryZone[]; currency: string }>("/delivery-zones", signal),
+
+  trackOrder: (token: string, signal?: AbortSignal) => {
+    if (!/^[a-f0-9]{64}$/i.test(token)) {
+      throw new ApiError("Invalid tracking code.", 400, "invalid_tracking_code");
+    }
+    return getJson<TrackedOrderResponse>("/orders/track/" + token.toLowerCase(), signal);
+  },
 
   createOrder: async (
     payload: {
