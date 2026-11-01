@@ -311,3 +311,16 @@ td small { margin-top: 4px; color: #96a197; font-size: 9px; }
   .team-module .catalogue-editor { padding:14px; }
   .team-actions { min-width:130px; }
 }
+
+.payments-module { display:flex; flex-direction:column; gap:16px; }
+.payments-module .inventory-stock-card { margin-top:0; }
+.payments-module .orders-table td { vertical-align:middle; }
+.payments-module .payments-filters { display:flex; flex-wrap:wrap; gap:6px; }
+.payments-module .payments-filters button { border:1px solid var(--line); border-radius:7px; padding:9px 12px; background:#fff; color:var(--muted); font-size:11px; }
+.payments-module .payments-filters button.selected { background:var(--forest); border-color:var(--forest); color:#fff; }
+.payment-collect-button { white-space:nowrap; }
+@media (max-width:720px) {
+  .payments-module .module-heading { align-items:flex-start; }
+  .payments-module .payments-filters { overflow-x:auto; flex-wrap:nowrap; }
+  .payments-module .payments-filters button { flex:0 0 auto; }
+}
