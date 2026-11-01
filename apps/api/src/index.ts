@@ -304,7 +304,7 @@ async function listDeliveryZones(env: Env): Promise<Response> {
     "SELECT id, code, name_ur, name_en, city, region, " +
     "delivery_fee_paisa, minimum_order_paisa " +
     "FROM delivery_zones WHERE is_active = 1 " +
-    "ORDER BY city ASC, sort_order ASC, name_en ASC"
+    "ORDER BY city ASC, name_en ASC"
   ).all<JsonRecord>();
 
   return json({
