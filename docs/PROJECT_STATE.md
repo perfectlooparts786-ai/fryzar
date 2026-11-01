@@ -45,9 +45,9 @@ The checkout endpoint therefore rejects all new orders while the store is in set
 
 ## Testing and verification
 
-- The initial API version previously passed a strict TypeScript check and six local API scenarios.
-- The expanded test suite currently contains 16 scenarios, including checkout guards and a mocked COD transaction batch. The expanded suite has not yet been run.
-- A GitHub Actions workflow has been added, but no workflow run/status has been returned for the current commits.
+- The initial API version previously passed a strict TypeScript check and six local API scenarios. The expanded 16-case suite has now passed on GitHub Actions.
+- The expanded test suite contains 16 API scenarios, including checkout guards, a mocked COD batch, and a successful tracking response that omits customer phone/address. GitHub Actions run 41265458517 completed successfully for commit 8962efbad6d050b55b6f0c3e5cddc842fff46583: strict TypeScript check passed and all 16 tests passed.
+- A GitHub Actions validation workflow is active. The latest completed run 41265458517 passed. The PR remains draft and unmerged.
 - Cloudflare accepted the updated Worker upload and assigned 100% of traffic to the uploaded version.
 - External HTTP requests to `workers.dev` could not be resolved from the current tool environment. Live HTTP behavior remains unverified.
 - Checkout has not been exercised against real D1 data or in a browser. The current D1 database has no product or delivery-zone records.
