@@ -49,7 +49,11 @@ function createEnv(options = {}) {
         params: statement.params
       }));
       if (options.batchError) throw options.batchError;
-      return statements.map(() => ({ success: true, results: [] }));
+      return statements.map((_, index) => ({
+        success: true,
+        meta: { changes: index === 0 ? 1 : 0 },
+        results: []
+      }));
     }
   };
 
@@ -547,4 +551,139 @@ test("admin login returns the same generic failure for a wrong password", async 
   assert.equal(response.status, 401);
   assert.equal((await response.json()).error, "invalid_credentials");
   assert.equal(state.batchCount, 0);
+});
+
+
+test("finance role cannot read the order list", async () => {
+  const token = "b".repeat(64);
+  const staff = {
+    id: "finance-1",
+    email: "finance@example.test",
+    display_name: "Finance Staff",
+    role: "finance",
+    is_active: 1
+  };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.allCount, 0);
+});
+
+test("kitchen order list query does not select customer contact or address", async () => {
+  const token = "c".repeat(64);
+  const staff = {
+    id: "kitchen-1",
+    email: "kitchen@example.test",
+    display_name: "Kitchen Staff",
+    role: "kitchen",
+    is_active: 1
+  };
+  const { env, state } = createEnv({
+    firstResult: staff,
+    allResults: [{ id: "order-1", order_number: "FRZ-TEST", status: "pending" }]
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.orders, [{ id: "order-1", order_number: "FRZ-TEST", status: "pending" }]);
+  assert.match(state.lastSql, /NULL AS customer_phone/);
+  assert.match(state.lastSql, /NULL AS delivery_address/);
+  assert.doesNotMatch(state.lastSql, /SELECT[^]*customer_phone, delivery_address/);
+});
+
+test("invalid order status filter is rejected", async () => {
+  const token = "d".repeat(64);
+  const staff = {
+    id: "owner-1",
+    email: "owner@example.test",
+    display_name: "Owner",
+    role: "owner",
+    is_active: 1
+  };
+  const { env } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders?status=made_up", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_order_status");
+});
+
+test("kitchen role cannot cancel orders", async () => {
+  const token = "e".repeat(64);
+  const staff = {
+    id: "kitchen-1",
+    email: "kitchen@example.test",
+    display_name: "Kitchen",
+    role: "kitchen",
+    is_active: 1
+  };
+  const order = { id: "11111111-1111-4111-8111-111111111111", status: "preparing", payment_status: "unpaid" };
+  const { env, state } = createEnv({ firstResults: [staff, order] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders/" + order.id + "/status", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ status: "cancelled" })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal(state.batchCount, 0);
+});
+
+test("manager cancellation atomically includes stock restoration and audit history", async () => {
+  const token = "f".repeat(64);
+  const staff = {
+    id: "manager-1",
+    email: "manager@example.test",
+    display_name: "Manager",
+    role: "manager",
+    is_active: 1
+  };
+  const order = { id: "11111111-1111-4111-8111-111111111111", status: "pending", payment_status: "unpaid" };
+  const { env, state } = createEnv({ firstResults: [staff, order] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders/" + order.id + "/status", {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ status: "cancelled", note: "Customer requested cancellation" })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.status, "cancelled");
+  assert.equal(state.batchCount, 1);
+  assert.ok(state.batchStatements.some(item => item.sql.includes("UPDATE products SET stock_qty = stock_qty +")));
+  assert.ok(state.batchStatements.some(item => item.sql.includes("'order_cancelled'")));
+  assert.ok(state.batchStatements.some(item => item.sql.includes("order_status_events")));
+  assert.ok(state.batchStatements.some(item => item.sql.includes("order.status_changed")));
+  assert.ok(state.batchStatements.some(item => item.sql.includes("updated_at = ?2")));
 });
