@@ -1,0 +1,138 @@
+export interface StaffUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: "owner" | "manager" | "operator" | "kitchen" | "finance" | "rider" | "support";
+}
+
+export interface SessionResponse {
+  authenticated: boolean;
+  user?: StaffUser;
+}
+
+export interface StoreSettings {
+  store_status?: string;
+  launch_ready?: boolean | string;
+  currency?: string;
+  default_language?: string;
+  supported_languages?: string[];
+  cod_enabled?: boolean | string;
+  manual_transfer_enabled?: boolean | string;
+  whatsapp_number?: string;
+}
+
+export interface Category {
+  id: string;
+  slug: string;
+  name_en: string;
+  name_ur: string;
+}
+
+export interface Product {
+  id: string;
+  slug: string;
+  name_en: string;
+  name_ur: string;
+  price_paisa: number;
+  is_available: number;
+}
+
+export interface DeliveryZone {
+  id: string;
+  code: string;
+  name_en: string;
+  name_ur: string;
+  city: string;
+  delivery_fee_paisa: number;
+  minimum_order_paisa: number;
+}
+
+export class AdminApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string) {
+    super(code);
+    this.name = "AdminApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  let response: Response;
+
+  try {
+    response = await fetch("/api/v1" + path, {
+      ...init,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...init.headers
+      },
+      cache: "no-store"
+    });
+  } catch {
+    throw new AdminApiError(0, "network_error");
+  }
+
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const record = typeof body === "object" && body !== null
+      ? body as Record<string, unknown>
+      : {};
+    throw new AdminApiError(
+      response.status,
+      typeof record.error === "string" ? record.error : "request_failed"
+    );
+  }
+  return body as T;
+}
+
+export const adminApi = {
+  session: () => apiRequest<SessionResponse>("/admin/session"),
+
+  login: (email: string, password: string) =>
+    apiRequest<SessionResponse>("/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password })
+    }),
+
+  bootstrap: (data: {
+    email: string;
+    display_name: string;
+    password: string;
+    bootstrapToken: string;
+  }) =>
+    apiRequest<SessionResponse>("/admin/bootstrap-owner", {
+      method: "POST",
+      headers: { "X-Owner-Bootstrap-Token": data.bootstrapToken },
+      body: JSON.stringify({
+        email: data.email,
+        display_name: data.display_name,
+        password: data.password
+      })
+    }),
+
+  logout: () =>
+    apiRequest<{ authenticated: false }>("/admin/logout", { method: "POST" }),
+
+  health: () =>
+    apiRequest<{ ok: boolean; database: string; schema: string }>("/health"),
+
+  settings: () =>
+    apiRequest<{ settings: StoreSettings }>("/storefront-config"),
+
+  categories: () =>
+    apiRequest<{ categories: Category[] }>("/categories"),
+
+  products: () =>
+    apiRequest<{ products: Product[] }>("/products?limit=50"),
+
+  deliveryZones: () =>
+    apiRequest<{ delivery_zones: DeliveryZone[] }>("/delivery-zones")
+};
