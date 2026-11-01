@@ -1481,7 +1481,8 @@ test("owner cannot deactivate the first owner account", async () => {
     env
   );
 
-  assert.equal(response.status, 403);
+  assert.equal(response.status, 409);
+  assert.equal((await response.clone().json()).error, "cannot_deactivate_self");
   assert.equal((await response.json()).error, "insufficient_permissions");
   assert.equal(state.batchCount, 0);
 });
