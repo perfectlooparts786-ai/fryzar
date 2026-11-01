@@ -189,7 +189,7 @@ async function main() {
     runWrangler([
       "d1", "migrations", "apply", "fryzar-preview",
       "--local", "--persist-to", persistTo,
-      "--config", config, "--yes"
+      "--config", config
     ]);
     runWrangler([
       "d1", "execute", "fryzar-preview",
