@@ -5,6 +5,13 @@ export interface StaffUser {
   role: "owner" | "manager" | "operator" | "kitchen" | "finance" | "rider" | "support";
 }
 
+export interface StaffMember extends StaffUser {
+  is_active: number;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SessionResponse {
   authenticated: boolean;
   user?: StaffUser;
@@ -208,6 +215,36 @@ export const adminApi = {
     apiRequest<{ saved: boolean; id: string }>("/admin/products" + (id ? "/" + encodeURIComponent(id) : ""), {
       method: id ? "PATCH" : "POST",
       body: JSON.stringify(data)
+    }),
+
+  staffDirectory: () =>
+    apiRequest<{ staff: StaffMember[] }>("/admin/staff"),
+
+  createStaff: (data: {
+    email: string;
+    display_name: string;
+    role: StaffUser["role"];
+    password: string;
+  }) =>
+    apiRequest<{ created: boolean; id: string; role: StaffUser["role"] }>("/admin/staff", {
+      method: "POST",
+      body: JSON.stringify(data)
+    }),
+
+  updateStaff: (id: string, data: {
+    display_name?: string;
+    role?: StaffUser["role"];
+    is_active?: boolean;
+  }) =>
+    apiRequest<{ updated: boolean; id: string; sessions_revoked: boolean }>("/admin/staff/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(data)
+    }),
+
+  resetStaffPassword: (id: string, new_password: string) =>
+    apiRequest<{ password_reset: boolean; id: string; sessions_revoked: boolean }>("/admin/staff/" + encodeURIComponent(id) + "/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ new_password })
     }),
 
   adminSettings: () =>
