@@ -1411,6 +1411,7 @@ async function orderAdminApi(
 }
 
 
+const CATALOG_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen"];
 const CATALOG_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 
 function validSlug(value: string): boolean {
@@ -1423,8 +1424,12 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
   const productPath = url.pathname === "/api/v1/admin/products";
   const productMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})$/i);
   if (!(categoryPath || categoryMatch || productPath || productMatch)) return null;
-  if (!hasRole(user, CATALOG_WRITE_ROLES)) return roleDenied();
-  if (request.method !== "GET" && !browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+  if (request.method === "GET") {
+    if (!hasRole(user, CATALOG_READ_ROLES)) return roleDenied();
+  } else {
+    if (!hasRole(user, CATALOG_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+  }
 
   const isCategory = categoryPath || Boolean(categoryMatch);
   const collection = isCategory ? categoryPath : productPath;
