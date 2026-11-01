@@ -7,6 +7,9 @@
     "dev:api": "wrangler dev --config apps/api/wrangler.toml",
     "deploy:api": "wrangler deploy --config apps/api/wrangler.toml",
     "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
+    "test:build": "tsc --project apps/api/tsconfig.test.json",
+    "test:api": "npm run test:build && node --test tests/api.test.cjs",
+    "test": "npm run typecheck && npm run test:api",
     "db:migrate:local": "wrangler d1 migrations apply fryzar-core --local --config apps/api/wrangler.toml",
     "db:migrate:remote": "wrangler d1 migrations apply fryzar-core --remote --config apps/api/wrangler.toml"
   },
