@@ -189,3 +189,49 @@ td small { margin-top: 4px; color: #96a197; font-size: 9px; }
   .store-card, .checklist-card, .data-card { padding: 15px; }
   .admin-footer { padding: 13px 16px; flex-wrap: wrap; font-size: 7px; }
 }
+
+
+.module-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:25px; }
+.module-heading h1 { margin:8px 0 5px; color:var(--deep); font:700 30px "Manrope"; letter-spacing:-.05em; }
+.module-heading p { margin:0; color:#849086; font-size:11px; }
+.refresh-button { min-height:38px; padding:0 13px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--forest); font-size:10px; font-weight:700; }
+.refresh-button:disabled { opacity:.5; cursor:wait; }
+.orders-toolbar { display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:13px; }
+.filter-tabs { display:flex; gap:5px; overflow-x:auto; max-width:100%; padding:3px; }
+.filter-tabs button { flex:0 0 auto; min-height:31px; padding:0 10px; border:1px solid transparent; border-radius:5px; background:transparent; color:#7e8b81; font-size:8px; text-transform:capitalize; }
+.filter-tabs button.selected { border-color:#dce5d8; background:#eaf0e5; color:var(--forest); font-weight:800; }
+.orders-toolbar > span { flex:0 0 auto; color:#9aa49b; font-size:8px; }
+.orders-alert, .orders-notice { margin:0 0 12px; padding:11px 13px; border-radius:6px; font-size:10px; line-height:1.6; }
+.orders-alert { border:1px solid #f0d8ca; background:#fff7f2; color:#985d3c; }
+.orders-notice { border:1px solid #dce8d7; background:#edf4e9; color:#587e52; }
+.orders-table-card { min-height:290px; border:1px solid var(--line); border-radius:8px; background:var(--paper); overflow:hidden; }
+.orders-empty { min-height:290px; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:9px; color:#8c998e; text-align:center; }
+.empty-order-icon { width:44px; height:44px; display:grid; place-items:center; border-radius:13px 13px 13px 4px; background:#eaf0e5; color:var(--forest); font-size:20px; }
+.orders-empty strong { color:#526455; font:700 14px "Manrope"; }
+.orders-empty small { max-width:310px; color:#99a39a; font-size:9px; line-height:1.7; }
+.orders-table th { white-space:nowrap; padding:13px 12px; }
+.orders-table td { min-width:115px; padding:13px 12px; vertical-align:middle; }
+.orders-table td:first-child { min-width:175px; }
+.orders-table td:nth-child(2) { min-width:145px; }
+.orders-table td:nth-child(6) { min-width:190px; }
+.order-status { display:inline-flex; padding:6px 8px; border-radius:20px; background:#eef1ed; color:#748177; font-size:8px; font-weight:800; text-transform:capitalize; white-space:nowrap; }
+.status-pending { background:#f6f0e3; color:#a27c48; }
+.status-confirmed,.status-ready { background:#e8f0e5; color:#60805a; }
+.status-preparing { background:#e9eff1; color:#62818a; }
+.status-out_for_delivery { background:#e9edf6; color:#6479a0; }
+.status-delivered { background:#e1f0e6; color:#4d805a; }
+.status-cancelled,.status-rejected { background:#f6e9e5; color:#a26655; }
+.status-action { display:flex; align-items:center; gap:6px; }
+.status-action select { min-width:105px; max-width:125px; height:31px; padding:0 7px; border:1px solid var(--line); border-radius:5px; background:#fff; color:#5d6d60; font-size:8px; text-transform:capitalize; }
+.status-action button { height:31px; padding:0 10px; border:0; border-radius:5px; background:var(--forest); color:#fff; font-size:8px; font-weight:700; }
+.status-action button:disabled { opacity:.4; cursor:not-allowed; }
+.restricted-action { color:#a0aaa1; font-size:8px; }
+.orders-footnote { margin:12px 0 0; color:#9aa49b; font-size:8px; line-height:1.7; }
+@media (max-width:720px) {
+  .module-heading { align-items:flex-start; }
+  .module-heading h1 { font-size:25px; }
+  .orders-toolbar { display:block; }
+  .filter-tabs { margin-bottom:8px; }
+  .orders-toolbar > span { display:block; text-align:right; }
+  .orders-table td { min-width:110px; }
+}
