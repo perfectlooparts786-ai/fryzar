@@ -47,6 +47,23 @@ export interface DeliveryZone {
   minimum_order_paisa: number;
 }
 
+export interface AdminOrder {
+  id: string;
+  order_number: string;
+  status: string;
+  payment_method: string;
+  payment_status: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  delivery_address: string | null;
+  delivery_area: string | null;
+  subtotal_paisa: number;
+  delivery_fee_paisa: number;
+  total_paisa: number;
+  customer_language: string;
+  created_at: string;
+}
+
 export class AdminApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -134,5 +151,19 @@ export const adminApi = {
     apiRequest<{ products: Product[] }>("/products?limit=50"),
 
   deliveryZones: () =>
-    apiRequest<{ delivery_zones: DeliveryZone[] }>("/delivery-zones")
+    apiRequest<{ delivery_zones: DeliveryZone[] }>("/delivery-zones"),
+
+  orders: (status = "") =>
+    apiRequest<{ orders: AdminOrder[]; pagination: { limit: number; offset: number; returned: number } }>(
+      "/admin/orders" + (status ? "?status=" + encodeURIComponent(status) : "")
+    ),
+
+  updateOrderStatus: (orderId: string, status: string, note = "") =>
+    apiRequest<{ updated: boolean; order_id: string; old_status: string; status: string }>(
+      "/admin/orders/" + encodeURIComponent(orderId) + "/status",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status, note })
+      }
+    )
 };
