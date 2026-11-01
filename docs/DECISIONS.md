@@ -21,3 +21,16 @@
 **Decision:** Keep the recovered snapshots immutable and separate from the candidate source. Do not deploy or overwrite live Workers from either branch until source review, schema/data reconciliation, D1-specific rollback testing, preview verification, and owner approval are complete.
 
 **Approval:** No production deployment, binding change, or migration is approved by this record.
+
+
+## 2026-11-01 — Isolate preview testing in a third D1
+
+**Status:** Implemented for preview infrastructure; Worker deployment and smoke tests pending.
+
+**Context:** The candidate central API was originally configured against `fryzar-core`, which is still bound to the currently deployed legacy API Worker. The legacy customer/admin Workers use `fryzar-production`. The databases must remain unchanged until full reconciliation and owner-approved cutover.
+
+**Decision:** Create a separate empty `fryzar-preview` D1 (`a6f528a3-4b36-43a9-8e77-31f7105a4aeb`) and apply only the candidate GitHub migrations to it. Candidate Worker Wrangler config in preview PR #9 binds only to this new DB. Keep both current databases and their Worker bindings unchanged.
+
+**Alternatives considered:** Reuse `fryzar-core` for candidate preview; rejected because it is still bound to the live legacy API Worker and is part of the eventual data-reconciliation target. Use `fryzar-production`; rejected because it holds the only current product catalogue and tracked stock.
+
+**Approval:** No production change or cutover is requested or approved. The new database is a separate preview resource.
