@@ -1452,6 +1452,11 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
   if (!hasRole(user, INVENTORY_WRITE_ROLES)) return roleDenied();
   if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
 
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
+    return json({ error: "idempotency_key_required" }, 400);
+  }
+
   const body = await parseJsonBody(request, 2048);
   if (!body) return json({ error: "invalid_request" }, 400);
   const productId = safeString(body.product_id).toLowerCase();
@@ -1465,6 +1470,22 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
     return json({ error: "validation_failed" }, 400);
   }
 
+  const requestHash = await sha256Hex(JSON.stringify({ product_id: productId, delta_qty: deltaQty, reason, note }));
+  const existing = await env.DB.prepare(
+    "SELECT request_hash, response_json, expires_at FROM idempotency_keys " +
+    "WHERE scope = 'inventory_adjustment' AND idempotency_key = ?1 LIMIT 1"
+  ).bind(idempotencyKey).first<IdempotencyRow>();
+
+  if (existing && Date.parse(existing.expires_at) > Date.now()) {
+    if (existing.request_hash !== requestHash) return json({ error: "idempotency_key_reused" }, 409);
+    if (!existing.response_json) return json({ error: "request_already_processing" }, 409);
+    try {
+      return json(JSON.parse(existing.response_json) as JsonRecord, 200, { "Idempotent-Replay": "true" });
+    } catch {
+      return json({ error: "idempotency_record_invalid" }, 500);
+    }
+  }
+
   const product = await env.DB.prepare(
     "SELECT id, stock_qty FROM products WHERE id = ?1 LIMIT 1"
   ).bind(productId).first<{ id: string; stock_qty: number | null }>();
@@ -1474,7 +1495,19 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
 
   const adjustmentId = crypto.randomUUID();
   const timestamp = new Date().toISOString();
+  const responseBody = {
+    adjusted: true,
+    adjustment_id: adjustmentId,
+    product_id: productId,
+    delta_qty: deltaQty,
+    reason
+  };
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "DELETE FROM idempotency_keys WHERE scope = 'inventory_adjustment' " +
+      "AND idempotency_key = ?1 AND expires_at <= ?2"
+    ).bind(idempotencyKey, timestamp),
     env.DB.prepare(
       "UPDATE products SET stock_qty = stock_qty + ?1, updated_at = ?2 " +
       "WHERE id = ?3 AND stock_qty IS NOT NULL AND stock_qty + ?1 >= 0"
@@ -1483,7 +1516,7 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
       "INSERT INTO inventory_adjustments " +
       "(id, product_id, actor_staff_id, reason, delta_qty, previous_stock_qty, new_stock_qty, note, created_at) " +
       "SELECT ?1, p.id, ?2, ?3, ?4, p.stock_qty - ?4, p.stock_qty, ?5, ?6 " +
-      "FROM products p WHERE p.id = ?7 AND p.stock_qty IS NOT NULL AND p.updated_at = ?6"
+      "FROM products p WHERE p.id = ?7 AND p.stock_qty IS NOT NULL AND changes() = 1"
     ).bind(adjustmentId, user.id, reason, deltaQty, note, timestamp, productId),
     env.DB.prepare(
       "INSERT INTO inventory_movements " +
@@ -1502,25 +1535,40 @@ async function adminInventoryApi(request: Request, env: Env, url: URL, user: Ses
       user.role,
       JSON.stringify({ product_id: productId, delta_qty: deltaQty, reason }),
       adjustmentId
+    ),
+    env.DB.prepare(
+      "INSERT INTO idempotency_keys (id, scope, idempotency_key, request_hash, response_json, expires_at) " +
+      "SELECT ?1, 'inventory_adjustment', ?2, ?3, ?4, ?5 FROM inventory_adjustments WHERE id = ?6"
+    ).bind(
+      crypto.randomUUID(), idempotencyKey, requestHash,
+      JSON.stringify(responseBody), expiresAt, adjustmentId
     )
   ];
 
   try {
     const results = await env.DB.batch(statements);
-    if ((results[0]?.meta?.changes ?? 0) !== 1 || (results[1]?.meta?.changes ?? 0) !== 1) {
+    if ((results[1]?.meta?.changes ?? 0) !== 1 || (results[2]?.meta?.changes ?? 0) !== 1) {
       return json({ error: "stock_changed_retry" }, 409);
     }
   } catch {
+    const concurrent = await env.DB.prepare(
+      "SELECT request_hash, response_json, expires_at FROM idempotency_keys " +
+      "WHERE scope = 'inventory_adjustment' AND idempotency_key = ?1 LIMIT 1"
+    ).bind(idempotencyKey).first<IdempotencyRow>();
+    if (concurrent && Date.parse(concurrent.expires_at) > Date.now()) {
+      if (concurrent.request_hash !== requestHash) return json({ error: "idempotency_key_reused" }, 409);
+      if (concurrent.response_json) {
+        try {
+          return json(JSON.parse(concurrent.response_json) as JsonRecord, 200, { "Idempotent-Replay": "true" });
+        } catch {
+          return json({ error: "idempotency_record_invalid" }, 500);
+        }
+      }
+    }
     return json({ error: "inventory_adjustment_failed" }, 409);
   }
 
-  return json({
-    adjusted: true,
-    adjustment_id: adjustmentId,
-    product_id: productId,
-    delta_qty: deltaQty,
-    reason
-  }, 201);
+  return json(responseBody, 201);
 }
 
 async function adminCatalogueApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
