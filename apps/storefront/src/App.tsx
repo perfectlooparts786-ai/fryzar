@@ -552,6 +552,7 @@ export default function App() {
         </nav>
 
         <div className="header-actions">
+          <a className="track-mobile-link" href="#track-order">{t.trackOrder}</a>
           <button
             className="language-switch"
             type="button"
