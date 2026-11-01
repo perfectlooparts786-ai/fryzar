@@ -174,3 +174,24 @@ Checkout must remain unavailable until the owner supplies genuine business confi
 - Run URL: https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41278344214
 - The passing CI establishes compilation and mocked API behavior, not live D1 transaction/concurrency behavior or authenticated Worker/browser integration.
 - No Cloudflare Worker deployment, D1 write, owner account creation, product fixture or real payment mutation was performed. The current `fryzar-api` Worker is still behind GitHub source.
+
+
+## Cross-platform audit update — 2026-11-01
+
+- Exact deployed source for `fryzar-app`, `fryzar-admin`, and `fryzar-api` has now been retrieved from Cloudflare and preserved separately in recovery PR [#3](https://github.com/perfectlooparts786-ai/fryzar/pull/3). GitHub contains full source blobs with verified UTF-8 byte sizes and a provenance manifest.
+- The recovered deployed source is not the same architecture as this development branch. Current customer/admin Workers embed their own D1-backed handlers against `fryzar-production`; the newer candidate branch centralizes business rules in `fryzar-api` against `fryzar-core`. A migration plan and D1 reconciliation are required before any runtime cutover.
+- The legacy production store settings currently report `store_status=setup`, `launch_ready=no`, and `manual_transfer_enabled=no`. The core database also has setup/not-ready flags and manual transfer disabled. Do not open either store.
+- The production database has the only observed catalogue data (4 products, 3 categories, 215 tracked stock units); the core database has no products or categories. No canonical database has been selected.
+- Audit PR [#2](https://github.com/perfectlooparts786-ai/fryzar/pull/2) records the source comparison, schema findings, and legacy runtime defects. In particular, the deployed legacy path has stock oversell risk, missing checkout payment-row creation, optional server-side idempotency, cancellation without stock restoration, unscoped order reads, no legacy failed-login throttling, and wildcard customer CORS.
+- GitHub Issues [#4](https://github.com/perfectlooparts786-ai/fryzar/issues/4) through [#8](https://github.com/perfectlooparts786-ai/fryzar/issues/8) track the checkout, admin security, central API migration, D1 reconciliation, and CORS/domain work.
+- The backup manifest records both SQL exports and successful local SQLite replay. The raw files are held outside GitHub and this execution workspace; Cloudflare D1-managed restore verification remains outstanding.
+- Latest observed candidate branch head after documentation corrections: `aee85145c854dc11c5ee4a13c6331184e552c0bc`. GitHub Actions run [41284547482](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41284547482) completed successfully on that head. The workflow validates API TypeScript/tests and builds both web clients; it does not deploy Workers.
+- No live Worker, D1 schema/data/binding, secret, DNS record, route, or payment setting was changed during the audit. The candidate source remains un-deployed; real D1 concurrency/rollback, browser E2E, live admin sessions and external HTTP checks remain release gates.
+
+### Next development sequence
+
+1. Complete D1-native restore and full source/schema/data reconciliation without changing either live database.
+2. Run the candidate API against an isolated D1/preview environment and add real integration evidence for checkout concurrency, rollback, cancellation, role scopes and payment reconciliation.
+3. Plan the legacy-to-central API cutover, with exact rollback and owner approval.
+4. Resolve CORS/origins, preview routing, and deployment workflow.
+5. Populate genuine catalogue/delivery/support configuration only when owner-provided data is available; keep the store closed until all release gates pass.
