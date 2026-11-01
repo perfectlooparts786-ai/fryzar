@@ -120,3 +120,5 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - The metrics endpoint is designed to return counts and aggregate delivered revenue only, with no customer contact/address fields.
 - Latest dashboard-metrics tests are committed but have not yet been confirmed in a successful CI run.
 - Real D1 query execution and live authenticated Worker integration remain pending.
+
+- Follow-up test explicitly asserts that the dashboard aggregate SQL query does not select `customer_phone` or `delivery_address`; commit `4e0ac438e665d395e8959f4463f6edc77fe97805`. CI result for the current head is not yet confirmed.
