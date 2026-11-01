@@ -63,7 +63,7 @@ function createEnv(options = {}) {
   return {
     env: {
       DB,
-      APP_ENV: "test",
+      APP_ENV: options.appEnv ?? "test",
       ALLOWED_ORIGINS: "https://store.example,https://admin.example",
       TRACKING_SECRET: options.trackingSecret ?? "test-only-tracking-secret-at-least-32-bytes-long",
       OWNER_BOOTSTRAP_TOKEN: options.ownerBootstrapToken ?? "test-owner-bootstrap-token-at-least-32-bytes"
@@ -79,7 +79,7 @@ function request(path, init = {}) {
 const zoneId = "55555555-5555-4555-8555-555555555555";
 const productId = "44444444-4444-4444-8444-444444444444";
 
-function checkoutRequest(overrides = {}, key = "checkout-test-key-0001") {
+function checkoutRequest(overrides = {}, key = "checkout-test-key-0001", clientIp) {
   const body = {
     customer_name: "Test Customer",
     customer_phone: "03001234567",
@@ -95,7 +95,8 @@ function checkoutRequest(overrides = {}, key = "checkout-test-key-0001") {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Idempotency-Key": key
+      "Idempotency-Key": key,
+      ...(clientIp ? { "CF-Connecting-IP": clientIp } : {})
     },
     body: JSON.stringify(body)
   });
@@ -156,6 +157,43 @@ function checkoutRequestHash(overrides = {}) {
   };
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
+
+test("preview checkout is rate limited even when no Cloudflare client IP is present", async () => {
+  const { env, state } = createEnv({ appEnv: "preview" });
+  const response = await worker.fetch(checkoutRequest(), env);
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error, "rate_limit_exceeded");
+  assert.equal(state.prepareCount, 0);
+});
+
+test("preview checkout enforces the IP-based request limit", async () => {
+  const { env, state } = createEnv({
+    appEnv: "preview",
+    firstResult: { request_count: 6 }
+  });
+  const response = await worker.fetch(
+    checkoutRequest({}, "preview-rate-limit-key-0001", "198.51.100.23"),
+    env
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error, "rate_limit_exceeded");
+  assert.equal(response.headers.get("Retry-After"), "600");
+  assert.equal(state.firstCount, 1);
+  assert.equal(state.batchCount, 0);
+});
+
+test("preview checkout fails closed when the rate-limit database is unavailable", async () => {
+  const { env } = createEnv({ appEnv: "preview", throwDb: true });
+  const response = await worker.fetch(
+    checkoutRequest({}, "preview-rate-limit-db-error-0001", "198.51.100.24"),
+    env
+  );
+
+  assert.equal(response.status, 429);
+  assert.equal((await response.json()).error, "rate_limit_exceeded");
+});
 
 test("health is ready when the core schema exists", async () => {
   const { env } = createEnv({ firstResult: { name: "store_settings" } });
