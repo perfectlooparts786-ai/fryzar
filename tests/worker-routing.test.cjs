@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const customerWorkerPromise = import("../apps/customer-worker/src/index.mjs").then((m) => m.default);
 const adminWorkerPromise = import("../apps/admin-worker/src/index.mjs").then((m) => m.default);
@@ -111,4 +113,29 @@ test("admin Worker serves its application shell and routes from static assets", 
   assert.equal(assets.calls.length, 1);
   assert.equal(assets.calls[0], request);
   assert.equal(api.calls.length, 0);
+});
+
+
+test("preview Wrangler configs route both /api and /api/* through the central API", () => {
+  const customerConfig = fs.readFileSync(
+    path.join(__dirname, "../apps/customer-worker/wrangler.toml"),
+    "utf8"
+  );
+  const adminConfig = fs.readFileSync(
+    path.join(__dirname, "../apps/admin-worker/wrangler.toml"),
+    "utf8"
+  );
+  const apiConfig = fs.readFileSync(
+    path.join(__dirname, "../apps/api/wrangler.toml"),
+    "utf8"
+  );
+
+  for (const config of [customerConfig, adminConfig]) {
+    assert.match(config, /run_worker_first\\s*=\\s*\\[\\s*"\\/api"\\s*,\\s*"\\/api\\/\\*"\\s*\\]/);
+    assert.match(config, /service\\s*=\\s*"fryzar-api-preview"/);
+  }
+
+  assert.match(apiConfig, /name\\s*=\\s*"fryzar-api-preview"/);
+  assert.match(apiConfig, /database_name\\s*=\\s*"fryzar-preview"/);
+  assert.doesNotMatch(apiConfig, /fryzar-production|fryzar-core/);
 });
