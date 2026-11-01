@@ -48,3 +48,18 @@ Do not calculate a completion percentage until the backlog is weighted and test 
 - Completed dashboard metrics frontend integration: typed API method, top-level state, overview prop and authenticated data loading.
 - A-006 is now TESTED based on GitHub Actions run 41278344214 (commit 1c7d8a86cd25cff5b117757296344ef2977c457e): 72/72 API tests, API strict TypeScript validation, storefront build and admin build passed.
 - Deployment and real-service integration tasks remain open; do not treat CI success as deployment evidence.
+
+
+## External infrastructure/release blockers — audit 2026-11-01
+
+These are tracked as repository issues because they cross the legacy deployed runtime, the candidate application, and Cloudflare infrastructure. They are not considered complete by the candidate branch's mocked CI.
+
+| Issue | Task | Current evidence / exit criteria |
+|---|---|---|
+| [#4](https://github.com/perfectlooparts786-ai/fryzar/issues/4) | Checkout/payment/stock integrity transition | Fix legacy payment-row omission, server-required idempotency, atomic stock reservation, delivery-fee config consistency; prove with real D1 rollback/concurrency tests |
+| [#5](https://github.com/perfectlooparts786-ai/fryzar/issues/5) | Admin authorization and cancellation safety | Fix legacy role-scoped order reads, login throttling and exact-once stock restoration; verify all roles against isolated D1 |
+| [#6](https://github.com/perfectlooparts786-ai/fryzar/issues/6) | Legacy-to-central API migration | Prove customer/admin clients use central API in preview; remove duplicate business rules only after controlled cutover plan |
+| [#7](https://github.com/perfectlooparts786-ai/fryzar/issues/7) | D1 source-of-truth and restore | Verify SQL backup artifacts, perform D1-native isolated restores, reconcile schemas/data/relationships, test migration and rollback |
+| [#8](https://github.com/perfectlooparts786-ai/fryzar/issues/8) | CORS, production config and domain | Replace wildcard CORS, set reviewed production origins/mode, verify cookies/TLS/Worker routes; owner approval required for production/DNS changes |
+
+**Current project gate:** both stores remain in setup/not-ready state. Production manual transfer is disabled. Do not switch D1 bindings, open the store, enable manual transfer, or route the public domain until issues #4–#8 have their required evidence and approvals.
