@@ -1,0 +1,407 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Noto+Nastaliq+Urdu:wght@400;500;600&display=swap");
+
+:root {
+  font-family: "DM Sans", "Noto Nastaliq Urdu", system-ui, sans-serif;
+  color: #1d2c25;
+  background: #f7f7f2;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --forest: #164c3b;
+  --forest-deep: #0f3429;
+  --moss: #6d8a63;
+  --sage: #d9e4d4;
+  --cream: #f7f7f2;
+  --paper: #fffefa;
+  --ink: #1d2c25;
+  --muted: #718078;
+  --line: #e6e9e1;
+  --orange: #df8a57;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; }
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid rgba(223,138,87,.45);
+  outline-offset: 2px;
+}
+.app-shell { overflow: hidden; }
+.announcement {
+  min-height: 34px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  background: var(--forest-deep);
+  color: #eaf0e8;
+  font-size: 11px;
+  letter-spacing: .055em;
+}
+.announcement-dot, .market-status span, .status-pill i, .store-status-toast span {
+  width: 6px; height: 6px; border-radius: 50%; background: #a9c99c;
+}
+.site-header {
+  height: 82px;
+  max-width: 1320px;
+  margin: auto;
+  padding: 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+}
+.brand, .footer-brand { display: inline-flex; align-items: center; gap: 11px; }
+.brand-mark {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  color: #fff; background: var(--forest); border-radius: 13px 13px 13px 4px;
+  font: 800 23px/1 "Manrope", sans-serif; letter-spacing: -2px;
+}
+.brand-copy { display: flex; flex-direction: column; gap: 2px; }
+.brand-copy strong, .footer-brand strong { font: 800 18px/1 "Manrope", sans-serif; letter-spacing: .07em; }
+.brand-copy small { font-size: 8px; color: var(--muted); letter-spacing: .16em; font-weight: 700; }
+.desktop-nav { display: flex; align-items: center; gap: 38px; color: #58665e; font-size: 13px; }
+.desktop-nav a { transition: color .2s; }
+.desktop-nav a:hover { color: var(--forest); }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.language-switch {
+  min-width: 55px; height: 40px; padding: 0 12px; border-radius: 30px;
+  background: transparent; border: 1px solid var(--line); color: var(--forest);
+  font-size: 12px; font-weight: 700;
+}
+.basket-button {
+  height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 15px;
+  background: var(--forest); color: #fff; border: 0; border-radius: 30px;
+  font-size: 12px; font-weight: 700; transition: background .2s;
+}
+.basket-button:hover, .primary-button:hover, .primary-link:hover { background: #245f4b; }
+.basket-count {
+  min-width: 21px; height: 21px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--forest); background: #f5f7f0; font-size: 10px;
+}
+.hero-section {
+  position: relative; max-width: 1440px; min-height: 570px; margin: 0 auto;
+  padding: 75px max(7vw, 48px) 70px; display: grid; grid-template-columns: 1fr 1fr;
+  align-items: center; background: #edf1e8;
+}
+.hero-copy { position: relative; z-index: 2; max-width: 580px; }
+.eyebrow {
+  display: flex; align-items: center; gap: 10px; color: #6f846f;
+  font-size: 10px; font-weight: 800; letter-spacing: .17em;
+}
+.eyebrow > span { width: 20px; height: 1px; background: var(--orange); display: inline-block; }
+.hero-copy h1 {
+  margin: 21px 0 18px; font: 700 clamp(48px, 5vw, 76px)/1.04 "Manrope", sans-serif;
+  letter-spacing: -.065em; color: var(--forest-deep);
+}
+.hero-copy h1 em { font-style: normal; color: #718768; }
+.hero-copy > p { max-width: 465px; margin: 0; color: #66756a; font-size: 16px; line-height: 1.9; }
+.hero-actions { display: flex; align-items: center; gap: 26px; margin-top: 30px; }
+.primary-link, .primary-button {
+  min-height: 49px; padding: 0 21px; display: inline-flex; justify-content: center; align-items: center;
+  gap: 13px; background: var(--forest); color: white; border: 0; border-radius: 8px;
+  font-size: 12px; font-weight: 700; transition: background .2s, transform .2s;
+}
+.primary-link:hover { transform: translateY(-2px); }
+.text-link { color: var(--forest); font-size: 12px; font-weight: 700; border-bottom: 1px solid #a9b8a2; padding-bottom: 5px; }
+.hero-promises { display: flex; flex-wrap: wrap; gap: 13px 18px; margin-top: 45px; color: #6b7b6f; }
+.hero-promises span { display: flex; align-items: center; gap: 6px; font-size: 10px; }
+.hero-promises svg { width: 14px; height: 14px; color: #829a79; }
+.hero-art { min-height: 420px; position: relative; display: grid; place-items: center; }
+.hero-art-halo { position: absolute; width: 390px; height: 390px; border-radius: 50%; background: #dce7d6; }
+.hero-art-orbit { position: absolute; border: 1px solid rgba(105,133,97,.18); border-radius: 50%; }
+.orbit-one { width: 465px; height: 465px; }
+.orbit-two { width: 530px; height: 530px; border-style: dashed; }
+.market-card {
+  position: relative; z-index: 1; width: min(315px, 75%); height: 370px; padding: 22px;
+  background: #fffefa; border-radius: 15px; box-shadow: 0 27px 65px rgba(35,61,43,.13);
+  transform: rotate(2deg); display: flex; flex-direction: column; justify-content: space-between;
+}
+.market-card-top, .market-card-bottom { display: flex; align-items: center; justify-content: space-between; }
+.mini-brand { width: 29px; height: 29px; display: grid; place-items: center; background: var(--forest); color: white; border-radius: 8px 8px 8px 2px; font: 800 16px "Manrope"; }
+.market-status { display: flex; align-items: center; gap: 7px; font-size: 8px; font-weight: 800; letter-spacing: .12em; color: #86917f; }
+.market-status span { width: 5px; height: 5px; }
+.basket-illustration { height: 230px; position: relative; display: flex; justify-content: center; align-items: flex-end; }
+.basket-handle { position: absolute; width: 152px; height: 132px; border: 10px solid #b7784c; border-bottom: 0; border-radius: 90px 90px 0 0; top: 26px; }
+.basket-body {
+  position: relative; width: 210px; height: 112px; z-index: 2; border-radius: 8px 8px 27px 27px;
+  background: repeating-linear-gradient(90deg,#c7895a 0 12px,#d79d6b 12px 20px);
+  clip-path: polygon(0 0,100% 0,86% 100%,14% 100%); box-shadow: inset 0 -8px 0 rgba(95,59,35,.14);
+}
+.basket-body span { position: absolute; width: 100%; height: 12px; top: 15px; background: rgba(104,65,39,.22); }
+.basket-fruit { position: absolute; z-index: 1; width: 66px; height: 66px; border-radius: 50%; bottom: 100px; }
+.fruit-one { background: #e68d55; left: 56px; }
+.fruit-two { width: 76px; height: 76px; background: #9cab65; left: 111px; bottom: 113px; }
+.fruit-three { background: #d8bd72; right: 54px; bottom: 99px; }
+.fruit-four { width: 52px; height: 52px; background: #c96e55; left: 136px; bottom: 145px; }
+.basket-leaf { position: absolute; z-index: 3; background: #688963; width: 42px; height: 18px; border-radius: 100% 0 100% 0; }
+.leaf-one { left: 114px; top: 36px; transform: rotate(-35deg); }
+.leaf-two { right: 92px; top: 59px; transform: rotate(40deg) scaleX(-1); }
+.market-card-bottom { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.market-card-bottom strong { color: var(--forest); font: 700 14px "Manrope"; }
+.market-card-bottom small { color: #89958c; font-size: 10px; }
+.floating-note {
+  position: absolute; z-index: 2; display: flex; align-items: center; gap: 9px; padding: 11px 15px;
+  background: #fffefa; border: 1px solid rgba(218,225,213,.8); border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(35,61,43,.08); color: #516258; font-size: 10px; font-weight: 700;
+}
+.note-top { top: 61px; left: 1%; }
+.note-bottom { bottom: 56px; right: 0; }
+.note-icon, .note-check { width: 24px; height: 24px; display: grid; place-items: center; color: var(--forest); background: #e8efe3; border-radius: 6px; }
+.note-icon svg, .note-check svg { width: 15px; height: 15px; }
+.hero-art-spark { position: absolute; color: var(--orange); }
+.spark-one { top: 38px; right: 12%; font-size: 25px; }
+.spark-two { bottom: 48px; left: 9%; color: #8a9c73; font-size: 21px; }
+.hero-bottom {
+  position: absolute; bottom: 22px; left: max(7vw,48px); right: max(7vw,48px);
+  display: flex; align-items: center; gap: 13px; color: #849286; font-size: 9px; letter-spacing: .08em;
+}
+.hero-index { color: #607660; font-weight: 800; }
+.hero-bottom-line { width: 55px; height: 1px; background: #c6d0c2; }
+.shop-section { max-width: 1320px; margin: auto; padding: 105px 38px 110px; }
+.section-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 30px; }
+.section-heading h2, .how-intro h2 {
+  margin: 14px 0 9px; font: 700 clamp(32px, 3.3vw, 43px)/1.1 "Manrope", sans-serif;
+  letter-spacing: -.05em; color: var(--forest-deep);
+}
+.section-heading p, .how-intro p { margin: 0; color: #758178; font-size: 13px; line-height: 1.8; }
+.search-box {
+  width: min(345px, 100%); height: 47px; border: 1px solid #e3e8df; background: #fffefa;
+  display: flex; align-items: center; gap: 10px; border-radius: 7px; padding: 0 13px; color: #879386;
+}
+.search-box svg { flex: 0 0 auto; }
+.search-box input { border: 0; outline: 0; width: 100%; color: var(--ink); background: transparent; font-size: 11px; }
+.search-box input::placeholder { color: #9aa59a; }
+.search-box button { border: 0; background: none; color: #7c887d; padding: 2px; display: grid; place-items: center; }
+.search-box button svg { width: 15px; height: 15px; }
+.category-row { display: flex; flex-wrap: wrap; gap: 9px; margin: 34px 0 30px; }
+.category-chip { border: 1px solid #e4e8e0; background: transparent; border-radius: 40px; padding: 10px 17px; color: #758177; font-size: 10px; font-weight: 700; }
+.category-chip.active { color: #fff; border-color: var(--forest); background: var(--forest); }
+.catalog-state { min-height: 240px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 13px; color: #829084; text-align: center; }
+.catalog-state h3 { margin: 0; color: var(--forest); font: 700 20px "Manrope"; }
+.catalog-state p { max-width: 420px; margin: 0; font-size: 12px; line-height: 1.8; }
+.loader { width: 28px; height: 28px; border: 2px solid #dce5d8; border-top-color: var(--forest); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.state-card { min-height: 275px; background: #f0f3eb; border-radius: 12px; }
+.state-symbol { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid #d9e1d4; border-radius: 50%; color: #728b67; font-weight: 800; }
+.outline-button { min-height: 42px; border: 1px solid #d8e0d5; border-radius: 6px; padding: 0 16px; background: #fffefa; color: var(--forest); font-size: 11px; font-weight: 700; }
+.empty-catalog {
+  min-height: 300px; padding: 34px 7%; display: grid; grid-template-columns: 1fr 1.1fr; align-items: center;
+  gap: 55px; background: #f0f3eb; border-radius: 13px;
+}
+.empty-catalog-art { min-height: 200px; position: relative; display: grid; place-items: center; }
+.empty-plate { width: 175px; height: 175px; border-radius: 50%; background: #fffefa; border: 12px solid #e3e9dd; box-shadow: 0 15px 30px rgba(45,72,49,.07); position: relative; }
+.empty-plate span { position: absolute; width: 73px; height: 83px; background: #d9e6d1; border-radius: 50% 50% 46% 46%; left: 38px; top: 30px; transform: rotate(-24deg); }
+.empty-plate i { position: absolute; width: 47px; height: 55px; background: #e3b17b; border-radius: 50% 50% 45% 45%; left: 79px; top: 51px; transform: rotate(34deg); }
+.empty-plate b { position: absolute; width: 40px; height: 40px; background: #a7bb91; border-radius: 50%; left: 62px; top: 81px; }
+.empty-spark { position: absolute; color: var(--orange); }
+.spark-a { top: 6px; right: 18%; font-size: 27px; }
+.spark-b { bottom: 16px; left: 15%; color: #8ea27f; font-size: 24px; }
+.empty-catalog-copy { max-width: 450px; }
+.status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 40px; background: #e4ebdf; color: #63775f; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+.status-pill i { width: 6px; height: 6px; }
+.empty-catalog-copy h3 { margin: 19px 0 10px; color: var(--forest-deep); font: 700 28px "Manrope"; letter-spacing: -.04em; }
+.empty-catalog-copy p { margin: 0; color: #708071; font-size: 13px; line-height: 1.9; }
+.empty-catalog-copy > small { display: block; margin-top: 17px; color: #94a093; font-size: 10px; }
+.product-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 17px; }
+.product-card { background: #fffefa; border: 1px solid #e9ece5; border-radius: 10px; overflow: hidden; transition: transform .22s, box-shadow .22s; }
+.product-card:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(28,61,42,.07); }
+.product-image { height: 190px; position: relative; display: grid; place-items: center; background: #f0f3eb; overflow: hidden; }
+.product-image-placeholder { width: 84px; height: 84px; display: grid; place-items: center; border-radius: 24px 24px 24px 7px; color: #71886b; background: #e1e9dc; font: 800 16px "Manrope"; letter-spacing: -.04em; }
+.product-image img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.product-ribbon { position: absolute; top: 13px; left: 12px; background: #fffefa; color: var(--forest); border-radius: 30px; padding: 6px 10px; font-size: 8px; font-weight: 800; }
+.product-info { padding: 16px; }
+.product-info > small { color: #8a998b; font-size: 9px; }
+.product-info h3 { min-height: 25px; margin: 7px 0 4px; color: var(--forest-deep); font: 700 15px "Manrope"; }
+.product-info p { min-height: 35px; margin: 0; color: #89938a; font-size: 10px; line-height: 1.7; }
+.product-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 16px; }
+.product-footer > strong { color: var(--forest); font: 700 14px "Manrope"; }
+.product-footer button { display: flex; align-items: center; gap: 5px; min-height: 32px; border: 0; border-radius: 5px; background: #eaf0e5; color: var(--forest); padding: 0 9px; font-size: 9px; font-weight: 700; }
+.product-footer button:disabled { opacity: .45; cursor: not-allowed; }
+.product-footer button svg { width: 13px; height: 13px; }
+.catalog-footnote { display: flex; justify-content: center; gap: 7px; margin-top: 25px; color: #92a093; font-size: 10px; }
+.catalog-footnote span:first-child { color: var(--forest); font-weight: 800; }
+.how-section { background: #fffefa; padding: 95px max(7vw,48px) 100px; display: grid; grid-template-columns: .85fr 1.4fr; gap: 80px; }
+.how-intro { max-width: 355px; }
+.how-intro h2 { font-size: clamp(30px,3vw,39px); line-height: 1.2; }
+.steps-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 15px; }
+.step-card { position: relative; min-height: 225px; padding: 24px 18px; border: 1px solid #edf0e8; border-radius: 9px; }
+.step-number { color: #c2cdbd; font: 700 10px "Manrope"; letter-spacing: .12em; }
+.step-icon { width: 50px; height: 50px; display: grid; place-items: center; margin: 22px 0 17px; color: var(--forest); background: #eef3e9; border-radius: 14px 14px 14px 4px; }
+.step-icon svg { width: 22px; height: 22px; }
+.icon-browse { position: relative; }
+.icon-browse span { width: 22px; height: 16px; border: 1.5px solid var(--forest); border-radius: 4px; }
+.icon-browse i, .icon-browse b { position: absolute; width: 6px; height: 6px; background: #97ae88; border-radius: 50%; }
+.icon-browse i { left: 16px; top: 19px; }
+.icon-browse b { right: 15px; bottom: 18px; }
+.icon-order { background: #e7efe1; }
+.step-card h3 { margin: 0 0 7px; color: var(--forest); font: 700 13px "Manrope"; }
+.step-card p { margin: 0; color: #849084; font-size: 10px; line-height: 1.7; }
+.closing-section {
+  max-width: 1320px; margin: 75px auto; padding: 34px 42px; display: flex; align-items: center; gap: 22px;
+  border-radius: 12px; background: var(--forest-deep); color: #fff;
+}
+.closing-mark { width: 54px; height: 54px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 16px 16px 16px 4px; font: 800 27px "Manrope"; }
+.closing-section > div:nth-child(2) { flex: 1; }
+.closing-section span { color: #a9c2a1; font-size: 8px; font-weight: 800; letter-spacing: .18em; }
+.closing-section h2 { margin: 6px 0 0; font: 600 clamp(18px,2.4vw,27px) "Manrope"; letter-spacing: -.03em; }
+.closing-section > a { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: var(--forest); }
+.site-footer { min-height: 92px; max-width: 1320px; margin: auto; padding: 20px 38px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.footer-brand .brand-mark { width: 32px; height: 32px; font-size: 18px; border-radius: 10px 10px 10px 3px; }
+.footer-brand > div { display: flex; flex-direction: column; gap: 5px; }
+.footer-brand strong { font-size: 14px; }
+.footer-brand small, .footer-currency, .footer-copy { color: #8b968c; font-size: 9px; }
+.overlay { position: fixed; inset: 0; z-index: 30; display: flex; justify-content: flex-end; background: rgba(18,35,27,.42); backdrop-filter: blur(4px); }
+.drawer, .checkout-panel, .success-panel {
+  background: #fffefa; box-shadow: -20px 0 70px rgba(15,52,41,.15); overflow-y: auto;
+}
+.drawer { width: min(470px,100%); min-height: 100%; padding: 28px; display: flex; flex-direction: column; }
+.drawer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+.drawer-header small { color: #92a08f; font-size: 9px; font-weight: 800; letter-spacing: .15em; }
+.drawer-header h2 { margin: 7px 0 0; color: var(--forest); font: 700 26px "Manrope"; }
+.icon-button { width: 37px; height: 37px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: #617164; }
+.drawer-empty { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px 10px; }
+.drawer-bag { width: 68px; height: 68px; display: grid; place-items: center; border-radius: 22px 22px 22px 6px; background: #edf2e8; color: var(--forest); }
+.drawer-bag svg { width: 27px; height: 27px; }
+.drawer-empty h3 { margin: 20px 0 8px; color: var(--forest); font: 700 19px "Manrope"; }
+.drawer-empty p { max-width: 250px; margin: 0 0 22px; color: #849187; font-size: 11px; line-height: 1.8; }
+.drawer-items { flex: 1; padding: 20px 0; }
+.drawer-item { display: grid; grid-template-columns: 58px 1fr auto; align-items: start; gap: 12px; padding: 15px 0; border-bottom: 1px solid #edf0e9; }
+.drawer-item-art { width: 58px; height: 58px; display: grid; place-items: center; border-radius: 9px; color: #71886b; background: #eaf0e5; font: 800 18px "Manrope"; }
+.drawer-item-copy { display: flex; flex-direction: column; gap: 6px; }
+.drawer-item-copy strong { color: var(--forest); font-size: 12px; }
+.drawer-item-copy small { color: #89968b; font-size: 10px; }
+.drawer-line-total { color: var(--forest); font: 700 11px "Manrope"; }
+.quantity-control { display: flex; align-items: center; gap: 12px; margin-top: 5px; }
+.quantity-control button { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid #e3e9df; background: transparent; color: var(--forest); border-radius: 5px; }
+.quantity-control button svg { width: 13px; height: 13px; }
+.quantity-control span { color: var(--forest); font-size: 11px; font-weight: 700; }
+.drawer-summary, .checkout-summary { padding-top: 16px; border-top: 1px solid var(--line); }
+.drawer-summary > div, .checkout-summary > div { display: flex; justify-content: space-between; gap: 15px; margin: 12px 0; color: #77857a; font-size: 11px; }
+.drawer-summary > div strong, .checkout-summary > div strong { color: var(--forest); }
+.summary-total { padding-top: 13px; border-top: 1px solid var(--line); font-weight: 800; }
+.drawer-summary > small, .checkout-summary > small { display: block; margin: 7px 0 15px; color: #95a095; font-size: 9px; line-height: 1.6; }
+.form-error { color: #a65f39 !important; }
+.full-width { width: 100%; }
+.primary-button:disabled { opacity: .55; cursor: not-allowed; }
+.checkout-panel { width: min(520px,100%); padding: 28px; }
+.checkout-intro { margin: 16px 0 22px; color: #7b887e; font-size: 11px; line-height: 1.7; }
+.checkout-form { display: flex; flex-direction: column; gap: 15px; }
+.checkout-form label { display: flex; flex-direction: column; gap: 7px; color: #526258; font-size: 10px; font-weight: 700; }
+.checkout-form input, .checkout-form textarea, .checkout-form select {
+  width: 100%; padding: 12px 13px; border: 1px solid #e2e8df; border-radius: 6px;
+  color: var(--ink); background: #fff; outline: 0; font-size: 12px; resize: vertical;
+}
+.checkout-form input:focus, .checkout-form textarea:focus, .checkout-form select:focus { border-color: #8ca48a; box-shadow: 0 0 0 3px rgba(140,164,138,.15); }
+.payment-choice { display: flex; align-items: center; gap: 12px; padding: 13px; border-radius: 7px; background: #f0f4ec; }
+.payment-choice-mark { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: #dce8d4; color: var(--forest); }
+.payment-choice-mark svg { width: 15px; height: 15px; }
+.payment-choice > span:last-child { display: flex; flex-direction: column; gap: 4px; }
+.payment-choice strong { color: var(--forest); font-size: 11px; }
+.payment-choice small { color: #7e8d7f; font-size: 9px; }
+.checkout-summary { margin-top: 2px; }
+.inline-error { padding: 11px; border: 1px solid #f0d8c8; border-radius: 6px; background: #fff7f1; color: #985a38; font-size: 10px; line-height: 1.6; }
+.success-panel { width: min(430px,calc(100% - 28px)); max-height: calc(100% - 32px); margin: auto; padding: 30px; border-radius: 13px; box-shadow: 0 25px 70px rgba(15,52,41,.2); text-align: center; }
+.success-icon { width: 55px; height: 55px; margin: 0 auto 16px; display: grid; place-items: center; border-radius: 50%; background: #e3eee0; color: var(--forest); }
+.success-label { color: #8b9b87; font-size: 9px; letter-spacing: .16em; font-weight: 800; }
+.success-panel h2 { margin: 10px 0 8px; color: var(--forest); font: 700 25px "Manrope"; }
+.success-panel > p { margin: 0 0 22px; color: #829084; font-size: 11px; }
+.order-number-box, .tracking-box { padding: 14px; background: #f1f4ed; border-radius: 8px; text-align: left; margin-top: 10px; }
+.order-number-box { display: flex; flex-direction: column; gap: 6px; }
+.order-number-box small, .tracking-box small { color: #7f8e80; font-size: 9px; font-weight: 700; }
+.order-number-box strong { color: var(--forest); font: 700 17px "Manrope"; letter-spacing: .04em; }
+.tracking-box code { display: block; margin: 9px 0; padding: 10px; border: 1px solid #dfe7da; border-radius: 5px; background: #fffefa; color: var(--forest); font-size: 10px; word-break: break-all; }
+.tracking-box p { margin: 0 0 11px; color: #849187; font-size: 9px; line-height: 1.6; }
+.success-panel > .primary-button { margin-top: 18px; }
+.store-status-toast { position: fixed; z-index: 10; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 9px; padding: 10px 15px; border: 1px solid #dfe7d9; border-radius: 40px; background: rgba(255,254,250,.95); box-shadow: 0 8px 25px rgba(26,61,41,.08); color: #647763; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.store-status-toast span { width: 6px; height: 6px; background: var(--orange); }
+[dir="rtl"] .hero-copy h1, [dir="rtl"] .section-heading h2, [dir="rtl"] .how-intro h2, [dir="rtl"] .empty-catalog-copy h3 { letter-spacing: 0; }
+[dir="rtl"] .hero-copy, [dir="rtl"] .section-heading, [dir="rtl"] .how-intro, [dir="rtl"] .empty-catalog-copy { text-align: right; }
+[dir="rtl"] .hero-actions, [dir="rtl"] .hero-promises, [dir="rtl"] .eyebrow { flex-direction: row; }
+[dir="rtl"] .hero-bottom { direction: ltr; }
+[dir="rtl"] .product-ribbon { left: auto; right: 12px; }
+[dir="rtl"] .market-card-bottom { align-items: flex-end; }
+[dir="rtl"] .drawer-item { text-align: right; }
+[dir="rtl"] .order-number-box, [dir="rtl"] .tracking-box { text-align: right; }
+
+@media (max-width: 1000px) {
+  .hero-section { padding-left: 5vw; padding-right: 5vw; grid-template-columns: 1.05fr .95fr; }
+  .hero-art-halo { width: 315px; height: 315px; }
+  .orbit-one { width: 375px; height: 375px; }
+  .orbit-two { width: 420px; height: 420px; }
+  .market-card { transform: scale(.9) rotate(2deg); }
+  .product-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .how-section { gap: 35px; }
+}
+@media (max-width: 740px) {
+  .announcement { font-size: 9px; }
+  .site-header { height: 70px; padding: 0 18px; }
+  .brand-mark { width: 34px; height: 34px; }
+  .brand-copy strong { font-size: 16px; }
+  .desktop-nav { display: none; }
+  .header-actions { gap: 8px; }
+  .basket-button { width: 42px; justify-content: center; padding: 0; }
+  .basket-button > span:not(.basket-count) { display: none; }
+  .hero-section { min-height: auto; padding: 55px 24px 65px; display: flex; flex-direction: column; align-items: stretch; }
+  .hero-copy h1 { font-size: clamp(44px,12vw,60px); }
+  .hero-copy > p { font-size: 13px; }
+  .hero-promises { margin-top: 28px; gap: 10px 14px; }
+  .hero-promises span { font-size: 9px; }
+  .hero-art { min-height: 390px; margin-top: 16px; }
+  .hero-art-halo { width: 280px; height: 280px; }
+  .orbit-one { width: 335px; height: 335px; }
+  .orbit-two { width: 375px; height: 375px; }
+  .market-card { transform: scale(.82) rotate(2deg); }
+  .floating-note { font-size: 9px; }
+  .note-top { top: 20px; left: 0; }
+  .note-bottom { bottom: 20px; right: 0; }
+  .hero-bottom { bottom: 18px; left: 24px; right: 24px; font-size: 8px; }
+  .shop-section { padding: 70px 18px 75px; }
+  .section-heading { display: block; }
+  .section-heading h2 { font-size: 33px; }
+  .search-box { width: 100%; margin-top: 22px; }
+  .category-row { margin: 22px 0; gap: 7px; }
+  .category-chip { padding: 9px 13px; font-size: 9px; }
+  .empty-catalog { grid-template-columns: 1fr; gap: 8px; padding: 22px; text-align: center; }
+  .empty-catalog-art { min-height: 180px; }
+  .empty-catalog-copy { margin: auto; }
+  .empty-catalog-copy h3 { font-size: 24px; }
+  .empty-catalog-copy p { font-size: 11px; }
+  .product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  .product-image { height: 145px; }
+  .product-info { padding: 12px; }
+  .product-info h3 { font-size: 12px; }
+  .product-info p { font-size: 9px; }
+  .product-footer { align-items: flex-start; flex-direction: column; }
+  .product-footer button { width: 100%; justify-content: center; }
+  .how-section { padding: 70px 20px; display: block; }
+  .how-intro { max-width: none; }
+  .steps-grid { margin-top: 28px; grid-template-columns: 1fr; }
+  .step-card { min-height: 0; display: grid; grid-template-columns: 48px 1fr; column-gap: 14px; padding: 17px; }
+  .step-number { grid-column: 1 / -1; }
+  .step-icon { grid-row: 2 / span 2; margin: 10px 0 0; }
+  .step-card h3 { align-self: end; margin: 10px 0 4px; }
+  .step-card p { align-self: start; }
+  .closing-section { margin: 38px 18px; padding: 23px 18px; gap: 13px; }
+  .closing-mark { width: 42px; height: 42px; font-size: 22px; }
+  .closing-section h2 { font-size: 15px; line-height: 1.4; }
+  .closing-section > a { width: 35px; height: 35px; }
+  .site-footer { padding: 20px 18px; flex-wrap: wrap; }
+  .footer-currency { display: none; }
+  .drawer, .checkout-panel { padding: 22px 18px; }
+  .success-panel { padding: 24px 19px; }
+}
+@media (max-width: 380px) {
+  .brand-copy small { font-size: 7px; }
+  .hero-copy h1 { font-size: 42px; }
+  .hero-promises { display: grid; grid-template-columns: 1fr 1fr; }
+  .product-grid { grid-template-columns: 1fr; }
+  .product-image { height: 190px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

@@ -10,12 +10,23 @@
     "test:build": "tsc --project apps/api/tsconfig.test.json",
     "test:api": "npm run test:build && node --test tests/api.test.cjs",
     "test": "npm run typecheck && npm run test:api",
+    "dev:storefront": "vite --config apps/storefront/vite.config.ts",
+    "build:storefront": "tsc --project apps/storefront/tsconfig.json && vite build --config apps/storefront/vite.config.ts",
+    "preview:storefront": "vite preview --config apps/storefront/vite.config.ts",
     "db:migrate:local": "wrangler d1 migrations apply fryzar-core --local --config apps/api/wrangler.toml",
     "db:migrate:remote": "wrangler d1 migrations apply fryzar-core --remote --config apps/api/wrangler.toml"
   },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261101.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
     "typescript": "5.9.3",
+    "vite": "8.3.5",
     "wrangler": "4.156.0"
   }
 }

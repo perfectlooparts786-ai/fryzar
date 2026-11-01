@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   validate:
-    name: Type-check and API tests
+    name: Type-check, API tests, and storefront build
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -29,5 +29,8 @@ jobs:
       - name: Install development dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Run validation suite
+      - name: Validate API
         run: npm test
+
+      - name: Build customer storefront
+        run: npm run build:storefront
