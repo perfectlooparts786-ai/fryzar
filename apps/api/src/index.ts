@@ -299,6 +299,20 @@ async function storefrontConfig(env: Env): Promise<Response> {
   return json({ settings });
 }
 
+async function listDeliveryZones(env: Env): Promise<Response> {
+  const result = await env.DB.prepare(
+    "SELECT id, code, name_ur, name_en, city, region, " +
+    "delivery_fee_paisa, minimum_order_paisa " +
+    "FROM delivery_zones WHERE is_active = 1 " +
+    "ORDER BY city ASC, sort_order ASC, name_en ASC"
+  ).all<JsonRecord>();
+
+  return json({
+    delivery_zones: result.results,
+    currency: "PKR"
+  });
+}
+
 async function readCheckoutInput(request: Request): Promise<
   { ok: true; input: CheckoutInput } | { ok: false; response: Response }
 > {
@@ -724,6 +738,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "GET" && url.pathname === "/api/v1/storefront-config") {
     return storefrontConfig(env);
+  }
+  if (request.method === "GET" && url.pathname === "/api/v1/delivery-zones") {
+    return listDeliveryZones(env);
   }
   if (request.method === "POST" && url.pathname === "/api/v1/orders") {
     return checkout(request, env);
