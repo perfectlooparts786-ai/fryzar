@@ -547,6 +547,7 @@ export default function App() {
         <nav className="desktop-nav" aria-label="Main navigation">
           <a href="#shop">{t.categories}</a>
           <a href="#how-it-works">{t.howItWorks}</a>
+          <a href="#track-order">{t.trackOrder}</a>
           {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noreferrer">{t.support}</a> : null}
         </nav>
 
@@ -748,6 +749,93 @@ export default function App() {
           </div>
         </section>
 
+
+        <section className="track-section" id="track-order">
+          <div className="track-intro">
+            <div className="eyebrow"><span />{t.trackOrder}</div>
+            <h2>{t.trackTitle}</h2>
+            <p>{t.trackBody}</p>
+          </div>
+          <div className="track-card">
+            <form className="track-form" onSubmit={submitTracking}>
+              <label htmlFor="tracking-token">{t.trackingInput}</label>
+              <div className="track-input-row">
+                <input
+                  id="tracking-token"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={64}
+                  pattern="[a-fA-F0-9]{64}"
+                  value={trackingToken}
+                  onChange={event => {
+                    setTrackingToken(event.target.value.replace(/\s/g, ""));
+                    setTrackingError("");
+                    setTrackingResult(null);
+                  }}
+                  placeholder="Enter your private tracking code"
+                  required
+                />
+                <button type="submit" className="primary-button" disabled={trackingLoading}>
+                  {trackingLoading ? t.trackLoading : t.trackButton}
+                  {!trackingLoading ? <Icon name="arrow" /> : null}
+                </button>
+              </div>
+            </form>
+            {trackingError ? <div className="inline-error" role="alert">{trackingError}</div> : null}
+            <p className="track-privacy"><Icon name="check" />{t.trackingPrivacy}</p>
+            {trackingResult ? (
+              <div className="tracking-result" aria-live="polite">
+                <div className="tracking-result-head">
+                  <div><span className="success-label">{t.trackResult}</span><h3>{trackingResult.order.order_number}</h3></div>
+                  <span className={"tracking-current-status status-" + trackingResult.order.status}>
+                    {trackingStatusLabel(trackingResult.order.status)}
+                  </span>
+                </div>
+                <div className="tracking-meta">
+                  <div><small>{t.trackPlaced}</small><strong>{new Date(trackingResult.order.created_at).toLocaleString(language === "ur" ? "ur-PK" : "en-PK")}</strong></div>
+                  <div><small>{t.trackUpdated}</small><strong>{new Date(trackingResult.order.updated_at).toLocaleString(language === "ur" ? "ur-PK" : "en-PK")}</strong></div>
+                </div>
+                {trackingResult.order.status === "cancelled" || trackingResult.order.status === "rejected" ? (
+                  <div className="tracking-terminal-status">{trackingStatusLabel(trackingResult.order.status)}</div>
+                ) : (
+                  <ol className="tracking-timeline">
+                    {(["pending", "confirmed", "preparing", "ready", "out_for_delivery", "delivered"] as const).map((status, index, all) => {
+                      const currentIndex = all.indexOf(trackingResult.order.status as typeof all[number]);
+                      const isCurrent = status === trackingResult.order.status;
+                      const isComplete = currentIndex >= 0 && index <= currentIndex;
+                      return (
+                        <li key={status} className={(isComplete ? "complete" : "") + (isCurrent ? " current" : "")}>
+                          <span className="timeline-dot">{isComplete ? <Icon name="check" /> : null}</span>
+                          <span>{trackingStatusLabel(status)}</span>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+                <div className="tracking-items">
+                  <h4>{t.trackItems}</h4>
+                  {trackingResult.items.map((item, index) => (
+                    <div className="tracking-item" key={trackingResult.order.id + "-" + index}>
+                      <span><strong>{language === "ur" ? item.product_name_ur_snapshot : item.product_name_en_snapshot}</strong><small>{item.quantity} × {money(item.unit_price_paisa, language)}</small></span>
+                      <strong>{money(item.line_total_paisa, language)}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="tracking-totals">
+                  <div><span>{t.subtotal}</span><strong>{money(trackingResult.order.subtotal_paisa, language)}</strong></div>
+                  <div><span>{t.delivery}</span><strong>{money(trackingResult.order.delivery_fee_paisa, language)}</strong></div>
+                  {trackingResult.order.discount_paisa > 0 ? <div><span>Discount</span><strong>-{money(trackingResult.order.discount_paisa, language)}</strong></div> : null}
+                  <div className="tracking-total"><span>{t.estimatedTotal}</span><strong>{money(trackingResult.order.total_paisa, language)}</strong></div>
+                  <div><span>{t.trackPayment}</span><strong>{trackingResult.order.payment_method.replaceAll("_", " ")} · {trackingResult.order.payment_status === "collected" ? t.paymentCollected : t.paymentUnpaid}</strong></div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
         <section className="closing-section">
           <div className="closing-mark">F.</div>
           <div>
@@ -867,6 +955,13 @@ export default function App() {
               <p>{t.trackingNote}</p>
               <button className="outline-button full-width" type="button" onClick={() => void copyTrackingCode()}>{copied ? t.copied : t.copy}</button>
             </div>
+            <button className="outline-button full-width track-success-button" type="button" onClick={() => {
+              const token = orderComplete.tracking_token;
+              setOrderComplete(null);
+              setTrackingToken(token);
+              void lookupTracking(token);
+              window.location.hash = "track-order";
+            }}>{t.trackOrder}</button>
             <button className="primary-button full-width" type="button" onClick={() => setOrderComplete(null)}>{t.close}</button>
           </section>
         </div>
