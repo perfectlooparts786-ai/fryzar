@@ -122,3 +122,13 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - Real D1 query execution and live authenticated Worker integration remain pending.
 
 - Follow-up test explicitly asserts that the dashboard aggregate SQL query does not select `customer_phone` or `delivery_address`; commit `4e0ac438e665d395e8959f4463f6edc77fe97805`. CI result for the current head is not yet confirmed.
+
+
+## Dashboard metrics integration — CI verified (2026-11-01)
+
+- Fixed the API route dispatch source parse error and three malformed admin portal source line breaks discovered by CI.
+- Corrected dashboard metric state placement and wired the dashboard metrics API client into the Overview data-loading sequence.
+- GitHub Actions run **41278344214** on commit `1c7d8a86cd25cff5b117757296344ef2977c457e` completed successfully.
+- Results: API strict TypeScript validation passed; Node API suite passed **72/72 tests**; customer storefront production build passed; admin portal production build passed.
+- Vite emitted a configuration-loader deprecation warning in both frontend builds; it did not fail either build and remains a maintenance item.
+- This was a CI run using mocked API/D1 behavior. Real D1 rollback/concurrency tests, live Worker routes, authenticated browser E2E, and deployment verification remain outstanding.
