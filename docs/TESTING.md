@@ -4,7 +4,7 @@
 GitHub Actions previously passed strict TypeScript validation, 17/17 API tests and the customer storefront production build on commit \`1607be7\`.
 
 ## Latest verified combined validation
-GitHub Actions run 41270463960 on commit \\`0f6efdd838ea4426f2949cde835701e594fd2dcd\\` passed all pipeline steps: API strict TypeScript validation, 39/39 Node API tests, customer storefront production build, and admin portal production build.
+GitHub Actions run 41270769486 on commit \\`95af500df33e8c79981097bc22123da5f7a63aeb\\` passed all pipeline steps: API strict TypeScript validation, 45/45 Node API tests, customer storefront production build, and admin portal production build.
 
 
 - Added first-owner bootstrap and secure session endpoints.
@@ -31,7 +31,7 @@ The expanded API suite contains 39 tests. All passed in the latest CI run. These
 - Manager cancellation batch includes stock restoration, movement, status history and audit.
 - Inventory adjustment requires owner/manager role, tracked stock, non-zero integer delta, and Idempotency-Key.
 - Inventory adjustment prevents negative quantities, writes adjustment + movement + audit in one batch, replays the same response for the same key, and rejects key reuse with a different payload.
-- Product creation with opening stock records the opening adjustment and inventory movement. Product PATCH cannot bypass the inventory ledger.
+- Product creation with opening stock records the opening adjustment and inventory movement. Product PATCH cannot bypass the inventory ledger.\n- Delivery zone create/update validates fields and writes an audit entry in the same D1 batch. Roles are enforced and duplicate zone codes return a conflict. Deactivation updates \\`is_active\\` without deleting historical references.
 
 Mock tests validate the code's request/control behavior, not Cloudflare D1 transactional semantics.
 
@@ -66,3 +66,12 @@ Test English LTR and Urdu RTL on mobile, tablet and desktop. Distinguish CI, D1 
 - Race two adjustments with different keys against the same stock and prove no negative quantity.
 - Race identical requests with the same Idempotency-Key and prove exactly one adjustment is committed and the second response is a replay.
 - Inject a failure after the quantity update and prove D1 batch rollback restores quantity and leaves no partial ledger rows.
+
+
+## Delivery-zone validation coverage
+- Owner/manager create and update/deactivation requests.
+- Integer paisa amount and code/name/location validation.
+- Operator write denial and rider read access.
+- Duplicate zone code conflict mapping.
+- Read-only D1 schema verification confirms the API fields align with the existing \`delivery_zones\` schema. No live zone records were created.
+- Live Worker HTTP and real D1 audit-batch tests remain pending because the current Worker deployment is behind the GitHub source.
