@@ -1,59 +1,57 @@
 # FRYZAR architecture
 
-## Product surfaces
-- Customer website: product discovery, cart, guest checkout, order tracking, support.
-- Customer Android app: native Kotlin + Jetpack Compose client using the same API.
-- Admin portal: staff operations, catalog, inventory, orders, payment review, delivery, settings, support, audit.
+## Target components
+- Customer website: React + TypeScript, bilingual Urdu/English, RTL/LTR.
+- Customer Android app: Kotlin + Jetpack Compose, planned.
+- Admin portal: React + TypeScript, staff authentication and operations.
+- API: Cloudflare Workers + TypeScript.
+- Database: Cloudflare D1.
+- Private payment media: R2 planned, not activated.
+- Source control: private GitHub monorepo.
 
-## Request and data flow
+## Request/data flow
 
 ~~~text
-Customer Web ─────┐
-Android App ──────┼── HTTPS /api/v1 ──> Cloudflare Worker API
-Admin Portal ─────┘                         │
-                                           ├── Cloudflare D1 (authoritative data)
-                                           └── Private object storage (planned)
+Customer website ───┐
+Android app ────────┼── HTTPS /api/v1 ──> Cloudflare Worker API
+Admin portal ───────┘                         │
+                                             └── D1 (authoritative data)
+Future private payment-proof uploads ───────────> Private object storage
 ~~~
 
-Clients do not own prices, final totals, stock, order transitions, payment state, or permissions. The API validates all input and applies business rules.
+## Trust boundaries
+Clients do not own product prices, delivery fees, discounts, totals, stock, order/payment status or permissions. The API recalculates values from trusted D1 records and checks staff authorization on sensitive operations.
 
-## Platform
-| Area | Choice |
-|---|---|
-| API | Cloudflare Worker + TypeScript |
-| Database | Cloudflare D1 |
-| Web clients | React + TypeScript (planned) |
-| Android | Kotlin + Jetpack Compose (planned) |
-| Schema migrations | Versioned SQL and Wrangler migration history |
-| Private media | R2 (planned, not activated) |
-| Source control | Private GitHub monorepo |
+Browsing and guest checkout do not require customer registration. A high-entropy tracking token is derived with HMAC from the order ID; only its SHA-256 hash is stored on the order. The raw token is shown after checkout and never included in logs. Customer tracking responses omit phone/address.
 
-## Data ownership
+Staff authentication uses PBKDF2-SHA256 salted password hashes, one-time owner-bootstrap claim, hashed opaque session tokens, an 8-hour expiry and HttpOnly/Secure/SameSite=Strict cookie. Server-side role checks protect the admin APIs. The first bootstrap also requires a separate Cloudflare secret.
 
-D1 is authoritative for catalog, price, availability, delivery zones, orders, stock, payment state, staff access, and audit events. Money uses integer paisa. The API recalculates all totals.
+## Checkout
+1. Validate JSON size/shape and customer fields.
+2. Require a unique idempotency key and hash normalized request payload.
+3. Check store launch/payment flags.
+4. Load active delivery zone and product records.
+5. Calculate subtotal, delivery fee and total in integer paisa on the server.
+6. Submit idempotency record, order, COD payment, item snapshots, stock reservation, status history and audit record in one D1 batch.
+7. Return a private order tracking token.
 
-## Customer identity
+Database constraints/triggers reject invalid product state, duplicate payment rows, duplicate inventory movements and negative tracked stock. Real concurrency/rollback tests remain outstanding.
 
-Browsing and guest checkout do not require customer registration. Order tracking uses an HMAC-derived high-entropy token. A SHA-256 hash is stored on the order, not the raw token. The HMAC secret is a Worker secret and is not committed to GitHub. Idempotency response cache entries store the order response without the raw tracking token.
-
-Staff accounts are separate and must use server-enforced authorization.
-
-## Order and inventory flow
-
-Checkout validates the request and mandatory Idempotency-Key, canonicalizes and hashes its payload, verifies the store is open, checks payment feature flags, loads an active delivery zone, and reads current product prices. Client-supplied amounts are ignored.
-
-The order, payment row, immutable order-item snapshots, stock reservations, status event, idempotency record, and audit event are submitted in one D1 batch. A unique idempotency index prevents a duplicate request from creating a second order. Database triggers reject unavailable products and insufficient stock. Unique inventory indexes are prepared to prevent duplicate order reservation/cancellation movements.
-
-The cancellation transition and stock restoration operation are not implemented yet.
+## Order administration
+- Order listing/detail is restricted to owner, manager, operator and kitchen roles.
+- Kitchen SQL projection excludes phone and address.
+- Status transitions are checked against a state machine and staff role.
+- Owner/manager cancellation restores tracked stock, adds inventory movements, status history and audit data in a conditional batch.
+- Finance, rider and support access require separate purpose-built assignment/payment/support endpoints.
 
 ## Payments
+- COD starts as unpaid, not paid. Collection workflow is pending.
+- Manual transfer stays disabled until private proof upload and authorized review are complete.
+- Proof upload never automatically verifies payment.
+- No payment gateway or bank details are fabricated.
 
-COD creates a payment row with status unpaid. It remains due until an authorized staff action records collection. Manual transfer is disabled in settings. A future transfer workflow requires a payment record, transaction reference, private proof upload, authorized reviewer, amount/reference checks, replay protection, and audit history. Uploading proof never marks an order paid.
-
-## Rate limiting and origins
-
-Checkout and tracking have D1-backed IP-hash rate limiting. The Worker remains in development mode and only allows localhost browser origins. Before production, switch to fail-closed rate limit behavior and configure exact customer/admin origins.
-
-## Free-first approach
-
-Prefer Workers and D1 free allowances. Optimize indexed D1 queries. Do not enable R2, Workers Paid, paid gateways, or third-party paid services without checking eligibility and obtaining approval for possible charges.
+## Deployment boundaries
+- Development database is fryzar-core.
+- The legacy fryzar-production database and fryzar-app/fryzar-admin Workers remain untouched.
+- The Worker deployment is behind current GitHub source and must be updated only after CI passes.
+- Domain/DNS routing is not configured. Preserve the Apple verification TXT record.

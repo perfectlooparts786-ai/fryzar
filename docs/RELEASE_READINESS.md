@@ -1,26 +1,25 @@
 # FRYZAR release readiness
 
-**Current verdict: NOT READY.**
+**Current verdict: NOT READY**
 
-- [ ] Reproducible source build and reviewed merge.
-- [ ] New schema applied and read back.
-- [ ] API type-check, unit, and integration tests pass.
-- [ ] Isolated Worker deployment and API smoke tests pass.
-- [ ] Customer website complete and responsive.
-- [ ] Admin portal complete with server-side RBAC.
-- [ ] Owner bootstrap and session lifecycle verified.
-- [ ] Server-authoritative checkout totals.
-- [ ] Idempotency and concurrent stock tests pass.
-- [ ] Cancellation restores inventory exactly once.
-- [ ] Tracking credentials are non-enumerable and token-protected.
-- [ ] COD collection workflow verified.
-- [ ] Manual transfer disabled unless private proof and review flow is verified.
-- [ ] No critical authorization or data-integrity defect remains.
-- [ ] Domain, TLS, CORS, redirects, and cookies verified.
-- [ ] Urdu and English layouts verified.
-- [ ] Android build and critical flows tested, or Android excluded explicitly from release scope.
-- [ ] Backup, recovery, and rollback procedures tested.
-- [ ] Usage remains within approved free-tier resources.
-- [ ] Store contact, delivery zones, payment instructions, and business information verified.
+## Blocking release gates
+- [ ] Latest combined CI passes for API, all 28 current API tests, customer web and admin web.
+- [ ] Current Worker source deployed to isolated development Worker.
+- [ ] Live HTTP health/catalog/delivery-zone/admin authentication tests pass.
+- [ ] Real D1 rollback, idempotency, oversell and exactly-once cancellation tests pass.
+- [ ] Owner bootstrap token configured safely and first owner established through the UI.
+- [ ] Staff management, role permissions and password/session lifecycle complete.
+- [ ] Product/category/inventory/delivery administration complete.
+- [ ] Genuine products, prices, images and delivery areas provided by the owner.
+- [ ] Customer website complete and browser-tested in Urdu/English.
+- [ ] Admin dashboard operations complete and role-tested.
+- [ ] COD collection workflow complete.
+- [ ] Manual transfer remains disabled until secure proof storage, review, rejection and audit are complete.
+- [ ] Android source, installable APK and device tests complete.
+- [ ] Support contact/policies configured with genuine business details.
+- [ ] Domain structure approved; DNS/TLS/routes/cookies/CORS verified.
+- [ ] Backup/restore and rollback rehearsal recorded.
+- [ ] No critical data-integrity, security or privacy issue remains.
+- [ ] Final release report contains evidence and known limitations.
 
-Do not set launch readiness to true to bypass these gates.
+Do not set \`launch_ready=true\` or open ordering just to make a dashboard appear complete. Every relevant gate must have evidence.  

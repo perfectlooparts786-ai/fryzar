@@ -4,31 +4,39 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 
 | ID | Task | Status | Evidence / exit criteria |
 |---|---|---|---|
-| F-001 | Fresh-build branch and project scaffold | IMPLEMENTED | Committed on foundation/fresh-build |
-| F-002 | Create isolated D1 database | IMPLEMENTED | fryzar-core exists in APAC |
-| F-003 | Apply and track core schema migration | TESTED | 0001_core.sql and 0002_checkout_integrity.sql read back in d1_migrations; schema objects verified |
-| F-004 | Initial API catalog/config/health routes | IMPLEMENTED | TypeScript source committed; live HTTP verification pending |
-| F-005 | Add API test suite and CI workflow | TESTED | GitHub Actions run 41265458517: strict type-check passed and 16/16 API tests passed |
-| F-006 | Deploy isolated fryzar-api Worker | IMPLEMENTED | Worker deployment version c0f0ecf8... has 100% traffic; DB and secret bindings verified |
-| F-007 | Live API smoke tests | BLOCKED | Current tool environment could not resolve workers.dev; verify through browser/device |
-| F-008 | Execute API validation suite in CI | TESTED | GitHub Actions run 41265458517 completed successfully, 16/16 passed |
-| B-001 | Product and category administration APIs | NOT STARTED | CRUD, validation, role checks, audit |
-| B-002 | Guest checkout with authoritative prices | IMPLEMENTED | Endpoint source added; mocked checkout passes; real D1 integration still pending |
-| B-003 | Mandatory idempotency and payload replay | IMPLEMENTED | Key + canonical request hash + 24-hour response cache in source; concurrent D1 test pending |
-| B-004 | Atomic stock reservation at checkout | IMPLEMENTED | D1 batch writes and validation trigger added; oversell tests pending |
-| B-005 | Secure order tracking | IMPLEMENTED | HMAC-derived token, SHA-256 hash storage, PII-minimized tracking route; runtime tests pending |
-| B-006 | Order lifecycle and cancellation stock restoration | NOT STARTED | Role-authorized transitions and exactly-once restock required |
-| S-001 | One-time owner bootstrap and staff auth | NOT STARTED | No staff account or login endpoint |
-| S-002 | Server-side role authorization | NOT STARTED | No RBAC handlers yet |
-| S-003 | Login abuse, CSRF/origin, session and audit controls | NOT STARTED | Checkout/tracking rate limiting is only an initial public API control |
-| W-001 | Customer storefront | NOT STARTED | Responsive Urdu/English website, catalog, cart, guest checkout, tracking |
-| W-002 | Admin dashboard | NOT STARTED | Staff access, catalog, inventory, orders, delivery, payments, settings |
-| P-001 | COD collection workflow | NOT STARTED | COD payment row is created as unpaid; authorized collection transition is missing |
-| P-002 | Manual-transfer workflow | BLOCKED | Feature disabled; private proof storage and review not implemented |
-| M-001 | Private payment-proof storage | BLOCKED | R2 not activated; verify account eligibility and cost before enablement |
-| A-001 | Native Android app | NOT STARTED | Kotlin/Compose source, APK, and device-flow evidence |
-| D-001 | Production domain routing | NOT STARTED | Approve hostnames, configure TLS, CORS, cookies, routes |
-| Q-001 | Cross-platform end-to-end tests | NOT STARTED | Actual customer/admin/Android tests required |
-| R-001 | Production release and rollback | NOT STARTED | All critical release gates must pass |
+| F-001 | New GitHub development branch and project scaffold | IMPLEMENTED | Private repo and foundation/fresh-build branch |
+| F-002 | Create isolated D1 database | IMPLEMENTED | fryzar-core exists, APAC |
+| F-003 | Apply core schema and integrity migrations | TESTED | 0001, 0002 and 0003 recorded; schema objects read back |
+| F-004 | API public read routes | IMPLEMENTED | Source + prior mocked test coverage; latest runtime deployment stale |
+| F-005 | Guest checkout | IMPLEMENTED | D1-backed authoritative price, mandatory idempotency, atomic batch source; live test pending |
+| F-006 | Secure order tracking | IMPLEMENTED | HMAC-derived token, token hash stored, PII omitted in API response test |
+| F-007 | Delivery zone API | IMPLEMENTED | Source added and D1 SQL corrected to schema columns; latest live Worker deploy pending |
+| F-008 | Customer React storefront | IMPLEMENTED | Source and prior CI production build passed; live integration/deployment pending |
+| F-009 | Owner bootstrap/login/session | IMPLEMENTED | Atomic first-owner claim, PBKDF2, hashed session token, secure cookie source; CI/runtime verification pending |
+| F-010 | Admin portal | IMPLEMENTED | Auth screens, live overview and Orders UI source; current admin build CI pending |
+| F-011 | Role-aware order list/detail | IMPLEMENTED | Role checks in source; finance/rider/support excluded; D1 integration tests pending |
+| F-012 | Order status transition and cancellation restock | IMPLEMENTED | Conditional D1 batch with stock restoration, movement, history and audit; concurrency test pending |
+| F-013 | Run latest CI on complete API/customer/admin source | NOT STARTED | Must pass strict API TS, API tests, customer build and admin build |
+| F-014 | Deploy current API source to isolated Worker | NOT STARTED | Worker source must exactly match validated GitHub commit |
+| F-015 | Live API health/catalog/zone/admin smoke tests | BLOCKED | Tool environment could not externally fetch workers.dev; verify through browser/device |
+| A-001 | Staff user CRUD/invites/role management | NOT STARTED | Owner/manager APIs, role matrix, audit |
+| A-002 | Product/category CRUD | NOT STARTED | Server validation, slugs, prices, image references, audit |
+| A-003 | Inventory adjustment | NOT STARTED | Reasoned movement records and non-negative stock |
+| A-004 | Delivery zone management | NOT STARTED | Owner/manager CRUD and public allowlisted read |
+| A-005 | Store settings management | NOT STARTED | Validate origin, payments, delivery, languages, launch state |
+| A-006 | Admin dashboard operational metrics | NOT STARTED | Only metrics derived from real D1 rows |
+| O-001 | COD collection | NOT STARTED | Authorized collection state and audit |
+| P-001 | Manual-transfer state machine | BLOCKED | Keep disabled until private proof storage/review exists |
+| P-002 | Private payment-proof storage | BLOCKED | R2 not activated; eligibility/cost review required |
+| P-003 | Payment verification/rejection/refund controls | NOT STARTED | Finance RBAC, replay protection, proof access, audit |
+| C-001 | Customer tracking page | NOT STARTED | Private token lookup with rate limiting |
+| C-002 | Real catalogue, images and delivery configuration | BLOCKED | Genuine business/product data required; do not fabricate |
+| C-003 | Support and WhatsApp | BLOCKED | Genuine business contact/policies required |
+| M-001 | Android native app | NOT STARTED | Kotlin/Compose source, API integration, APK, device tests |
+| D-001 | Domain/custom routes and TLS | NOT STARTED | Confirm final hostname structure; preserve verification records |
+| Q-001 | Real D1 batch/concurrency integration tests | NOT STARTED | Rollback, idempotency, oversell and exactly-once cancellation |
+| Q-002 | Customer/admin browser E2E tests | NOT STARTED | Real API and database environment |
+| R-001 | Production backup/restore and rollback rehearsal | NOT STARTED | Evidence and documented recovery |
+| R-002 | Production release sign-off | NOT STARTED | Every critical release gate passes |
 
-Do not calculate a completion percentage until the backlog is weighted, acceptance criteria are established, and actual tests are recorded.
+Do not calculate a completion percentage until the backlog is weighted and test evidence is recorded.

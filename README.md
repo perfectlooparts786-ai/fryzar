@@ -1,74 +1,88 @@
 # FRYZAR
 
-**FRYZAR** is a fresh-build bilingual Urdu and English ordering platform for food, grocery, and local products.
+FRYZAR is a fresh-build bilingual Urdu and English ordering platform for food, grocery, and local products.
 
-The target is a complete product: customer website, Android app, admin portal, secure API, database, inventory, orders, payments, support, and production operations.
+## Target product
+- Customer website
+- Customer Android application
+- Admin operations dashboard
+- Secure Cloudflare Worker API
+- Cloudflare D1 catalogue, orders and inventory
+- Guest checkout, order tracking and COD
+- Future manual-transfer proof and review workflow
+- Delivery zones, customer support, Urdu RTL and English LTR
+- Monitoring, backup, recovery and production release controls
 
-## Current build
+## Current engineering state
 
-- Private GitHub repository: `perfectlooparts786-ai/fryzar`
-- Active development branch: `foundation/fresh-build`
-- New database: `fryzar-core`, Cloudflare D1, APAC
-- API Worker: `fryzar-api`, deployed to its isolated `workers.dev` hostname
-- API: public catalog/config routes plus initial guest-order checkout and tracking endpoints
-- Customer website: not built yet
-- Admin dashboard: not built yet
-- Android application: not built yet
-- Currency: PKR, integer paisa in backend calculations
-- Languages: Urdu (RTL) and English (LTR)
-- Guest checkout: designed; currently blocked while store remains in setup mode
+- Private GitHub repository: \`perfectlooparts786-ai/fryzar\`
+- Active development branch: \`foundation/fresh-build\`
+- New D1 database: \`fryzar-core\`, APAC
+- New API Worker: \`fryzar-api\`, isolated workers.dev deployment
+- Customer React storefront source: implemented; its initial production build passed CI before the latest API/admin changes
+- Admin React portal source: authentication screens, live overview and Orders module added; latest combined CI run pending
+- Android client: not started
+- Production domain routes: not configured
+- Store: remains in setup mode; checkout is closed
 
-## Important API behavior
+This is a development branch. The draft pull request is intentionally not merged until the current CI and runtime/database checks are complete.
 
-- Checkout accepts product IDs and quantities, never customer-supplied prices.
-- The API calculates totals from D1 product and delivery-zone records.
-- An idempotency key is mandatory for checkout.
-- Order, payment, line items, stock movement, and audit records are written in one D1 batch.
-- Tracking uses a derived HMAC credential; only its SHA-256 hash is stored on the order.
-- Customer tracking responses omit phone numbers and delivery addresses.
-- COD starts as unpaid. Manual transfer is rejected by the current store setting.
-- The store is still `setup` with launch readiness disabled. No real orders should be accepted yet.
+## API surface in source
 
-## Infrastructure separation
+- \`GET /api/v1/health\`
+- \`GET /api/v1/categories\`
+- \`GET /api/v1/products\`
+- \`GET /api/v1/storefront-config\`
+- \`GET /api/v1/delivery-zones\`
+- \`POST /api/v1/orders\`
+- \`GET /api/v1/orders/track/{token}\`
+- \`POST /api/v1/admin/bootstrap-owner\`
+- \`POST /api/v1/admin/login\`
+- \`POST /api/v1/admin/logout\`
+- \`GET /api/v1/admin/session\`
+- \`GET /api/v1/admin/orders\`
+- \`GET /api/v1/admin/orders/{id}\`
+- \`PATCH /api/v1/admin/orders/{id}/status\`
 
-Older resources named `fryzar-app`, `fryzar-admin`, and `fryzar-production` remain untouched and are treated as legacy/unverified resources. The new application targets the separate `fryzar-core` database and `fryzar-api` Worker.
+The latest API source has not yet been redeployed to the Worker. Do not assume endpoints added after the recorded Worker version are live.
 
-The existing `fryzar.com` Apple domain-verification TXT record must be preserved. No production domain route is configured.
+## Safety and launch status
 
-## Development principles
+- Checkout requires a valid idempotency key.
+- Money is calculated from trusted D1 product prices and active delivery-zone settings.
+- COD creates an unpaid payment record.
+- Manual transfer remains disabled. Private proof storage and financial review are not implemented.
+- Order cancellation source includes an exactly-once stock-restoration design, but real D1 concurrency testing is pending.
+- Staff passwords are PBKDF2-SHA256 hashes. Sessions use opaque tokens stored as hashes and an HttpOnly/Secure/SameSite=Strict cookie.
+- The first-owner bootstrap requires a separate Cloudflare secret named \`OWNER_BOOTSTRAP_TOKEN\`. It is not configured yet.
+- No seeded demo products or fake business details have been added.
+- No legacy Worker, legacy database, public DNS record, or production route has been changed.
+- No paid subscription or paid storage has been activated.
 
-1. Do not base the new product on unverified demo code.
-2. Keep old deployments and data untouched until the replacement is tested.
-3. Prefer free tiers. No paid plans or billable services without approval.
-4. Keep development and production data separate.
-5. Never commit secrets, payment proof files, or customer personal data.
-6. Server-side pricing, inventory, payment state, and authorization are authoritative.
-7. Keep manual transfer disabled until secure proof storage and payment review are fully tested.
-8. Do not declare production readiness without evidence.
-
-## API quick start
+## Development commands
 
 ~~~bash
 npm install
 npm run db:migrate:local
 npm run dev:api
-npm run typecheck
-npm run test:api
+npm run dev:storefront
+npm run dev:admin
+npm test
+npm run build:storefront
+npm run build:admin
 ~~~
 
-The first two remote migrations were applied to the new D1 database and reconciled in Wrangler's migration history. Future remote migrations must still be reviewed before application.
+The remote database already has migrations \`0001_core.sql\`, \`0002_checkout_integrity.sql\`, and \`0003_admin_bootstrap.sql\` recorded. Review every future migration before applying it remotely.
 
-## Project documents
-
-- `docs/PROJECT_STATE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/IMPLEMENTATION_PLAN.md`
-- `docs/TASK_BACKLOG.md`
-- `docs/SECURITY_REVIEW.md`
-- `docs/TESTING.md`
-- `docs/DEPLOYMENT.md`
-- `docs/RELEASE_READINESS.md`
+## Main project documents
+- \`docs/PROJECT_STATE.md\`
+- \`docs/IMPLEMENTATION_PLAN.md\`
+- \`docs/TASK_BACKLOG.md\`
+- \`docs/ARCHITECTURE.md\`
+- \`docs/SECURITY_REVIEW.md\`
+- \`docs/TESTING.md\`
+- \`docs/DEPLOYMENT.md\`
+- \`docs/RELEASE_READINESS.md\`
 
 ## License
-
-No open-source license has been selected. All rights are reserved by the project owner unless a license is added.
+No open-source license has been selected. All rights remain reserved by the project owner unless a license is added.

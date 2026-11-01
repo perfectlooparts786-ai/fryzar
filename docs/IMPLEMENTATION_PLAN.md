@@ -1,53 +1,69 @@
 # FRYZAR implementation plan
 
-## Stage 0: Fresh foundation
-- Establish the clean monorepo and project documentation.
-- Create a separate D1 database.
-- Add the initial schema migration.
-- Implement initial API health, catalog, and public settings reads.
-- Type-check, test, and deploy an isolated Worker.
+## Principles
+- Fresh source and new D1 database. Preserve legacy resources until replacement has passed release gates.
+- Free-first. No paid plans, services, storage or APIs without approval.
+- Keep store closed, payment transfer disabled, and production routes untouched until verified.
+- Every feature must have acceptance criteria and evidence. A source file is not proof of a working feature.
 
-## Stage 1: API and data integrity
-- Product/category administration APIs.
-- Server-side checkout validation and trusted totals.
-- Mandatory idempotency with payload-hash verification.
-- Atomic order, order-item, stock-reservation, and inventory writes.
-- Safe cancellation and exactly-once stock restoration.
-- Hashed tracking tokens and explicit order-state transitions.
+## Sequence
 
-## Stage 2: Staff identity and authorization
-- One-time owner bootstrap with no default password.
-- Password hashing, session rotation, expiry, revocation, logout.
-- Server-side role authorization on every sensitive endpoint.
-- Login abuse throttling, CSRF/origin controls, and audit logging.
-- Staff creation, deactivation, role management, and password reset.
+### Stage 1: Foundation
+- [x] Private repository and development branch
+- [x] Fresh D1 database and versioned core migration
+- [x] API Worker foundation
+- [x] Checkout/inventory integrity migration
+- [x] Initial API CI and tests
+- [x] Customer storefront source and first production build
+- [x] Delivery-zone public API source
+- [x] Atomic first-owner claim migration
+- [ ] Validate latest expanded API/admin CI
+- [ ] Deploy the current API source to isolated Worker
+- [ ] Verify real HTTP responses and real D1 integration
 
-## Stage 3: Customer website
-- Responsive Urdu/English storefront.
-- Home, categories, search, product details, cart, guest checkout, confirmation, tracking, and support.
-- Delivery-zone selection and server-authoritative fees.
-- Accessible forms and robust empty/loading/error/offline states.
+### Stage 2: Admin operations
+- [x] Owner bootstrap/login/logout/session source
+- [x] Role-aware order list/detail source
+- [x] Cancellation stock-restoration source
+- [x] Admin portal authentication/overview/Orders source
+- [ ] Verify session cookie and first-owner bootstrap on a live Worker
+- [ ] Staff CRUD, invitations, role changes and account deactivation
+- [ ] Catalog/category CRUD, price and availability administration
+- [ ] Inventory adjustment with reason and audit
+- [ ] Delivery-zone CRUD
+- [ ] Store settings and launch controls
+- [ ] Payment-review queue and COD collection
 
-## Stage 4: Admin portal
-- Dashboard, products, categories, inventory, orders, delivery zones, store settings, support, payment review, and audit history.
-- Role-aware navigation with API-enforced permissions.
+### Stage 3: Customer ordering
+- [x] Storefront layout, bilingual navigation and category/product loading source
+- [x] Cart and COD checkout form source
+- [ ] Populate genuine catalogue, images and delivery areas
+- [ ] Verify guest checkout end-to-end with real D1
+- [ ] Add customer tracking lookup that accepts the private token safely
+- [ ] Add cancellation/support/customer contact policy as business decisions are supplied
+- [ ] Validate Urdu RTL and English LTR across responsive layouts
 
-## Stage 5: Payments and private uploads
-- COD collection workflow.
-- Manual-transfer payment record creation and state transitions.
-- Verify free-tier and account requirements before activating private object storage.
-- Upload validation, private reads, reviewer workflow, rejection reasons, and controlled resubmission.
-- Keep manual transfer disabled until end-to-end acceptance criteria pass.
-- Evaluate real gateways only after fees, local eligibility, and merchant requirements are verified.
+### Stage 4: Payments and storage
+- [x] COD unpaid payment record creation source
+- [ ] COD delivered/collected state transitions
+- [ ] Manual-transfer payment state machine
+- [ ] Private proof upload and validation
+- [ ] Restricted proof access for customer/authorized finance staff
+- [ ] Verify amount/reference and record reviewer/rejection
+- [ ] Check R2 eligibility and exact costs before activation
+- [ ] Keep transfer disabled until all tests pass
 
-## Stage 6: Android
-- Native Kotlin/Compose customer app using the stable API.
-- Catalog, cart, guest checkout, tracking, language, and error/retry states.
-- Build and test an installable APK.
+### Stage 5: Android
+- [ ] Native Kotlin + Jetpack Compose project
+- [ ] Same API contract as website
+- [ ] Product browsing, cart, checkout and tracking
+- [ ] Network/offline/error handling
+- [ ] App privacy and security review
+- [ ] Build APK and verify on emulator/device
 
-## Stage 7: Release
-- Configure verified hostname routes, TLS, CORS, and cookies.
-- Configure production-only secrets.
-- Run staging end-to-end tests.
-- Verify backup and rollback.
-- Complete every release gate before launch.
+### Stage 6: Release
+- [ ] Complete automated, D1 integration, browser E2E and Android tests
+- [ ] Production origins, DNS, TLS, routes and cookies
+- [ ] Backup/restore and rollback rehearsal
+- [ ] Owner-configured genuine business settings
+- [ ] Release readiness review and final evidence report
