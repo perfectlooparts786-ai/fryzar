@@ -22,7 +22,7 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "orders", label: "Orders", icon: "▤" },
   { id: "catalogue", label: "Catalogue", icon: "▦" },
   { id: "inventory", label: "Inventory", icon: "▧" },
-  { id: "payments", label: "Payments", icon: "◈", note: "API pending" },
+  { id: "payments", label: "Payments", icon: "◈" },
   { id: "delivery", label: "Delivery", icon: "⌖" },
   { id: "team", label: "Team access", icon: "♙" },
   { id: "settings", label: "Store settings", icon: "⚙" }
@@ -55,6 +55,13 @@ function messageFor(error: unknown): string {
       case "cannot_deactivate_self": return "You cannot deactivate your own account.";
       case "invalid_staff_update": return "Select a valid staff update before saving.";
       case "staff_changed_retry": return "This staff account changed during the update. Refresh the directory and try again.";
+      case "payment_not_found": return "This payment record was not found. Refresh the list."; 
+      case "not_cod_payment": return "This workflow only records cash-on-delivery collections."; 
+      case "order_not_delivered": return "A COD payment can only be collected after the order is marked delivered."; 
+      case "payment_already_collected": return "This payment has already been marked collected."; 
+      case "payment_state_conflict": return "The payment state changed. Refresh the payment list before retrying."; 
+      case "payment_state_changed_retry": return "Another request changed this payment. Refresh the list before retrying."; 
+      case "payment_collection_failed": return "The collection could not be recorded. Check the payment list before retrying."; 
       case "invalid_credentials": return "Email or password is incorrect.";
       case "owner_bootstrap_unavailable": return "First-owner setup is not enabled on the API yet. The one-time bootstrap secret must be configured securely in Cloudflare.";
       case "invalid_bootstrap_token": return "The bootstrap token was not accepted.";
