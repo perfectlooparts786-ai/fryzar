@@ -1026,7 +1026,7 @@ test("manager can create a delivery zone with an audit record in one batch", asy
   assert.equal(state.batchCount, 1);
   assert.equal(state.batchStatements.length, 2);
   assert.match(state.batchStatements[0].sql, /INSERT INTO delivery_zones/);
-  assert.match(state.batchStatements[1].sql, /delivery_zone.created/);
+  assert.equal(state.batchStatements[1].params[3], "delivery_zone.created");
   assert.equal(state.batchStatements[0].params[1], "WAH-CANTT");
   assert.equal(state.batchStatements[0].params[7], 15000);
   assert.equal(state.batchStatements[0].params[8], 50000);
@@ -1066,7 +1066,7 @@ test("owner can update and deactivate an existing delivery zone without deleting
   assert.equal(state.batchCount, 1);
   assert.match(state.batchStatements[0].sql, /UPDATE delivery_zones SET/);
   assert.match(state.batchStatements[0].sql, /is_active=\?9/);
-  assert.match(state.batchStatements[1].sql, /delivery_zone.updated/);
+  assert.equal(state.batchStatements[1].params[3], "delivery_zone.updated");
   assert.equal(state.batchStatements[0].params[8], 0);
   assert.equal(state.batchStatements[0].params[10], zoneId);
 });
