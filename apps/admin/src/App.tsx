@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   AdminApiError,
   adminApi,
+  type AdminOrder,
   type Category,
   type DeliveryZone,
   type Product,
@@ -293,6 +294,139 @@ function Overview({
   );
 }
 
+
+function nextStatuses(role: StaffUser["role"], current: string): string[] {
+  const allowed: Record<string, string[]> = {
+    pending: role === "owner" || role === "manager"
+      ? ["confirmed", "cancelled", "rejected"]
+      : role === "operator" ? ["confirmed"] : [],
+    confirmed: role === "owner" || role === "manager"
+      ? ["preparing", "cancelled"]
+      : role === "operator" || role === "kitchen" ? ["preparing"] : [],
+    preparing: role === "owner" || role === "manager"
+      ? ["ready", "cancelled"]
+      : role === "operator" || role === "kitchen" ? ["ready"] : [],
+    ready: role === "owner" || role === "manager"
+      ? ["out_for_delivery", "cancelled"]
+      : role === "operator" ? ["out_for_delivery"] : [],
+    out_for_delivery: role === "owner" || role === "manager"
+      ? ["delivered", "cancelled"]
+      : role === "operator" ? ["delivered"] : []
+  };
+  return allowed[current] ?? [];
+}
+
+function OrdersModule({ user }: { user: StaffUser }) {
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function loadOrders(nextFilter = filter) {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await adminApi.orders(nextFilter);
+      setOrders(result.orders);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadOrders("");
+  }, []);
+
+  async function saveStatus(order: AdminOrder) {
+    const next = drafts[order.id];
+    if (!next || next === order.status) return;
+    setBusyId(order.id);
+    setError("");
+    setNotice("");
+    try {
+      await adminApi.updateOrderStatus(order.id, next);
+      setNotice(order.order_number + " updated to " + next.replaceAll("_", " ") + ".");
+      setDrafts(current => {
+        const copy = { ...current };
+        delete copy[order.id];
+        return copy;
+      });
+      await loadOrders(filter);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  return (
+    <section className="orders-module">
+      <div className="module-heading">
+        <div><span className="kicker">ORDER OPERATIONS</span><h1>Orders</h1><p>Review current orders and apply role-authorized status changes.</p></div>
+        <button className="refresh-button" type="button" onClick={() => void loadOrders(filter)} disabled={loading}>↻ Refresh</button>
+      </div>
+
+      <div className="orders-toolbar">
+        <div className="filter-tabs">
+          {["", "pending", "confirmed", "preparing", "ready", "out_for_delivery", "delivered", "cancelled"].map(value => (
+            <button key={value || "all"} type="button" className={filter === value ? "selected" : ""} onClick={() => { setFilter(value); void loadOrders(value); }}>
+              {value ? value.replaceAll("_", " ") : "All orders"}
+            </button>
+          ))}
+        </div>
+        <span>{orders.length} shown · newest first</span>
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+      {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+
+      <div className="orders-table-card">
+        {loading ? <div className="orders-empty">Loading orders…</div> : orders.length === 0 ? (
+          <div className="orders-empty"><span className="empty-order-icon">▤</span><strong>No orders in this view</strong><small>New customer orders will appear here after the store is configured and opened.</small></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="orders-table">
+              <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Current status</th><th>Update status</th></tr></thead>
+              <tbody>
+                {orders.map(order => {
+                  const options = nextStatuses(user.role, order.status);
+                  const draft = drafts[order.id] ?? "";
+                  return (
+                    <tr key={order.id}>
+                      <td><strong>{order.order_number}</strong><small>{new Date(order.created_at).toLocaleString()}</small></td>
+                      <td><strong>{order.customer_name || "Kitchen order"}</strong><small>{order.customer_phone || "Contact details restricted"}</small></td>
+                      <td><strong>{money(order.total_paisa)}</strong><small>Subtotal {money(order.subtotal_paisa)}</small></td>
+                      <td><strong>{order.payment_method.replaceAll("_", " ")}</strong><small>{order.payment_status.replaceAll("_", " ")}</small></td>
+                      <td><span className={"order-status status-" + order.status}>{order.status.replaceAll("_", " ")}</span></td>
+                      <td>
+                        {options.length ? (
+                          <div className="status-action">
+                            <select value={draft} onChange={event => setDrafts(current => ({ ...current, [order.id]: event.target.value }))}>
+                              <option value="">Choose…</option>
+                              {options.map(option => <option key={option} value={option}>{option.replaceAll("_", " ")}</option>)}
+                            </select>
+                            <button type="button" disabled={!draft || busyId === order.id} onClick={() => void saveStatus(order)}>{busyId === order.id ? "…" : "Save"}</button>
+                          </div>
+                        ) : <small className="restricted-action">No permitted next action</small>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <p className="orders-footnote">Status permissions are enforced by the API. Kitchen accounts receive no customer phone number or delivery address.</p>
+    </section>
+  );
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -412,7 +546,9 @@ export default function App() {
         </header>
 
         <div className="page-content">
-          {section === "overview" ? (
+          {section === "orders" ? (
+            <OrdersModule user={user} />
+          ) : section === "overview" ? (
             <Overview
               user={user}
               settings={settings}
