@@ -990,3 +990,176 @@ test("inventory adjustment detects a concurrent stock change inside the write ba
   assert.equal(state.batchCount, 1);
   assert.match(state.batchStatements[2].sql, /changes\(\) = 1/);
 });
+
+
+test("manager can create a delivery zone with an audit record in one batch", async () => {
+  const token = "6".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, batchChanges: [1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/delivery-zones", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        code: "WAH-CANTT",
+        name_en: "Wah Cantt",
+        name_ur: "واہ کینٹ",
+        country_code: "PK",
+        region: "Punjab",
+        city: "Wah",
+        delivery_fee_paisa: 15000,
+        minimum_order_paisa: 50000,
+        is_active: true
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(body.saved, true);
+  assert.match(body.id, /^[0-9a-f-]{36}$/i);
+  assert.equal(state.batchCount, 1);
+  assert.equal(state.batchStatements.length, 2);
+  assert.match(state.batchStatements[0].sql, /INSERT INTO delivery_zones/);
+  assert.match(state.batchStatements[1].sql, /delivery_zone.created/);
+  assert.equal(state.batchStatements[0].params[1], "WAH-CANTT");
+  assert.equal(state.batchStatements[0].params[7], 15000);
+  assert.equal(state.batchStatements[0].params[8], 50000);
+});
+
+test("owner can update and deactivate an existing delivery zone without deleting it", async () => {
+  const token = "7".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const zoneId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const { env, state } = createEnv({ firstResult: staff, batchChanges: [1, 1] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/delivery-zones/" + zoneId, {
+      method: "PATCH",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        code: "WAH-CANTT",
+        name_en: "Wah Cantt",
+        name_ur: "واہ کینٹ",
+        country_code: "PK",
+        region: "Punjab",
+        city: "Wah",
+        delivery_fee_paisa: 18000,
+        minimum_order_paisa: 60000,
+        is_active: false
+      })
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.saved, true);
+  assert.equal(state.batchCount, 1);
+  assert.match(state.batchStatements[0].sql, /UPDATE delivery_zones SET/);
+  assert.match(state.batchStatements[0].sql, /is_active=\?9/);
+  assert.match(state.batchStatements[1].sql, /delivery_zone.updated/);
+  assert.equal(state.batchStatements[0].params[8], 0);
+  assert.equal(state.batchStatements[0].params[10], zoneId);
+});
+
+test("invalid delivery zone data is rejected before database writes", async () => {
+  const token = "8".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/delivery-zones", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        code: "Bad code",
+        name_en: "Invalid",
+        name_ur: "غلط",
+        country_code: "Pakistan",
+        city: "Wah",
+        delivery_fee_paisa: -1,
+        minimum_order_paisa: 0
+      })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "validation_failed");
+  assert.equal(state.batchCount, 0);
+});
+
+test("operator cannot create or edit delivery zones", async () => {
+  const token = "9".repeat(64);
+  const staff = { id: "operator-1", email: "operator@example.test", display_name: "Operator", role: "operator", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff });
+  const response = await worker.fetch(
+    request("/api/v1/admin/delivery-zones", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ code: "ZONE-01", name_en: "Zone", name_ur: "علاقہ", country_code: "PK", city: "Wah", delivery_fee_paisa: 0, minimum_order_paisa: 0 })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, "insufficient_permissions");
+  assert.equal(state.batchCount, 0);
+});
+
+test("rider can read delivery zones including inactive records", async () => {
+  const token = "a".repeat(64);
+  const staff = { id: "rider-1", email: "rider@example.test", display_name: "Rider", role: "rider", is_active: 1 };
+  const zones = [{ id: "zone-1", code: "ZONE-01", is_active: 0 }];
+  const { env, state } = createEnv({ firstResult: staff, allResults: zones });
+  const response = await worker.fetch(
+    request("/api/v1/admin/delivery-zones", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }),
+    env
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.delivery_zones, zones);
+  assert.match(state.lastSql, /FROM delivery_zones ORDER BY/);
+  assert.doesNotMatch(state.lastSql, /WHERE is_active = 1/);
+});
+
+test("duplicate delivery zone code maps to a conflict response", async () => {
+  const token = "b".repeat(64);
+  const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, batchError: new Error("UNIQUE constraint failed: delivery_zones.code") });
+  const response = await worker.fetch(
+    request("/api/v1/admin/delivery-zones", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ code: "WAH-02", name_en: "Wah", name_ur: "واہ", country_code: "PK", city: "Wah", delivery_fee_paisa: 10000, minimum_order_paisa: 0 })
+    }),
+    env
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "delivery_zone_code_conflict");
+  assert.equal(state.batchCount, 1);
+});
