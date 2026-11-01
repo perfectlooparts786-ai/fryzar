@@ -25,7 +25,7 @@ Statuses: NOT STARTED, DISCOVERED, IMPLEMENTED, TESTED, VERIFIED INTEGRATION, BL
 | A-004 | Delivery zone management | TESTED | Owner/manager create/update/deactivate, operations/rider read, audit batch, validation and duplicate-code handling; admin UI; 45/45 CI tests. Live Worker verification pending |
 | A-005 | Store settings management | TESTED | Public settings read; owner/manager allowlisted update and audit; names, language, COD, WhatsApp, setup/paused. Launch readiness, manual transfer and store opening release-gated. 51/51 CI tests; live Worker verification pending |
 | A-006 | Admin dashboard operational metrics | NOT STARTED | Only metrics derived from real D1 rows |
-| O-001 | COD collection | NOT STARTED | Authorized collection state and audit |
+| O-001 | COD collection | TESTED | Owner/manager/finance can mark only delivered unpaid COD as collected; order/payment updates, collector ID, timestamp, audit and idempotency are atomic; 70/70 CI tests. Live Worker integration pending |
 | P-001 | Manual-transfer state machine | BLOCKED | Keep disabled until private proof storage/review exists |
 | P-002 | Private payment-proof storage | BLOCKED | R2 not activated; eligibility/cost review required |
 | P-003 | Payment verification/rejection/refund controls | NOT STARTED | Finance RBAC, replay protection, proof access, audit |
