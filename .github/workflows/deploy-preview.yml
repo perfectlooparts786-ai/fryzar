@@ -239,7 +239,7 @@ jobs:
             assert.equal(settingsBody.settings.manual_transfer_enabled, false, "Manual transfer remains disabled");
             assert.equal(settingsBody.settings.currency, "PKR", "Preview currency");
  
-            const checkoutResponse = await requestWithRetry(`${customer}/api/v1/orders`, {
+            const checkoutResponse = await fetch(`${customer}/api/v1/orders`, {
               method: "POST",
               headers: {
                 Origin: customer,
