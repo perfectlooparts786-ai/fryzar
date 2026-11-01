@@ -1419,8 +1419,6 @@ function validSlug(value: string): boolean {
 }
 
 
-const CATALOG_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen"];
-const CATALOG_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 const INVENTORY_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen"];
 const INVENTORY_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 
