@@ -252,3 +252,24 @@ td small { margin-top: 4px; color: #96a197; font-size: 9px; }
 .catalogue-module .filter-tabs button.selected { background:var(--forest); border-color:var(--forest); color:#fff; }
 @media (max-width:900px) { .catalogue-form-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .catalogue-wide { grid-column:span 2; } }
 @media (max-width:560px) { .catalogue-form-grid { grid-template-columns:1fr; } .catalogue-wide { grid-column:span 1; } .catalogue-editor { padding:14px; } }
+
+.inventory-module { display:flex; flex-direction:column; gap:16px; }
+.inventory-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.inventory-summary { padding:18px 20px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.inventory-summary span { display:block; color:var(--muted); font-size:11px; }
+.inventory-summary strong { display:block; margin-top:7px; color:var(--forest); font-size:24px; font-weight:750; }
+.inventory-editor { margin:0; }
+.inventory-stock-card { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:11px; background:#fff; }
+.inventory-card-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid var(--line); }
+.inventory-card-heading h2 { margin:0; color:var(--forest); font-size:15px; }
+.inventory-card-heading p { margin:5px 0 0; color:var(--muted); font-size:10px; }
+.inventory-card-heading select { max-width:240px; padding:9px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font-size:11px; }
+.inventory-positive { color:#27834a !important; font-weight:750; }
+.inventory-negative { color:#b55246 !important; font-weight:750; }
+@media (max-width:720px) {
+  .inventory-summary-grid { grid-template-columns:1fr; gap:8px; }
+  .inventory-summary { padding:13px 15px; }
+  .inventory-summary strong { font-size:20px; }
+  .inventory-card-heading { align-items:flex-start; flex-direction:column; }
+  .inventory-card-heading select { max-width:none; width:100%; }
+}
