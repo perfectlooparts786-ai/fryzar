@@ -23,7 +23,11 @@
     "db:migrate:preview": "wrangler d1 migrations apply fryzar-preview --remote --config apps/api/wrangler.toml",
     "dev:api-preview": "wrangler dev --config apps/api/wrangler.toml",
     "test:integration:local": "node tests/checkout.integration.cjs",
-    "test:integration:cancellation": "node tests/cancellation.integration.cjs"
+    "test:integration:cancellation": "node tests/cancellation.integration.cjs",
+    "test:integration:bootstrap": "node tests/bootstrap.integration.cjs",
+    "test:integration:session": "node tests/session.integration.cjs",
+    "test:integration:financial": "node tests/financial-integrity.integration.cjs",
+    "test:integration:retention": "node tests/retention.integration.cjs"
   },
   "dependencies": {
     "react": "19.3.1",

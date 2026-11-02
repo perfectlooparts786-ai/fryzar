@@ -38,6 +38,18 @@ jobs:
       - name: Validate cancellation transitions against local D1
         run: npm run test:integration:cancellation
 
+      - name: Validate owner bootstrap against local D1
+        run: npm run test:integration:bootstrap
+
+      - name: Validate staff session lifecycle against local D1
+        run: npm run test:integration:session
+
+      - name: Validate populated financial integrity against local D1
+        run: npm run test:integration:financial
+
+      - name: Validate bounded retention cleanup against local D1
+        run: npm run test:integration:retention
+
       - name: Build customer storefront
         run: npm run build:storefront
 

@@ -904,7 +904,6 @@ async function createStaffSession(
   const expiresAt = new Date(Date.now() + ADMIN_SESSION_SECONDS * 1000).toISOString();
   const identityHash = await sha256Hex(staff.email.trim().toLowerCase());
   const sourceHash = await sha256Hex(request.headers.get("CF-Connecting-IP") ?? "unknown");
-  const retentionCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   await env.DB.batch([
     env.DB.prepare(
@@ -927,10 +926,7 @@ async function createStaffSession(
       "INSERT INTO auth_login_attempts " +
       "(id, identity_hash, source_hash, attempted_at, was_successful) " +
       "VALUES (?1, ?2, ?3, ?4, 1)"
-    ).bind(crypto.randomUUID(), identityHash, sourceHash, createdAt),
-    env.DB.prepare(
-      "DELETE FROM auth_login_attempts WHERE attempted_at < ?1"
-    ).bind(retentionCutoff)
+    ).bind(crypto.randomUUID(), identityHash, sourceHash, createdAt)
   ]);
 
   const response = json({
@@ -1123,7 +1119,6 @@ async function recordFailedLoginAttempt(
   attemptedAt: string,
   windowStart: string
 ): Promise<boolean | null> {
-  const retentionCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   try {
     const results = await env.DB.batch([
       env.DB.prepare(
@@ -1145,10 +1140,7 @@ async function recordFailedLoginAttempt(
         attemptedAt,
         windowStart,
         ADMIN_LOGIN_FAILURE_LIMIT
-      ),
-      env.DB.prepare(
-        "DELETE FROM auth_login_attempts WHERE attempted_at < ?1"
-      ).bind(retentionCutoff)
+      )
     ]);
 
     return (results[0]?.meta?.changes ?? 0) === 1;
@@ -2279,7 +2271,8 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
 
   const payment = await env.DB.prepare(
     "SELECT p.id AS payment_id, p.status AS payment_status, p.method, p.amount_paisa, " +
-    "o.id AS order_id, o.order_number, o.status AS order_status, o.payment_status AS order_payment_status " +
+    "o.id AS order_id, o.order_number, o.total_paisa AS order_total_paisa, " +
+    "o.status AS order_status, o.payment_status AS order_payment_status " +
     "FROM payments p JOIN orders o ON o.id = p.order_id " +
     "WHERE o.id = ?1 ORDER BY p.created_at DESC LIMIT 1"
   ).bind(orderId).first<{
@@ -2289,6 +2282,7 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
     amount_paisa: number;
     order_id: string;
     order_number: string;
+    order_total_paisa: number;
     order_status: string;
     order_payment_status: string;
   }>();
@@ -2296,6 +2290,9 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
   if (!payment) return json({ error: "payment_not_found" }, 404);
   if (payment.method !== "cod") return json({ error: "not_cod_payment" }, 409);
   if (payment.order_status !== "delivered") return json({ error: "order_not_delivered" }, 409);
+  if (payment.amount_paisa !== payment.order_total_paisa) {
+    return json({ error: "payment_amount_mismatch" }, 409);
+  }
   if (payment.payment_status === "collected" && payment.order_payment_status === "collected") {
     return json({ error: "payment_already_collected" }, 409);
   }
@@ -2502,6 +2499,45 @@ async function route(request: Request, env: Env): Promise<Response> {
   }, 404);
 }
 
+const OPERATIONAL_CLEANUP_BATCH_LIMIT = 100;
+const RATE_LIMIT_MAX_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_ATTEMPT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function cleanupOperationalRecords(env: Env): Promise<{
+  idempotency_keys_deleted: number;
+  rate_limit_buckets_deleted: number;
+  login_attempts_deleted: number;
+}> {
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const rateLimitCutoff = new Date(now - RATE_LIMIT_MAX_WINDOW_MS).toISOString();
+  const loginAttemptCutoff = new Date(now - LOGIN_ATTEMPT_RETENTION_MS).toISOString();
+
+  // Retain active replay/rate-limit windows. Financial tables, audit history,
+  // and staff sessions are intentionally outside generic cleanup.
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "DELETE FROM idempotency_keys WHERE id IN (" +
+      "SELECT id FROM idempotency_keys WHERE expires_at <= ?1 ORDER BY expires_at, id LIMIT ?2)"
+    ).bind(nowIso, OPERATIONAL_CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(
+      "DELETE FROM api_rate_limits WHERE bucket_key IN (" +
+      "SELECT bucket_key FROM api_rate_limits WHERE window_started_at <= ?1 " +
+      "ORDER BY window_started_at, bucket_key LIMIT ?2)"
+    ).bind(rateLimitCutoff, OPERATIONAL_CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(
+      "DELETE FROM auth_login_attempts WHERE id IN (" +
+      "SELECT id FROM auth_login_attempts WHERE attempted_at < ?1 ORDER BY attempted_at, id LIMIT ?2)"
+    ).bind(loginAttemptCutoff, OPERATIONAL_CLEANUP_BATCH_LIMIT)
+  ]);
+
+  return {
+    idempotency_keys_deleted: results[0]?.meta?.changes ?? 0,
+    rate_limit_buckets_deleted: results[1]?.meta?.changes ?? 0,
+    login_attempts_deleted: results[2]?.meta?.changes ?? 0
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const origin = request.headers.get("Origin");
@@ -2529,6 +2565,17 @@ export default {
         request_id: requestId,
         message: "The request could not be completed."
       }, 500), request, env);
+    }
+  },
+  async scheduled(_controller: ScheduledController, env: Env, _context: ExecutionContext): Promise<void> {
+    try {
+      const result = await cleanupOperationalRecords(env);
+      console.info("fryzar_retention_cleanup", result);
+    } catch (error) {
+      console.error("fryzar_retention_cleanup_failed", {
+        errorType: error instanceof Error ? error.name : "unknown"
+      });
+      throw error;
     }
   }
 };

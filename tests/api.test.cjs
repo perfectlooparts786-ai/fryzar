@@ -1924,6 +1924,39 @@ test("operator cannot read payment records", async () => {
   assert.equal(state.allCount, 0);
 });
 
+test("COD collection rejects a payment amount that differs from the payable order total", async () => {
+  const token = "9".repeat(64);
+  const staff = { id: "finance-2", email: "finance2@example.test", display_name: "Finance", role: "finance", is_active: 1 };
+  const payment = {
+    payment_id: "payment-mismatch",
+    payment_status: "unpaid",
+    method: "cod",
+    amount_paisa: 71999,
+    order_total_paisa: 72000,
+    order_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    order_number: "FRY-MISMATCH",
+    order_status: "delivered",
+    order_payment_status: "unpaid"
+  };
+  const { env, state } = createEnv({ firstResults: [staff, null, payment] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        Cookie: "__Host-fryzar_admin=" + token,
+        "Idempotency-Key": "cod-collection-mismatch-0001",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ order_id: payment.order_id })
+    }),
+    env
+  );
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, "payment_amount_mismatch");
+  assert.equal(state.batchCount, 0, "financial mismatch is rejected before writes");
+});
+
 test("finance can collect a delivered COD payment with atomic payment and audit records", async () => {
   const token = "e".repeat(64);
   const staff = { id: "finance-1", email: "finance@example.test", display_name: "Finance", role: "finance", is_active: 1 };
@@ -1932,6 +1965,7 @@ test("finance can collect a delivered COD payment with atomic payment and audit 
     payment_status: "unpaid",
     method: "cod",
     amount_paisa: 72000,
+    order_total_paisa: 72000,
     order_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     order_number: "FRY-00001",
     order_status: "delivered",
@@ -1973,7 +2007,7 @@ test("COD collection is rejected until the order is delivered", async () => {
   const token = "f".repeat(64);
   const staff = { id: "manager-1", email: "manager@example.test", display_name: "Manager", role: "manager", is_active: 1 };
   const payment = {
-    payment_id: "payment-2", payment_status: "unpaid", method: "cod", amount_paisa: 35000,
+    payment_id: "payment-2", payment_status: "unpaid", method: "cod", amount_paisa: 35000, order_total_paisa: 35000,
     order_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", order_number: "FRY-00002",
     order_status: "out_for_delivery", order_payment_status: "unpaid"
   };
@@ -2001,7 +2035,7 @@ test("COD collection rejects non-COD and already collected payments", async () =
   const token = "1".repeat(64);
   const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
   const payment = {
-    payment_id: "payment-3", payment_status: "unpaid", method: "manual_transfer", amount_paisa: 25000,
+    payment_id: "payment-3", payment_status: "unpaid", method: "manual_transfer", amount_paisa: 25000, order_total_paisa: 25000,
     order_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", order_number: "FRY-00003",
     order_status: "delivered", order_payment_status: "unpaid"
   };
