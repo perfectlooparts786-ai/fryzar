@@ -141,8 +141,8 @@ INSERT INTO order_status_events (id,order_id,old_status,new_status,actor_type,no
 ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3','${deliveredOrderId}',NULL,'delivered','system','Synthetic delivered state'),
 ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4','${rejectedOrderId}',NULL,'rejected','system','Synthetic rejected state');
 
-UPDATE products SET stock_qty=2 WHERE id='${productA}';
-UPDATE products SET stock_qty=1 WHERE id='${productB}';
+UPDATE products SET stock_qty=0 WHERE id='${productA}';
+UPDATE products SET stock_qty=2 WHERE id='${productB}';
 
 INSERT INTO inventory_movements (id,product_id,delta_qty,reason,reference_type,reference_id,note) VALUES
 ('99999999-9999-4999-8999-999999999991','${productA}',-2,'order_reserved','order','${orderId}','Synthetic reservation'),
