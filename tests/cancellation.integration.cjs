@@ -200,7 +200,7 @@ async function main() {
     const concurrent=await Promise.all([cancel(baseUrl,orderId),cancel(baseUrl,orderId)]);
     const accepted=concurrent.filter(result=>result.status===200);
     const rejected=concurrent.filter(result=>result.status===409||result.status===403);
-    assert.equal(accepted.length,1,"exactly one cancellation transition is accepted");
+    assert.equal(accepted.length,1,"exactly one cancellation transition is accepted; responses=" + JSON.stringify(concurrent));
     assert.equal(rejected.length,1,"the racing request is safely rejected");
     assert.equal(accepted[0].body.status,"cancelled");
 
