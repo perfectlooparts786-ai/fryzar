@@ -84,3 +84,12 @@ Latest CI baseline is [run 41468812588](https://github.com/perfectlooparts786-ai
 ## Phase 2B pagination policy (implemented; CI pending)
 
 Admin order listing preserves the existing limit/offset response shape. Limit must be a positive safe integer and is capped at 50 (the existing maximum). Offset must be a safe integer from 0 through 10,000; invalid, negative, unsafe, or larger values return HTTP 400 `invalid_order_pagination` before the order query. Ordering is now deterministic by `created_at DESC, id DESC`. The cap bounds deep offset work while retaining compatibility for ordinary existing pages. Cursor pagination can be considered if order volume later requires deeper browsing.
+
+
+## Backend reliability update (2 November 2026)
+
+The current tested source commit is `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`; CI run [41490624511](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490624511) passed. This supersedes the earlier pagination section's “CI pending” note above.
+
+The API remains the only Worker with a D1 binding. Its scheduled handler performs bounded operational retention cleanup using the existing D1: daily at `17 2 * * *`, at most 100 eligible rows per table per run, in one atomic batch. It removes only expired idempotency records, rate-limit windows beyond their maximum validity, and login-attempt records older than 30 days. It does not delete sessions or business/audit history. Migration 0005 adds indexes supporting the expiry scans. No new service, database, dependency, or paid feature was introduced.
+
+This scheduled configuration and the related source are tested locally and in dry-run only. The existing preview deployment remains at its last verified candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`; this change was not deployed. Production architecture/resources remain unchanged.
