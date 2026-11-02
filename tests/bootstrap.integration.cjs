@@ -144,6 +144,27 @@ async function main() {
     await failureDb.cleanup();
   }
 
+  const existingOwnerDb = await createLocalD1({ vars: { OWNER_BOOTSTRAP_TOKEN: BOOTSTRAP_TOKEN } });
+  try {
+    existingOwnerDb.execSql(
+      "INSERT INTO staff_users (id,email,password_hash,display_name,role,is_active) " +
+      "VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','preexisting@local.test','synthetic-existing-hash','Existing Owner','owner',1)"
+    );
+    const baseUrl = await existingOwnerDb.startWorker();
+    const blocked = await requestJson(baseUrl, "/api/v1/admin/bootstrap-owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Owner-Bootstrap-Token": BOOTSTRAP_TOKEN },
+      body: bootstrapBody("replacement-owner@local.test")
+    });
+    assert.equal(blocked.response.status, 409, "a pre-existing owner blocks first-owner bootstrap even if no claim row exists");
+    assert.equal(Number(countRow(existingOwnerDb, "staff_users").row_count), 1);
+    assert.equal(Number(countRow(existingOwnerDb, "bootstrap_claims").row_count), 0);
+    assert.equal(Number(countRow(existingOwnerDb, "staff_sessions").row_count), 0);
+    assert.equal(Number(countRow(existingOwnerDb, "audit_logs WHERE action='staff.owner_bootstrapped'").row_count), 0);
+  } finally {
+    await existingOwnerDb.cleanup();
+  }
+
   process.stdout.write("Real local Wrangler D1 bootstrap integration passed: atomic concurrent single-winner claim, safe session/hash storage, validation, repeat rejection, and late-statement rollback.\n");
 }
 
