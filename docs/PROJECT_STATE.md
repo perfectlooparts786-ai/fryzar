@@ -1,45 +1,44 @@
 # FRYZAR project state
 
 **Verified:** 2 November 2026  
+**Repository:** `perfectlooparts786-ai/fryzar`  
 **Default branch:** `main` at `bac292b3e99d505f69be01e62c2b3f7621708a5f`  
-**Development branch:** `foundation/fresh-build`; main was integrated by merge commit `c82152df7675b926ffdf9c53970c5d557a5da3c8`.  
-**Candidate PR:** #1 open, draft, unmerged. After reconciliation GitHub reported it mergeable; do not merge automatically.  
-**Recovery PR:** #3 open and draft; archival snapshots remain separate and intact.
+**Development branch:** `foundation/fresh-build` at audit baseline `4a082b342cfe10c96e31255c5a80814c25d506fb`; main integrated with a normal two-parent merge.  
+**PR #1:** open, draft, unmerged.  
+**PR #3:** open, draft archival Worker source snapshot; not candidate source.
 
-## Candidate and preview state
+## Preview and production
 
-The candidate contains a central API, React storefront/admin, four D1 migrations, CI tests, Worker routing configs, and bilingual UI source. Preview components are deployed and smoke-tested from candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`:
+Preview Workers are `fryzar-api-preview`, `fryzar-app-preview`, and `fryzar-admin-preview`. The API binds D1 `fryzar-preview` UUID `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`; frontends bind to the API Worker service. Verified deployment run [41383813602](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41383813602) remains pinned to candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. No deployment was initiated during this backend audit.
 
-- `fryzar-api-preview` -> D1 `fryzar-preview` (UUID `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`).
-- `fryzar-app-preview` and `fryzar-admin-preview` -> service binding `fryzar-api-preview`.
-- Migrations 0001–0004 are recorded; schema has 22 application tables.
-- Store remains setup/not-ready, checkout closed, manual transfer disabled.
-- Preview secrets `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` are configured by the workflow. No owner account has been bootstrapped.
+Live preview D1 read-only inspection confirmed migration records 0001–0004, no foreign-key violations, and currently zero products, orders, staff users, bootstrap claims, proof records, support cases or notifications. All four migrations match the branch source. SQL financial consistency queries produced zero mismatches across zero orders; they provide no evidence on populated-order behavior. A `customers` table does not exist; customer details are guest fields on orders. Cloudflare D1 list metadata reported `num_tables=0`, inconsistent with SQL metadata inspection.
 
-The preview deployment workflow remains pinned to the reviewed candidate `84fefde`. The reconciliation and documentation commits did not redeploy or change application code.
+Production was inspected read-only in the prior verified infrastructure audit: `fryzar-api` -> `fryzar-core`; legacy `fryzar-app` and `fryzar-admin` -> `fryzar-production`. These are separate schemas and remain untouched.
 
-## Production separation
+## Backend audit status
 
-Read-only Cloudflare inspection confirms:
+The endpoint inventory, D1 relationships, checkout/payment/order flows, authorization, test coverage and capability gaps are recorded in [architecture](ARCHITECTURE.md) and [security review](SECURITY_REVIEW.md).
 
-- `fryzar-api` binds to `fryzar-core` (UUID `098238a6-1bda-4735-8f21-d925c7fe32de`).
-- Legacy `fryzar-app` and `fryzar-admin` bind to `fryzar-production` (UUID `880b9681-4252-4db0-be44-b60c4edbdc15`).
-- The legacy frontend/admin schema differs from the candidate API schema.
+Verified implementation highlights: server-calculated checkout totals; idempotent atomic D1 checkout; conditional stock reservation and cancellation restoration; hashed HMAC tracking token; PBKDF2 staff passwords; opaque hashed sessions; role gates; IP and identity login rate limits; COD collection with idempotency/audit; request body limits; exact-origin browser writes; no-store/security headers.
 
-No production Worker, database, binding, secret, DNS, route, or data was changed.
+Preview is setup/closed and manual transfer is disabled. Although a preview bootstrap secret was previously verified by the deployment workflow without revealing its value, no bootstrap was run; live D1 currently has zero staff users and zero bootstrap claims. A first owner can be created only after the intended operator deliberately invokes the one-time endpoint with the preview secret. This audit did not do so.
 
-## Latest baseline
+## Baseline checks
 
-CI run [41468365672](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468365672) passed on the reconciliation merge commit: `npm install --ignore-scripts --no-audit --no-fund`, API typecheck, 82 API tests, 6 routing tests, local D1 checkout integration (concurrency/idempotency/rollback), storefront/admin builds, and three Wrangler preview dry-runs. It did not deploy.
+GitHub Actions [run 41468812588](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468812588) passed on the audit baseline. The repository CI uses `npm install --ignore-scripts --no-audit --no-fund`, then API type checking, API tests, worker routing tests, local D1 integration and both frontend builds. Earlier same-code run [41468365672](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468365672) recorded the test/build steps and all three Wrangler preview dry-runs as passed.
 
-No `package-lock.json` exists; dependency resolution is not locked and `npm ci` has not been verified. No dependency versions changed. Lint is not configured.
+There is no `package-lock.json`; `npm ci` remains unverified and dependency resolution remains unlocked. Lint is not configured. Full command details and verification boundaries are in [testing](TESTING.md).
 
-## Outstanding
+## Outstanding risks and next work
 
-- Generate and commit a lockfile through an approved, controlled process; then switch CI/deployment to `npm ci` and rerun checks.
-- Keep PR #1 draft until reviewed. PR #3 stays archival.
-- Owner bootstrap has not been exercised; no genuine catalogue, delivery or support data exists.
-- Browser E2E, preview D1 backup/restore, remote concurrency/rollback, payment-proof storage/review, and production cutover remain open.
-- Review the archived legacy Worker wildcard CORS finding before any production transition; no legacy Worker was changed.
+- No preview application data: catalogue and delivery zones must be configured before any launch review.
+- Manual-transfer proof submission/storage/review and refund/reconciliation are absent; keep transfer disabled.
+- Customer accounts, variants, promotions, support API, customer notifications, product-image upload, and audit-read APIs are not implemented.
+- Product images reference object keys, but no R2 binding/upload path exists.
+- Order list offset is unbounded/not safe-integer checked; deep pagination may cause avoidable query work or database errors.
+- Idempotency/rate-limit tables have no general expiry cleanup; expired keys are only deleted when the same key is reused, and rate-limit buckets are retained.
+- Status cancellation race and bootstrap race do not yet have real D1 integration tests. Existing mock tests do not prove Cloudflare D1 atomicity; local integration covers checkout only.
+- Financial consistency SQL constraints do not enforce line-sum/order-total/payment-total equality at the database layer; current live zero-order data cannot validate this.
+- Lockfile/reproducible `npm ci` remains Phase 1B blocker.
 
-**Next phase:** finish dependency locking and rerun the complete candidate CI before any deployment pin change.
+**Next phase:** resolve the lockfile blocker through an approved maintainer-controlled method, then prioritize authenticated D1 integration tests and bounded admin pagination. No production cutover or public ordering is authorized by this audit.
