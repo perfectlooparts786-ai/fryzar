@@ -849,7 +849,7 @@ test("kitchen order list query does not select customer contact or address", asy
 });
 
 test("order pagination rejects negative, malformed, unsafe, and excessive offsets before querying D1", async () => {
-  const token = "p".repeat(64);
+  const token = "e".repeat(64);
   const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
   for (const offset of ["-1", "1.5", "not-a-number", "9007199254740992", "10001"]) {
     const { env, state } = createEnv({ firstResult: staff });
@@ -865,7 +865,7 @@ test("order pagination rejects negative, malformed, unsafe, and excessive offset
 });
 
 test("order pagination rejects invalid limits, caps page size, and uses stable bounded ordering", async () => {
-  const token = "q".repeat(64);
+  const token = "f".repeat(64);
   const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
   for (const limit of ["0", "-1", "2.5", "9007199254740992"]) {
     const { env, state } = createEnv({ firstResult: staff });
@@ -895,7 +895,7 @@ test("order pagination rejects invalid limits, caps page size, and uses stable b
 });
 
 test("order pagination preserves normal page size and offset", async () => {
-  const token = "r".repeat(64);
+  const token = "9".repeat(64);
   const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
   const { env, state } = createEnv({ firstResult: staff, allResults: [] });
   const response = await worker.fetch(
