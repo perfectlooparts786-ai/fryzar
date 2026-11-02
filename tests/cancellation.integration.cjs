@@ -216,7 +216,7 @@ async function main() {
       (SELECT COUNT(*) FROM order_items WHERE order_id='${orderId}') AS item_count`,
       ["order_status","stock_a","stock_b","movement_a","movement_b","cancelled_events","audit_events","unchanged_payment","item_count"]);
     assert.equal(row.order_status,"cancelled");
-    assert.equal(Number(row.stock_a),5,"two reserved units restored once");
+    assert.equal(Number(row.stock_a),2,"two reserved units restored once; other synthetic orders retain their reservations");
     assert.equal(Number(row.stock_b),3,"one reserved unit restored once");
     assert.equal(Number(row.movement_a),1);
     assert.equal(Number(row.movement_b),1);
@@ -231,7 +231,7 @@ async function main() {
       (SELECT stock_qty FROM products WHERE id='${productB}') AS stock_b,
       (SELECT COUNT(*) FROM inventory_movements WHERE reference_id='${orderId}' AND reason='order_cancelled') AS movement_count`,
       ["stock_a","stock_b","movement_count"]);
-    assert.equal(Number(row.stock_a),5);
+    assert.equal(Number(row.stock_a),2);
     assert.equal(Number(row.stock_b),3);
     assert.equal(Number(row.movement_count),2);
 
