@@ -109,7 +109,7 @@ async function createLocalD1(options = {}) {
     },
     async startWorker() {
       const port = await freePort();
-      const args = [WRANGLER, "dev", "--local", "--config", CONFIG, "--persist-to", persistTo, "--env-file", envFile, "--ip", "127.0.0.1", "--port", String(port), "--log-level", options.logLevel || "error"];
+      const args = [WRANGLER, "dev", "--local", "--config", CONFIG, "--persist-to", persistTo, "--env-file", envFile, "--compatibility-date", "2026-10-30", "--ip", "127.0.0.1", "--port", String(port), "--log-level", options.logLevel || "error"];
       if (options.testScheduled) args.push("--test-scheduled");
       this.server = spawn(process.execPath, args, {
         cwd: ROOT,
