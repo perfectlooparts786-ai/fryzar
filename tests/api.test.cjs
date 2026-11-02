@@ -891,7 +891,7 @@ test("order pagination rejects invalid limits, caps page size, and uses stable b
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json()).pagination, { limit: 50, offset: 10000, returned: 1 });
   assert.deepEqual(state.lastParams, ["", 50, 10000]);
-  assert.match(state.lastSql, /ORDER BY created_at DESC, id DESC LIMIT \\?2 OFFSET \\?3/);
+  assert.ok(state.lastSql.includes("ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3"));
 });
 
 test("order pagination preserves normal page size and offset", async () => {
