@@ -68,3 +68,12 @@ All reads were SELECT/PRAGMA only. No preview writes/migrations or owner bootstr
 4. Verify order item sums, discounts, delivery fee, total and payment amount, including conflicting order/payment states.
 5. Verify session expiry/revocation and role changes against Worker + local D1.
 6. Establish retention tests for idempotency and rate-limit rows before implementing cleanup.
+
+
+## Phase 2B changes and environment blocker
+
+On 2 November 2026, pagination handling was changed to reject invalid limits/offsets, cap page size at 50, cap offset at 10,000, and add an ID tie-breaker to ordering. Three API regression tests were added for invalid/unsafe offsets, invalid limits, max page size, normal pagination and deterministic ordering.
+
+The branch was cloned from GitHub at `91168cf69f758c353ff4b619044a94dde752e8fe`. `npm install --ignore-scripts --no-audit --no-fund` was attempted in the fresh clone, but stalled on package registry access and was interrupted; no dependencies were installed. `node --check tests/api.test.cjs` and `git diff --check` passed locally before publishing the change. Consequently, the new tests, regression suite, real local D1 suites, builds and Wrangler dry-runs are **not verified** for the new commit. No new cancellation/bootstrap/session/financial integration cases were added because Wrangler and dependencies were unavailable to run and debug them.
+
+Retention design remains separate: no cleanup job or SQL deletion was added. Keep 24-hour idempotency replay records for their full validity; define a bounded cleanup mechanism and operational metric before implementing cleanup. Do not prune financial or audit history. Rate-limit bucket retention also needs an explicit bounded policy.
