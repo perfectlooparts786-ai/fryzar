@@ -54,3 +54,23 @@ The cancellation endpoint now uses the schema's `order_status_events.actor_id` c
 Pagination is implemented and its regression policy remains: limit must be a positive safe integer and is capped at 50; offset must be a safe integer from 0 through 10,000; invalid values return HTTP 400; ordering is stable by `created_at DESC, id DESC`.
 
 The earlier statements above describing pagination as unbounded and cancellation as lacking real-D1 evidence are historical and superseded here. This evidence does **not** cover real-D1 bootstrap races, session lifecycle/authorization, financial consistency with populated fixture data, or retention cleanup; those remain outstanding. CI used the repository's `npm install --ignore-scripts --no-audit --no-fund`, not `npm ci` (no lockfile). No deployment, preview writes/bootstrap, or production changes occurred.
+
+
+## Phase 2B.2–2B.6 verification (2026-11-02)
+
+Implementation source was tested at commit `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`. GitHub Actions [run 41490624511](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490624511) completed successfully on the push event; PR validation [run 41490635277](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490635277) also completed successfully. This supersedes the pending/unverified Phase 2B notes above. Both runs use the same source head. Local integration suites used isolated Wrangler D1 and synthetic data only.
+
+- API TypeScript check, 86 API unit tests, and 6 Worker routing tests passed.
+- Local D1 checkout, cancellation, owner-bootstrap concurrency, session lifecycle, populated financial integrity, and bounded-retention integrations passed.
+- Storefront/admin production builds and API/customer/admin Wrangler preview dry-runs passed. Dry-runs do not deploy.
+- Owner bootstrap race yielded one 201 and one 409, exactly one owner/claim/session/audit, and verified PBKDF2 hash plus hashed session token. Invalid token/Origin/payload, repeated claim, safe response projection, and forced late-audit rollback passed.
+- Session scenarios passed for valid and invalid login, generic credential failure, secure cookie attributes, hashed sessions, expiry, logout/revocation, staff deactivation, role change, password reset, route/role boundaries, kitchen PII projection, finance payment access, malformed cookies, and database failure fail-closed behavior. Authorization reads the current staff state/role; deactivation, reset and role change revoke sessions.
+- Populated financial fixture verified order 1: item lines 2 × 12,500 + 3 × 4,500 = subtotal 38,500 paisa; delivery 3,000; discount 2,500; payable/payment amount 39,000. Order 2: subtotal 12,500 + delivery 1,000 − discount 500 = 13,000. A deliberately mismatched COD payment (19,999 vs total 20,000) was rejected. COD collection, replay, duplicate/new-key denial, cancellation payment preservation and late-audit rollback passed. Cross-row order/item/payment arithmetic remains application-level; no incompatible constraint migration was added.
+- Retention cleanup runs once daily at `17 2 * * *`; each run removes at most 100 expired idempotency rows, rate-limit buckets and login attempts per table in one D1 batch. The 24-hour idempotency expiry is preserved, rate buckets expire only after the 15-minute maximum window, login attempts retain 30 days, and active sessions plus orders, items, payments, inventory movements and audits are excluded. Repeat and injected-failure tests passed. Migration 0005 adds expiry/retention indexes.
+- The local test harness pins its local-only compatibility date to 2026-10-30 because the checked-in Wrangler 4.156.0 workerd runtime did not support the repository's 2026-11-01 date at test time. Deployed Worker configuration remains unchanged.
+
+The existing preview deployment workflow remains manual and pinned to the reviewed deployment candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. This phase did not invoke it or deploy the newly tested code. The previous read-only preview owner-state report said no owner/claim existed; it was not re-read in this phase. No remote preview writes/bootstrap or production changes occurred.
+
+No `package-lock.json` is committed and `npm ci` was not run. CI used `npm install --ignore-scripts --no-audit --no-fund`; no dependency versions were changed. Lint remains unconfigured. These test runs are not a penetration test, browser E2E, production rehearsal, or deployment verification.
+
+Current source verification commit: `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`. PR #1 remains open and draft. The verified deployed preview candidate remains the historical deployment commit above; this reliability change is tested but undeployed.

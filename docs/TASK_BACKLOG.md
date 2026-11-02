@@ -48,3 +48,12 @@ Implementation/test source head: `cca13ba2865c5270b2ffb9772ae88311b9f0f8cd`. Git
 - **Evidence scope:** CI used the existing `npm install --ignore-scripts --no-audit --no-fund` workflow. No claim is made that `npm ci` works; there is no committed lockfile. No remote preview test writes or deployment occurred.
 
 The earlier backlog lines saying cancellation integration/builds/dry-runs were unverified are historical and superseded for the exact CI run above. Remaining Phase 2B tasks must stay open until separately tested.
+
+
+## Phase 2B.2–2B.6 backlog update (2026-11-02)
+
+- **DONE with real local D1 CI evidence:** owner bootstrap single-winner/rollback; staff session lifecycle/current-role authorization; populated financial assertions and COD collection guard; bounded scheduled cleanup and repeat/failure behavior; existing checkout and cancellation race suites remain green.
+- **Financial invariant limitation:** populated line/subtotal/fee/discount/total/payment checks pass in fixtures, and COD collection rejects amount mismatch. The schema does not enforce all cross-row arithmetic; no migration was added for those invariants in this phase.
+- **Remaining:** generate/commit a dependency lockfile through an approved, reproducible method; perform an owner-controlled preview bootstrap only if/when authorized; review payment-proof/refund lifecycle, frontend CSP/XSS and browser E2E before launch; verify new scheduled cleanup only after a reviewed preview deployment.
+- **Security scope:** source review and local D1 integration only; no penetration test, remote preview write, deployment, or production change.
+- Evidence: push CI [41490624511](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490624511) and PR CI [41490635277](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490635277), both successful on implementation head `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`.

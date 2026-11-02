@@ -57,3 +57,29 @@ Source head used for the passing implementation run: `cca13ba2865c5270b2ffb9772a
 The cancellation endpoint now inserts the migration-defined `order_status_events.actor_id` field. The real D1 test exposed the prior `actor_staff_id` mismatch. Same-transition event and audit writes also have `NOT EXISTS` guards, so timestamp equality is not used as proof that the conditional order transition occurred. The integration test concurrently sends two cancellations, verifies one accepted transition and one safe rejection, stock/movement restoration exactly once, one status event and one audit event, and unchanged order items/COD payment. A forced final audit insert failure returns a conflict and leaves order, stock, movement, event and audit state unchanged.
 
 This is local-only test evidence. No remote preview bootstrap, test order, deployment or production change was performed. The earlier statement that no real-D1 cancellation test exists is superseded. Bootstrap races, session lifecycle, populated financial consistency, and retention cleanup remain unverified and separate. Pagination is implemented and regression-tested with limit 1–50, offset 0–10,000, 400 for invalid values, and stable `created_at DESC, id DESC` sorting.
+
+
+## Phase 2B.2–2B.6 verification (2026-11-02)
+
+Implementation source was tested at commit `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`. GitHub Actions [run 41490624511](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490624511) completed successfully on the push event; PR validation [run 41490635277](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490635277) also completed successfully. This supersedes the pending/unverified Phase 2B notes above. Both runs use the same source head. Local integration suites used isolated Wrangler D1 and synthetic data only.
+
+- API TypeScript check, 86 API unit tests, and 6 Worker routing tests passed.
+- Local D1 checkout, cancellation, owner-bootstrap concurrency, session lifecycle, populated financial integrity, and bounded-retention integrations passed.
+- Storefront/admin production builds and API/customer/admin Wrangler preview dry-runs passed. Dry-runs do not deploy.
+- Owner bootstrap race yielded one 201 and one 409, exactly one owner/claim/session/audit, and verified PBKDF2 hash plus hashed session token. Invalid token/Origin/payload, repeated claim, safe response projection, and forced late-audit rollback passed.
+- Session scenarios passed for valid and invalid login, generic credential failure, secure cookie attributes, hashed sessions, expiry, logout/revocation, staff deactivation, role change, password reset, route/role boundaries, kitchen PII projection, finance payment access, malformed cookies, and database failure fail-closed behavior. Authorization reads the current staff state/role; deactivation, reset and role change revoke sessions.
+- Populated financial fixture verified order 1: item lines 2 × 12,500 + 3 × 4,500 = subtotal 38,500 paisa; delivery 3,000; discount 2,500; payable/payment amount 39,000. Order 2: subtotal 12,500 + delivery 1,000 − discount 500 = 13,000. A deliberately mismatched COD payment (19,999 vs total 20,000) was rejected. COD collection, replay, duplicate/new-key denial, cancellation payment preservation and late-audit rollback passed. Cross-row order/item/payment arithmetic remains application-level; no incompatible constraint migration was added.
+- Retention cleanup runs once daily at `17 2 * * *`; each run removes at most 100 expired idempotency rows, rate-limit buckets and login attempts per table in one D1 batch. The 24-hour idempotency expiry is preserved, rate buckets expire only after the 15-minute maximum window, login attempts retain 30 days, and active sessions plus orders, items, payments, inventory movements and audits are excluded. Repeat and injected-failure tests passed. Migration 0005 adds expiry/retention indexes.
+- The local test harness pins its local-only compatibility date to 2026-10-30 because the checked-in Wrangler 4.156.0 workerd runtime did not support the repository's 2026-11-01 date at test time. Deployed Worker configuration remains unchanged.
+
+The existing preview deployment workflow remains manual and pinned to the reviewed deployment candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. This phase did not invoke it or deploy the newly tested code. The previous read-only preview owner-state report said no owner/claim existed; it was not re-read in this phase. No remote preview writes/bootstrap or production changes occurred.
+
+No `package-lock.json` is committed and `npm ci` was not run. CI used `npm install --ignore-scripts --no-audit --no-fund`; no dependency versions were changed. Lint remains unconfigured. These test runs are not a penetration test, browser E2E, production rehearsal, or deployment verification.
+
+
+## Updated security follow-ups
+
+- Unbounded login-path pruning was removed; operational deletes now run through the bounded scheduled batch. Scheduling is configured in preview source but has not been deployed in this phase.
+- COD collection now checks that payment amount equals the order payable total. The local populated fixture proves mismatch rejection. Other cross-row order arithmetic is still application/test enforced.
+- Owner bootstrap/session behavior was exercised only against temporary local D1; preview's previously reported unclaimed state is historical and was not rechecked here.
+- Do not treat CI as penetration testing, production approval, or proof that new code is deployed.
