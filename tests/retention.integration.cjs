@@ -62,8 +62,8 @@ async function main() {
     await response.text();
 
     assert.equal(rows(db, "idempotency_keys", "idempotency_key LIKE 'expired-batch-%'"), 1, "only one of 101 expired idempotency rows remains after the bounded first run");
-    assert.equal(rows(db, "api_rate_limits", "bucket_key LIKE 'rate-expired-%'"), 1, "only one of 101 expired rate buckets remains after the bounded first run");
-    assert.equal(rows(db, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'"), 1, "only one of 101 expired login attempts remains after the bounded first run");
+    assert.equal(rows(db, "api_rate_limits", "bucket_key LIKE 'rate-expired-%'"), 2, "two of 101 expired rate buckets remain after the bounded first run because the separate base bucket shares the 100-row limit");
+    assert.equal(rows(db, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'"), 2, "two expired login attempts remain after the bounded first run because the separate baseline record shares the 100-row limit");
     assert.equal(rows(db, "idempotency_keys", "idempotency_key='still-valid'"), 1, "unexpired idempotency replay protection remains");
     assert.equal(rows(db, "idempotency_keys", "idempotency_key='expired-replay'"), 0, "an expired replay record is eligible only after expiry");
     assert.equal(rows(db, "api_rate_limits", "bucket_key='rate-active'"), 1, "active rate-limit window remains");
