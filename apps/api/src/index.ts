@@ -1474,7 +1474,7 @@ async function changeAdminOrderStatus(
   statements.push(
     env.DB.prepare(
       "INSERT INTO order_status_events " +
-      "(id, order_id, old_status, new_status, actor_staff_id, actor_type, note) " +
+      "(id, order_id, old_status, new_status, actor_id, actor_type, note) " +
       "SELECT lower(hex(randomblob(16))), id, ?1, ?2, ?3, 'staff', ?4 " +
       "FROM orders WHERE id = ?5 AND status = ?2 AND updated_at = ?6 " +
       "AND NOT EXISTS (SELECT 1 FROM order_status_events e " +
