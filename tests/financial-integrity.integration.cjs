@@ -1,13 +1,11 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createLocalD1, requestJson } = require("./helpers/local-d1-worker.cjs");
 
 const OWNER_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-const SESSION_TOKEN = "f".repeat(64);
 const ORDER_OK = "11111111-1111-4111-8111-111111111111";
 const ORDER_FAIL = "22222222-2222-4222-8222-222222222222";
 const ORDER_CANCELLED = "33333333-3333-4333-8333-333333333333";
@@ -26,13 +24,22 @@ function financialState(db, orderId, key) {
 }
 
 async function main() {
-  const db = await createLocalD1();
+  const bootstrapToken = "local-only-financial-fixture-owner-bootstrap-token-64chars";
+  const db = await createLocalD1({ vars: { OWNER_BOOTSTRAP_TOKEN: bootstrapToken } });
   try {
-    const tokenHash = createHash("sha256").update(SESSION_TOKEN).digest("hex");
-    const fixturePath = path.join(__dirname, "fixtures", "financial-integrity.sql");
-    const fixture = fs.readFileSync(fixturePath, "utf8").replace("__SESSION_TOKEN_HASH__", tokenHash);
-    db.execSql(fixture);
     const baseUrl = await db.startWorker();
+    const bootstrapped = await requestJson(baseUrl, "/api/v1/admin/bootstrap-owner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Owner-Bootstrap-Token": bootstrapToken },
+      body: { email: "financial-owner@local.test", display_name: "Financial Fixture Owner", password: "SyntheticFinancialOwnerPassword!2026" }
+    });
+    assert.equal(bootstrapped.response.status, 201, "local fixture owner is created only in isolated D1");
+    const cookie = (bootstrapped.response.headers.get("Set-Cookie") || "").match(/__Host-fryzar_admin=([a-f0-9]{64})/);
+    assert.ok(cookie, "bootstrap issues a session cookie for the finance owner");
+    const SESSION_TOKEN = cookie[1];
+    const fixturePath = path.join(__dirname, "fixtures", "financial-integrity.sql");
+    const fixture = fs.readFileSync(fixturePath, "utf8");
+    db.execSql(fixture);
 
     const orderTotals = db.queryRow(
       "SELECT COUNT(*) AS invalid_totals FROM orders o WHERE " +

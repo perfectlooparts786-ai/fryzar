@@ -1,9 +1,4 @@
--- Synthetic local-only financial integrity fixtures. Replace __SESSION_TOKEN_HASH__ in the test runner.
-INSERT INTO staff_users (id,email,password_hash,display_name,role,is_active)
-VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','finance-test-owner@local.test','synthetic-unused','Financial Test Owner','owner',1);
-INSERT INTO staff_sessions (id,staff_user_id,token_hash,expires_at)
-VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeef','eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','__SESSION_TOKEN_HASH__','2099-01-01T00:00:00.000Z');
-
+-- Synthetic local-only financial integrity fixtures; staff session comes from local bootstrap.
 INSERT INTO products (id,sku,slug,name_ur,name_en,price_paisa,stock_qty,is_available) VALUES
 ('44444444-4444-4444-8444-444444444444','FIN-A','financial-product-a','مصنوع الف','Financial Product A',12500,2,1),
 ('33333333-3333-4333-8333-333333333333','FIN-B','financial-product-b','مصنوع ب','Financial Product B',4500,5,1);
