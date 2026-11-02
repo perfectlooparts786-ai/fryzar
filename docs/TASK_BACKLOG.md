@@ -27,3 +27,11 @@
 - Do not enable manual transfer until private proof storage and financial review are complete.
 - No production deployment, schema mutation, DNS/route change, credential change or production cutover is part of this audit.
 - Keep PR #1 draft and PR #3 open archival.
+
+
+## Phase 2B status
+
+- Pagination is implemented in `apps/api/src/index.ts`: positive safe integer limit capped at 50; safe integer offset 0–10,000; deterministic `created_at DESC, id DESC`; invalid pagination returns 400 before D1. Regression tests were added, but CI execution is pending.
+- Local npm registry access stalled, leaving dependencies unavailable. Cancellation concurrency, bootstrap race, session lifecycle, financial fixture, cleanup tests, builds and Wrangler dry-runs remain unverified for this change.
+- No retention cleanup was implemented. Preserve 24-hour idempotency replay and financial/audit history; decide bounded operational cleanup and safe metrics before code changes.
+- Next action: run GitHub CI on the pushed commit; then add and execute real local Wrangler D1 suites for cancellation race, bootstrap race, session lifecycle and financial rollback before closing remaining items.
