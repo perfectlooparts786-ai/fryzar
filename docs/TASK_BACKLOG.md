@@ -35,3 +35,16 @@
 - Local npm registry access stalled, leaving dependencies unavailable. Cancellation concurrency, bootstrap race, session lifecycle, financial fixture, cleanup tests, builds and Wrangler dry-runs remain unverified for this change.
 - No retention cleanup was implemented. Preserve 24-hour idempotency replay and financial/audit history; decide bounded operational cleanup and safe metrics before code changes.
 - Next action: run GitHub CI on the pushed commit; then add and execute real local Wrangler D1 suites for cancellation race, bootstrap race, session lifecycle and financial rollback before closing remaining items.
+
+
+
+## Phase 2B.1 status (2 November 2026)
+
+Implementation/test source head: `cca13ba2865c5270b2ffb9772ae88311b9f0f8cd`. GitHub Actions [run 41482573350](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41482573350) passed the new local real-D1 cancellation suite and existing API, checkout integration, storefront/admin build, and three Wrangler preview dry-run checks.
+
+- **P2-005 cancellation race portion: DONE.** Dedicated isolated Wrangler D1 test verifies concurrent cancellation, exactly-once stock/movement restoration, repeat and invalid-state rejection, status/audit consistency, and atomic rollback on an injected final-statement failure. Cancellation's status event column was corrected from `actor_staff_id` to schema-defined `actor_id`; same-transition status/audit inserts are guarded against duplicates. This does not complete the separate bootstrap race requirement.
+- **P2-007 pagination: DONE.** Positive safe integer limit capped at 50; safe offset 0–10,000; invalid inputs return 400; ordering is `created_at DESC, id DESC`. Existing source and regression coverage were not rewritten in this task.
+- **Still open:** real-D1 owner bootstrap race, session lifecycle and authorization, populated financial/payment integrity and rollback, and bounded retention policy/tests. Preserve the 24-hour idempotency replay window; no cleanup job was introduced.
+- **Evidence scope:** CI used the existing `npm install --ignore-scripts --no-audit --no-fund` workflow. No claim is made that `npm ci` works; there is no committed lockfile. No remote preview test writes or deployment occurred.
+
+The earlier backlog lines saying cancellation integration/builds/dry-runs were unverified are historical and superseded for the exact CI run above. Remaining Phase 2B tasks must stay open until separately tested.
