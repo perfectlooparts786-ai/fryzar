@@ -175,7 +175,14 @@ async function main() {
   const append = chunk => { output = (output + chunk.toString()).slice(-10000); };
   try {
     runWrangler(["d1","migrations","apply","fryzar-preview","--local","--persist-to",persistTo,"--config",config]);
-    runWrangler(["d1","execute","fryzar-preview","--local","--persist-to",persistTo,"--config",config,"--file",fixture]);
+    const fixtureParts = fixtureSql().split(/;(?=\\s*(?:INSERT|UPDATE|CREATE)\\b)/).map(part => part.trim()).filter(Boolean);
+    for (let index = 0; index < fixtureParts.length; index += 1) {
+      try {
+        runWrangler(["d1","execute","fryzar-preview","--local","--persist-to",persistTo,"--config",config,"--command",fixtureParts[index]]);
+      } catch (error) {
+        throw new Error("Synthetic cancellation fixture statement " + (index + 1) + " failed: " + error.message);
+      }
+    }
 
     const port = await findFreePort();
     const baseUrl = "http://127.0.0.1:" + port;
