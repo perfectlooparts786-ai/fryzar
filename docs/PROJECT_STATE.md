@@ -42,3 +42,15 @@ There is no `package-lock.json`; `npm ci` remains unverified and dependency reso
 - Lockfile/reproducible `npm ci` remains Phase 1B blocker.
 
 **Next phase:** resolve the lockfile blocker through an approved maintainer-controlled method, then prioritize authenticated D1 integration tests and bounded admin pagination. No production cutover or public ordering is authorized by this audit.
+
+
+
+## Current cancellation test state (2 November 2026)
+
+The branch contained the cancellation implementation at `cca13ba2865c5270b2ffb9772ae88311b9f0f8cd`; PR #1 remains open and draft. GitHub Actions [run 41482573350](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41482573350) passed the dedicated cancellation integration test against a temporary local Wrangler D1, existing `npm test`, checkout local-D1 integration, both frontend builds, and API/customer/admin Wrangler preview dry-runs.
+
+The cancellation endpoint now uses the schema's `order_status_events.actor_id` column. Concurrent same-order cancellation was verified to accept one transition, reject the competing/repeated requests safely, restore stock and add one movement per product exactly once, and write one cancelled status event and one audit row. A synthetic late audit insert failure verified atomic rollback across order, inventory, movement, status and audit rows. Existing COD payment and order items remained unchanged. The fixture is synthetic and local; no remote preview data was used.
+
+Pagination is implemented and its regression policy remains: limit must be a positive safe integer and is capped at 50; offset must be a safe integer from 0 through 10,000; invalid values return HTTP 400; ordering is stable by `created_at DESC, id DESC`.
+
+The earlier statements above describing pagination as unbounded and cancellation as lacking real-D1 evidence are historical and superseded here. This evidence does **not** cover real-D1 bootstrap races, session lifecycle/authorization, financial consistency with populated fixture data, or retention cleanup; those remain outstanding. CI used the repository's `npm install --ignore-scripts --no-audit --no-fund`, not `npm ci` (no lockfile). No deployment, preview writes/bootstrap, or production changes occurred.
