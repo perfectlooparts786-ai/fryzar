@@ -79,3 +79,8 @@ Read-only preview SQL on 2 November 2026 confirmed: applied migrations 1–4; `P
 | Dashboard analytics and audit log | PARTIALLY IMPLEMENTED | Aggregate metrics and write-side audit events exist; no audit-log read endpoint; analytics are lifetime aggregates. |
 
 Latest CI baseline is [run 41468812588](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468812588); details are in [testing](TESTING.md). See [project state](PROJECT_STATE.md) and [security review](SECURITY_REVIEW.md).
+
+
+## Phase 2B pagination policy (implemented; CI pending)
+
+Admin order listing preserves the existing limit/offset response shape. Limit must be a positive safe integer and is capped at 50 (the existing maximum). Offset must be a safe integer from 0 through 10,000; invalid, negative, unsafe, or larger values return HTTP 400 `invalid_order_pagination` before the order query. Ordering is now deterministic by `created_at DESC, id DESC`. The cap bounds deep offset work while retaining compatibility for ordinary existing pages. Cursor pagination can be considered if order volume later requires deeper browsing.
