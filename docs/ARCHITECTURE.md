@@ -1,64 +1,47 @@
 # FRYZAR architecture
 
-## Current environment split
+## Current candidate architecture
 
-FRYZAR's candidate implementation uses an isolated three-Worker preview topology:
+The candidate is a Cloudflare-first monorepo with a shared D1 data model:
 
-- Customer site: React + TypeScript, bilingual Urdu/English with RTL/LTR support.
-- Admin portal: React + TypeScript with staff authentication and operations.
-- API: TypeScript Cloudflare Worker.
-- Preview data: Cloudflare D1 database `fryzar-preview`.
-- Deployment source: private GitHub monorepo and GitHub Actions.
+- Customer storefront: React + TypeScript, bilingual Urdu/English, RTL/LTR.
+- Owner/admin portal: React + TypeScript.
+- Central API: TypeScript Cloudflare Worker.
+- Data: D1, accessed only by the API.
+- CI/CD: GitHub Actions; preview deployment is manual, pinned to a reviewed commit.
 
-The customer Worker (`fryzar-app-preview`) and admin Worker (`fryzar-admin-preview`) send `/api` and `/api/*` through the Cloudflare Service Binding `API` to `fryzar-api-preview`. The API binds to D1 as `DB` and uses the preview database UUID `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`. The frontends serve built static assets with SPA fallback.
+Preview traffic flows through a single API service binding:
 
-The separate legacy production topology is currently:
-- `fryzar-api` → D1 `fryzar-core` (UUID `098238a6-1bda-4735-8f21-d925c7fe32de`).
-- `fryzar-app` and `fryzar-admin` → D1 `fryzar-production` (UUID `880b9681-4252-4db0-be44-b60c4edbdc15`).
+```text
+Customer browser -> fryzar-app-preview -> fryzar-api-preview -> fryzar-preview D1
+Admin browser    -> fryzar-admin-preview -> fryzar-api-preview -> fryzar-preview D1
+```
 
-Read-only schema inspection found the legacy frontend/admin database has a different schema from the candidate API database. The preview architecture is internally consistent; the legacy Worker/database bindings must not be changed or treated as interchangeable. The project has not cut over production traffic to the candidate implementation.
+The preview API binds `DB` to D1 UUID `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`. Both frontend Workers bind `API` to `fryzar-api-preview` and serve built static assets with SPA fallback.
 
-## Request and data flow
+## Production boundary
 
-~~~text
-Customer storefront ──┐
-                      ├── /api/* ──> Preview API Worker ──> Preview D1
-Owner/admin portal ───┘                    │
-                                          └── authoritative business rules
-~~~
+The existing production Workers still use split databases:
 
-The storefront, admin portal and API use one candidate schema. Clients do not own product prices, delivery fees, discounts, totals, stock, order/payment status or staff permissions. The API derives values from D1 and enforces authorization on sensitive operations.
+- `fryzar-api` -> `fryzar-core` (UUID `098238a6-1bda-4735-8f21-d925c7fe32de`).
+- Legacy `fryzar-app` and `fryzar-admin` -> `fryzar-production` (UUID `880b9681-4252-4db0-be44-b60c4edbdc15`).
 
-## Authentication and tracking
+Read-only schema inspection found the legacy frontend/admin database differs from the candidate API schema. These production resources remain untouched and are not interchangeable with preview. The candidate has not been cut over to production.
 
-Browsing and guest checkout do not require customer registration. An order tracking token is derived with HMAC from the order ID; the order stores only its SHA-256 hash. Raw tokens are returned to the customer once and must not be logged. Customer tracking responses omit phone and address.
+## Application and security model
 
-Staff authentication uses PBKDF2-SHA256 salted password hashes, a one-time owner-bootstrap claim, hashed opaque session tokens, an 8-hour expiry, and an HttpOnly/Secure/SameSite=Strict cookie. Server-side role checks protect admin APIs. The first owner bootstrap also requires the preview-only `OWNER_BOOTSTRAP_TOKEN` secret.
+- API owns price, delivery fee, totals, stock, order/payment state, and authorization.
+- Checkout validates input, checks store/payment flags, requires idempotency, and batches order/payment/item/status/audit/inventory writes.
+- Tracking uses a derived private token; only a hash is stored. Customer tracking omits phone and address.
+- Staff passwords use PBKDF2-SHA256 hashes; sessions use opaque hashed tokens and Secure/HttpOnly/SameSite=Strict cookies; protected routes enforce roles.
+- Preview uses secret bindings named `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN`. The latter is configured, but owner bootstrap has not been run.
+- COD remains unpaid until collection; manual transfer and proof handling remain disabled pending private storage and financial review.
 
-## Checkout
+## Verified project refs (2 November 2026)
 
-1. Validate request size, shape and customer fields.
-2. Require an idempotency key and hash the normalized payload.
-3. Check store readiness and payment flags.
-4. Load active delivery-zone and product records.
-5. Calculate totals in integer paisa on the server.
-6. Write the idempotency record, order, payment, item snapshots, stock reservation, status and audit records in one D1 batch.
-7. Return a private order tracking token.
+- `main`: `bac292b3e99d505f69be01e62c2b3f7621708a5f`.
+- `foundation/fresh-build` incorporated main in merge commit `c82152df7675b926ffdf9c53970c5d557a5da3c8`; branch comparison then showed 0 commits behind main.
+- Draft PR #1 remains unmerged. PR #3 remains the archival Worker-source recovery.
+- Deployed preview candidate remains `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`; later branch changes were reconciliation/documentation only.
 
-Database constraints and triggers enforce valid state, unique payments/inventory movements and tracked stock bounds. CI covers concurrent checkout, idempotent replay, payload conflict and transaction rollback using Wrangler's local D1 runtime. The preview deployment smoke test verified remote API/D1 health and that checkout remains closed.
-
-## Operations and payments
-
-- Order list/detail and status changes are role-checked.
-- Kitchen SQL projection excludes phone and address.
-- Owner/manager cancellation restores tracked stock and records inventory, status and audit changes.
-- COD starts unpaid. Manual transfer remains disabled pending private proof storage and authorized review.
-- No payment gateway, private object storage, or customer Android app is active in this phase.
-
-## Deployment boundaries
-
-The `main` branch's manual preview workflow checks out a pinned reviewed commit and verifies preview-only resource names, IDs, environment secrets and service bindings before deployment. It applies migrations only to `fryzar-preview`, deploys the three preview Workers, and runs HTTP smoke tests. PR workflows do not receive deployment secrets.
-
-The candidate was deployed and smoke-tested on 2 November 2026. The store is still in setup mode and checkout remains closed. Production Workers, D1 databases, DNS and routes remain outside the preview workflow. The candidate foundation PR remains draft and needs reconciliation with `main` before merge.
-
-See [preview operations](operations/PREVIEW_ENVIRONMENT.md) and [deployment and recovery](DEPLOYMENT.md) for verified resource details and procedures.
+See [deployment](DEPLOYMENT.md), [project state](PROJECT_STATE.md), [release readiness](RELEASE_READINESS.md), and [preview operations](operations/PREVIEW_ENVIRONMENT.md).
