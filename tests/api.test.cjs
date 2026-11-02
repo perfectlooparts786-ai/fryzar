@@ -848,6 +848,66 @@ test("kitchen order list query does not select customer contact or address", asy
   assert.doesNotMatch(state.lastSql, /SELECT[^]*customer_phone, delivery_address/);
 });
 
+test("order pagination rejects negative, malformed, unsafe, and excessive offsets before querying D1", async () => {
+  const token = "p".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  for (const offset of ["-1", "1.5", "not-a-number", "9007199254740992", "10001"]) {
+    const { env, state } = createEnv({ firstResult: staff });
+    const response = await worker.fetch(
+      request("/api/v1/admin/orders?offset=" + encodeURIComponent(offset), {
+        headers: { Cookie: "__Host-fryzar_admin=" + token }
+      }), env
+    );
+    assert.equal(response.status, 400, "offset " + offset + " must be rejected");
+    assert.equal((await response.json()).error, "invalid_order_pagination");
+    assert.equal(state.allCount, 0, "invalid pagination must not query orders");
+  }
+});
+
+test("order pagination rejects invalid limits, caps page size, and uses stable bounded ordering", async () => {
+  const token = "q".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  for (const limit of ["0", "-1", "2.5", "9007199254740992"]) {
+    const { env, state } = createEnv({ firstResult: staff });
+    const response = await worker.fetch(
+      request("/api/v1/admin/orders?limit=" + encodeURIComponent(limit), {
+        headers: { Cookie: "__Host-fryzar_admin=" + token }
+      }), env
+    );
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "invalid_order_pagination");
+    assert.equal(state.allCount, 0);
+  }
+
+  const { env, state } = createEnv({
+    firstResult: staff,
+    allResults: [{ id: "order-1", created_at: "2026-11-02T00:00:00Z" }]
+  });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders?limit=500&offset=10000", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }), env
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).pagination, { limit: 50, offset: 10000, returned: 1 });
+  assert.deepEqual(state.lastParams, ["", 50, 10000]);
+  assert.match(state.lastSql, /ORDER BY created_at DESC, id DESC LIMIT \\?2 OFFSET \\?3/);
+});
+
+test("order pagination preserves normal page size and offset", async () => {
+  const token = "r".repeat(64);
+  const staff = { id: "owner-1", email: "owner@example.test", display_name: "Owner", role: "owner", is_active: 1 };
+  const { env, state } = createEnv({ firstResult: staff, allResults: [] });
+  const response = await worker.fetch(
+    request("/api/v1/admin/orders?limit=25&offset=25", {
+      headers: { Cookie: "__Host-fryzar_admin=" + token }
+    }), env
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).pagination, { limit: 25, offset: 25, returned: 0 });
+  assert.deepEqual(state.lastParams, ["", 25, 25]);
+});
+
 test("invalid order status filter is rejected", async () => {
   const token = "d".repeat(64);
   const staff = {
