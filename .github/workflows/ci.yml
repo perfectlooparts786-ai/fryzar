@@ -35,6 +35,8 @@ jobs:
 
       - name: Validate checkout transactions against local D1
         run: npm run test:integration:local
+      - name: Validate cancellation transitions against local D1
+        run: npm run test:integration:cancellation
 
       - name: Build customer storefront
         run: npm run build:storefront
