@@ -24,3 +24,5 @@ android/**/build/
 *.p12
 *.pem
 *.key
+desktop.ini
+*.lnk
