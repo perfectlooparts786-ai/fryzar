@@ -1327,9 +1327,16 @@ async function listAdminOrders(
   }
 
   const rawLimit = Number(url.searchParams.get("limit") ?? "25");
-  const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 25;
+  if (!Number.isSafeInteger(rawLimit) || rawLimit < 1) {
+    return json({ error: "invalid_order_pagination" }, 400);
+  }
+  const limit = Math.min(rawLimit, 50);
   const rawOffset = Number(url.searchParams.get("offset") ?? "0");
-  const offset = Number.isInteger(rawOffset) ? Math.max(rawOffset, 0) : 0;
+  // Bound OFFSET scans while preserving the existing limit/offset API contract.
+  if (!Number.isSafeInteger(rawOffset) || rawOffset < 0 || rawOffset > 10000) {
+    return json({ error: "invalid_order_pagination" }, 400);
+  }
+  const offset = rawOffset;
   const includeCustomerDetails = user.role !== "kitchen";
 
   const customerColumns = includeCustomerDetails
@@ -1342,7 +1349,7 @@ async function listAdminOrders(
     "subtotal_paisa, delivery_fee_paisa, discount_paisa, total_paisa, " +
     "customer_language, created_at, updated_at " +
     "FROM orders WHERE (?1 = '' OR status = ?1) " +
-    "ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
+    "ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3"
   ).bind(status, limit, offset).all<JsonRecord>();
 
   return json({
