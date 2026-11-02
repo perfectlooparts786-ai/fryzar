@@ -175,7 +175,7 @@ async function main() {
   const append = chunk => { output = (output + chunk.toString()).slice(-10000); };
   try {
     runWrangler(["d1","migrations","apply","fryzar-preview","--local","--persist-to",persistTo,"--config",config]);
-    const fixtureParts = fixtureSql().split(/;(?=\\s*(?:INSERT|UPDATE|CREATE)\\b)/).map(part => part.trim()).filter(Boolean);
+    const fixtureParts = fixtureSql().split(/;(?=\s*(?:INSERT|UPDATE|CREATE)\b)/).map(part => part.trim()).filter(Boolean);
     for (let index = 0; index < fixtureParts.length; index += 1) {
       try {
         runWrangler(["d1","execute","fryzar-preview","--local","--persist-to",persistTo,"--config",config,"--command",fixtureParts[index]]);
