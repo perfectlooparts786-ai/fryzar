@@ -88,7 +88,7 @@ Admin order listing preserves the existing limit/offset response shape. Limit mu
 
 ## Backend reliability update (2 November 2026)
 
-The current tested source commit is `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`; CI run [41490624511](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490624511) passed. This supersedes the earlier pagination section's “CI pending” note above.
+The current tested source commit is `908f28eb691d395c1d1b7cd1d027a1280ce2f482`; CI run [41491718547](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41491718547) passed. This supersedes the earlier pagination section's “CI pending” note above.
 
 The API remains the only Worker with a D1 binding. Its scheduled handler performs bounded operational retention cleanup using the existing D1: daily at `17 2 * * *`, at most 100 eligible rows per table per run, in one atomic batch. It removes only expired idempotency records, rate-limit windows beyond their maximum validity, and login-attempt records older than 30 days. It does not delete sessions or business/audit history. Migration 0005 adds indexes supporting the expiry scans. No new service, database, dependency, or paid feature was introduced.
 

@@ -58,7 +58,7 @@ The earlier statements above describing pagination as unbounded and cancellation
 
 ## Phase 2B.2–2B.6 verification (2026-11-02)
 
-Implementation source was tested at commit `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`. GitHub Actions [run 41490624511](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490624511) completed successfully on the push event; PR validation [run 41490635277](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41490635277) also completed successfully. This supersedes the pending/unverified Phase 2B notes above. Both runs use the same source head. Local integration suites used isolated Wrangler D1 and synthetic data only.
+Implementation source was tested at commit `908f28eb691d395c1d1b7cd1d027a1280ce2f482`. GitHub Actions [run 41491718547](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41491718547) completed successfully on the push event; PR validation [run 41491727416](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41491727416) also completed successfully. This supersedes the pending/unverified Phase 2B notes above. Both runs use the same source head. Local integration suites used isolated Wrangler D1 and synthetic data only.
 
 - API TypeScript check, 86 API unit tests, and 6 Worker routing tests passed.
 - Local D1 checkout, cancellation, owner-bootstrap concurrency, session lifecycle, populated financial integrity, and bounded-retention integrations passed.
@@ -73,4 +73,4 @@ The existing preview deployment workflow remains manual and pinned to the review
 
 No `package-lock.json` is committed and `npm ci` was not run. CI used `npm install --ignore-scripts --no-audit --no-fund`; no dependency versions were changed. Lint remains unconfigured. These test runs are not a penetration test, browser E2E, production rehearsal, or deployment verification.
 
-Current source verification commit: `260426c6ffac154c6f6c3d8eca7d4c7c2d27d508`. PR #1 remains open and draft. The verified deployed preview candidate remains the historical deployment commit above; this reliability change is tested but undeployed.
+Current source verification commit: `908f28eb691d395c1d1b7cd1d027a1280ce2f482`. PR #1 remains open and draft. The verified deployed preview candidate remains the historical deployment commit above; this reliability change is tested but undeployed.
