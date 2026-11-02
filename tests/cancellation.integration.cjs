@@ -187,7 +187,7 @@ async function main() {
 
     const port = await findFreePort();
     const baseUrl = "http://127.0.0.1:" + port;
-    server = spawn(process.execPath,[wrangler,"dev","--local","--config",config,"--persist-to",persistTo,"--env-file",envFile,"--ip","127.0.0.1","--port",String(port),"--log-level","error"],{
+    server = spawn(process.execPath,[wrangler,"dev","--local","--config",config,"--persist-to",persistTo,"--env-file",envFile,"--compatibility-date","2026-10-30","--ip","127.0.0.1","--port",String(port),"--log-level","error"],{
       cwd:root,env:{...process.env,CI:"true"},stdio:["ignore","pipe","pipe"]
     });
     server.stdout.on("data",append);
