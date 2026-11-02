@@ -1,32 +1,32 @@
-# Fryzar isolated preview environment
+# FRYZAR isolated preview environment
 
-Updated: 1 November 2026
+Updated: 2 November 2026
 
 ## Purpose
 
-This environment is for validating the candidate central-API architecture without routing or modifying the currently deployed Fryzar Workers or the existing production/core D1 databases.
+This environment validates the candidate central API architecture without routing to or modifying the existing production Workers or either production D1 database.
 
 ## Isolated resources
 
 | Resource | Preview name | Purpose |
 |---|---|---|
 | API Worker | `fryzar-api-preview` | Candidate business API |
-| Customer Worker | `fryzar-app-preview` | Customer React static assets and API proxy |
-| Admin Worker | `fryzar-admin-preview` | Admin React static assets and API proxy |
-| D1 | `fryzar-preview` | Empty database with candidate GitHub migrations |
+| Customer Worker | `fryzar-app-preview` | Customer React assets and API proxy |
+| Admin Worker | `fryzar-admin-preview` | Admin React assets and API proxy |
+| D1 | `fryzar-preview` | Candidate schema and preview-only data |
 
-D1 database UUID: `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`  
-Created in: APAC  
-Read replication: disabled
+D1 UUID: `a6f528a3-4b36-43a9-8e77-31f7105a4aeb` (APAC; read replication disabled).
 
-The preview D1 is separate from both existing databases:
-- `fryzar-production` remains bound to the active legacy customer/admin Workers.
-- `fryzar-core` remains bound to the active legacy API Worker.
-- No preview Worker is bound to either existing database.
+The preview API's `DB` binding points to this UUID. Customer and admin Workers use an `API` service binding to `fryzar-api-preview`. None of these preview Workers bind to a production database.
 
-## D1 baseline and migration evidence
+The existing production topology is different:
+- `fryzar-api` binds to `fryzar-core` (UUID `098238a6-1bda-4735-8f21-d925c7fe32de`).
+- Legacy `fryzar-app` and `fryzar-admin` bind to `fryzar-production` (UUID `880b9681-4252-4db0-be44-b60c4edbdc15`).
+- The legacy frontend/admin schema differs from the candidate API schema. Do not assume these databases are interchangeable.
 
-The following source migrations were fetched from GitHub branch `foundation/fresh-build` and applied to the new empty preview D1 in order:
+## D1 schema and migration state
+
+Read-only Cloudflare inspection on 2 November 2026 verified these four GitHub migrations are applied to `fryzar-preview` in order:
 
 | Migration | GitHub blob SHA |
 |---|---|
@@ -35,57 +35,50 @@ The following source migrations were fetched from GitHub branch `foundation/fres
 | `0003_admin_bootstrap.sql` | `a0e13133f291eec91ea4f9a4234e393dff48cace` |
 | `0004_inventory_adjustments.sql` | `3f4c11faf33417e2fc5e0a1b5126cb6bc1ba0ccc` |
 
-Cloudflare read-back verifies 22 application tables and four matching rows in `d1_migrations`. The following business tables are empty: products, categories, orders, payments, staff_users, inventory_movements, delivery_zones and inventory_adjustments.
+The schema contains 22 application tables, including orders, payments, products, staff, inventory, audit and support tables. Preview smoke checks confirmed empty product/category responses and setup settings; no customer-facing catalog data was seeded.
 
-Default settings read back from preview D1:
-- `store_status = "setup"`
+Default settings verified through preview HTTP smoke tests:
+- `store_status = setup`
 - `launch_ready = false`
 - `manual_transfer_enabled = false`
-- `cod_enabled = true`
-- `currency = "PKR"`
-- `delivery_fee_paisa = 0`
+- `currency = PKR`
 
-No demo products, categories, customers, staff or orders were inserted. Store opening and manual transfer remain disabled.
+## Live deployment verification
 
-## Worker wiring
+GitHub Actions run [41383813602](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41383813602) completed successfully on 2 November 2026. It deployed the reviewed candidate commit `84fefded8640cb3abd23cd2df6fdbb811cf9d19d` to all three preview Workers.
 
-The customer and admin Worker entrypoints forward all `/api` and `/api/*` requests using a Cloudflare Service Binding named `API` to `fryzar-api-preview`. All non-API paths are served by each Worker's static asset binding.
+Verified hosts:
+- API: https://fryzar-api-preview.perfectlooparts786.workers.dev
+- Customer: https://fryzar-app-preview.perfectlooparts786.workers.dev
+- Admin: https://fryzar-admin-preview.perfectlooparts786.workers.dev
 
-Both front-end Workers use Workers Static Assets with SPA fallback. The Wrangler configs explicitly send `/api/*` to the Worker first and route other requests to static assets.
+The workflow smoke tests passed for:
+- Direct API health and D1 schema readiness.
+- Customer/admin API forwarding and exact-origin CORS.
+- Empty catalogue and categories.
+- Setup/readiness/payment settings and closed checkout.
+- Unauthenticated admin session before owner bootstrap.
+- Customer and admin React application shells.
 
-Expected workers.dev hostnames (not yet verified by HTTP smoke test):
-- `https://fryzar-api-preview.perfectlooparts786.workers.dev`
-- `https://fryzar-app-preview.perfectlooparts786.workers.dev`
-- `https://fryzar-admin-preview.perfectlooparts786.workers.dev`
+Cloudflare read-back confirmed the Worker names, D1/service bindings, and successful deployments. No public custom domain, DNS record, production route, production Worker, or production D1 was changed.
 
-No custom domain, DNS record, route, or production hostname is changed by this preview setup.
+## Deployment workflow and credentials
 
-## Deployment order
+The manual workflow on `main` is `.github/workflows/deploy-preview.yml`. It checks out a pinned reviewed candidate commit, verifies the Cloudflare account ID and required preview secrets without printing their values, checks explicit preview Worker/database names and IDs, runs tests/builds, applies migrations to `fryzar-preview`, provisions preview-only API secrets, deploys the three preview Workers, then runs HTTP smoke tests.
 
-The optional manual GitHub Actions workflow `.github/workflows/deploy-preview.yml` deploys only the preview names:
-1. Validate API tests, Worker routing tests and both web builds.
-2. Apply migrations to `fryzar-preview` only.
-3. Deploy `fryzar-api-preview`.
-4. Deploy `fryzar-app-preview`.
-5. Deploy `fryzar-admin-preview`.
+The successful deployment verified these GitHub Actions environment secret references were present and met the workflow's validation: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `TRACKING_SECRET`, and `OWNER_BOOTSTRAP_TOKEN`. Secret values were not retrieved, displayed, or copied into repository files. Preview Workers expose only secret names in Cloudflare configuration read-back.
 
-The workflow requires GitHub Actions environment `preview` to contain:
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-
-Only a narrowly scoped Cloudflare API token should be stored there. Do not add token values to GitHub files, workflow YAML, logs or prompts. The presence/availability of these environment secrets has not been verified by this audit.
-
-The candidate API also expects preview Worker secret bindings for `TRACKING_SECRET` and `OWNER_BOOTSTRAP_TOKEN` before private tracking, checkout, or owner bootstrap can be tested. Do not reuse production secret values. Provision preview-only credentials through an approved secure path before those tests. Until then, keep store setup flags closed.
+The foundation branch's workflow was aligned with the pinned workflow from `main` in commit `068c5c989c820823330192977a28aa31168811f2`. CI for that workflow-only commit was running when this document was updated. The manual workflow's candidate SHA must be advanced only after a replacement commit passes CI and is reviewed.
 
 ## Operational safety
 
-- Never deploy these configs against names `fryzar-app`, `fryzar-admin`, or `fryzar-api`.
-- Never change `fryzar-production` or `fryzar-core` bindings from this workflow.
-- Never add a production route, custom domain or payment provider from this preview workflow.
-- Keep the preview store setup/not-ready and manual transfer disabled.
-- A successful Wrangler upload does not prove application health. Verify live health, public catalogue empty states, admin auth, route forwarding, API responses, browser flows and D1 state after deployment.
-- If preview checks fail, keep production unchanged; fix the feature branch and rerun CI/preview.
+- Deploy only with the pinned candidate workflow and explicit preview targets.
+- Never point preview configs at `fryzar-app`, `fryzar-admin`, `fryzar-api`, `fryzar-production`, or `fryzar-core`.
+- Keep preview checkout closed until catalog data, delivery settings, support details and release checks are complete.
+- Do not bootstrap an owner account or insert real business data as part of routine deployment.
+- A successful deployment is not sufficient by itself; retain HTTP smoke tests and database binding checks.
+- If preview checks fail, fix the candidate and rerun CI/preview. Do not alter production to make preview pass.
 
-## Current deployment status
+## Current status
 
-This document records preview resource creation, migration and source configuration. The three preview Workers have **not yet been deployed** by this branch. Deployment is a separate step requiring verified GitHub Actions preview credentials and a successful run of the manual preview workflow.
+Preview Workers and migrations are deployed and HTTP smoke-tested. The store remains in setup mode, checkout is closed, manual transfer is disabled, and no owner account or real catalog data has been added. PR #1 remains a draft and GitHub reports a dirty merge state against `main`; reconcile and review it before any merge. Production cutover is outside this phase.
