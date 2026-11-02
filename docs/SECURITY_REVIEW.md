@@ -47,3 +47,13 @@ No secret values were read. No database mutation, owner bootstrap, or deployment
 The audit baseline CI run [41468812588](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468812588) passed; testing details and limits are in [TESTING.md](TESTING.md).
 
 Prioritize: (1) controlled first-owner bootstrap rehearsal in preview; (2) local D1 integration for cancellation races, bootstrap race, session revocation/expiry and financial row consistency; (3) pagination and retention policy; (4) private payment-proof storage/review and refund design before enabling manual transfer; (5) CSP/XSS and browser-origin review. Keep ordering closed and production untouched.
+
+
+
+## Phase 2B.1: local D1 cancellation verification (2 November 2026)
+
+Source head used for the passing implementation run: `cca13ba2865c5270b2ffb9772ae88311b9f0f8cd`. GitHub Actions [run 41482573350](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41482573350) passed the real local Wrangler D1 cancellation suite alongside API tests, checkout integration, both frontend builds and all three preview dry-runs.
+
+The cancellation endpoint now inserts the migration-defined `order_status_events.actor_id` field. The real D1 test exposed the prior `actor_staff_id` mismatch. Same-transition event and audit writes also have `NOT EXISTS` guards, so timestamp equality is not used as proof that the conditional order transition occurred. The integration test concurrently sends two cancellations, verifies one accepted transition and one safe rejection, stock/movement restoration exactly once, one status event and one audit event, and unchanged order items/COD payment. A forced final audit insert failure returns a conflict and leaves order, stock, movement, event and audit state unchanged.
+
+This is local-only test evidence. No remote preview bootstrap, test order, deployment or production change was performed. The earlier statement that no real-D1 cancellation test exists is superseded. Bootstrap races, session lifecycle, populated financial consistency, and retention cleanup remain unverified and separate. Pagination is implemented and regression-tested with limit 1–50, offset 0–10,000, 400 for invalid values, and stable `created_at DESC, id DESC` sorting.
