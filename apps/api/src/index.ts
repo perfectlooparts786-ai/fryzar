@@ -1476,13 +1476,17 @@ async function changeAdminOrderStatus(
       "INSERT INTO order_status_events " +
       "(id, order_id, old_status, new_status, actor_staff_id, actor_type, note) " +
       "SELECT lower(hex(randomblob(16))), id, ?1, ?2, ?3, 'staff', ?4 " +
-      "FROM orders WHERE id = ?5 AND status = ?2 AND updated_at = ?6"
+      "FROM orders WHERE id = ?5 AND status = ?2 AND updated_at = ?6 " +
+      "AND NOT EXISTS (SELECT 1 FROM order_status_events e " +
+      "WHERE e.order_id = ?5 AND e.old_status = ?1 AND e.new_status = ?2)"
     ).bind(order.status, nextStatusText, user.id, note || null, orderId, timestamp),
     env.DB.prepare(
       "INSERT INTO audit_logs " +
       "(id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) " +
       "SELECT lower(hex(randomblob(16))), ?1, ?2, 'order.status_changed', 'order', id, ?3 " +
-      "FROM orders WHERE id = ?4 AND status = ?5 AND updated_at = ?6"
+      "FROM orders WHERE id = ?4 AND status = ?5 AND updated_at = ?6 " +
+      "AND NOT EXISTS (SELECT 1 FROM audit_logs a WHERE a.action = 'order.status_changed' " +
+      "AND a.entity_id = ?4 AND a.actor_staff_id = ?1 AND a.metadata_json = ?3 AND a.created_at = ?6)"
     ).bind(
       user.id,
       user.role,
