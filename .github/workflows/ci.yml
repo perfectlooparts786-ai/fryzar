@@ -23,7 +23,7 @@ concurrency:
 jobs:
   validate:
     name: Validate API, Worker routing, and web builds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out repository
