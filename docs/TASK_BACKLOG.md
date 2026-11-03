@@ -2,7 +2,7 @@
 
 **Last reconciled:** 3 November 2026  
 **Branch:** `foundation/fresh-build`  
-**Current verified HEAD:** `1e750c743a5c3aa0df6f9305befa23cae4c33c4b`
+**Latest Phase 3 implementation commit:** `d420cae9f260fc1aa2e7abc741bce96c71eaa44a` (CI pending)
 
 This is the actionable backlog. Older dated status narratives have been consolidated; consult `PHASE3_AUDIT_2026-11-03.md` for the source-backed audit details.
 
@@ -25,11 +25,13 @@ This is the actionable backlog. Older dated status narratives have been consolid
 
 | ID | Task | Status | Exit criteria |
 |---|---|---|---|
-| OPS-002 | Audit/manual deployment workflow dependency install | OPEN | Confirm lockfile-based install is safe for pinned candidate without advancing its pin or dispatching workflow |
+| OPS-002 | Audit/manual deployment workflow dependency install | COMPLETE (NO CHANGE REQUIRED) | Pinned historical candidate `84fefde` has no package-lock.json; retain npm install there until a separately reviewed candidate is selected |
 | OPS-003 | D1 backup/restore rehearsal | OPEN | Repeatable isolated restore test and verified hashes; no live destructive operations |
-| OPS-004 | Migration documentation 0001–0005 | OPEN | Preconditions, schema changes, compatibility, rollback limits and verification queries |
+| OPS-004 | Migration documentation 0001–0005 | IMPLEMENTED, UNVERIFIED | `docs/MIGRATIONS.md` added; final-head CI migration suite pending |
 | OPS-005 | Lint/static quality gate | OPEN | Select compatible tools, add scripts and CI, pass without masking existing issues |
 | OPS-006 | Preview deployment rehearsal | BLOCKED pending explicit authorization | Reviewed commit, preview-only allowlist, backup/recovery checks, owner authorization |
+| OPS-007 | CI workflow hardening | IMPLEMENTED, UNVERIFIED | Concurrency, timeout, npm cache and checkout credential persistence disabled; final-head CI pending |
+| OPS-008 | Local D1 migration integrity test | IMPLEMENTED, UNVERIFIED | New isolated suite checks five migrations, 21 tables, 21 indexes, two triggers, FK integrity and replay; final-head CI pending |
 
 ## Phase 4: customer journey
 
