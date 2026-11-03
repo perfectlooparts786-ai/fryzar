@@ -60,6 +60,9 @@ jobs:
       - name: Validate bounded retention cleanup against local D1
         run: npm run test:integration:retention
 
+      - name: Verify migration order, schema, indexes and foreign keys against local D1
+        run: npm run test:integration:migrations
+
       - name: Build customer storefront
         run: npm run build:storefront
 
