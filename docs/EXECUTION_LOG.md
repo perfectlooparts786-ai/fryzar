@@ -65,3 +65,16 @@ P3-07: design and document the remote D1 recovery/PITR operating procedure, back
 
 ### Next
 P3-09: extend the customer storefront browser suite with synthetic product fixtures, search/category filtering, basket interactions and checkout validation/failure/success paths, all with mocked API responses.
+
+
+## 3 November 2026 - P3-09 customer storefront browser coverage
+
+### Implemented
+- Added `tests/e2e/storefront-ordering.spec.cjs` using synthetic category, product and delivery-zone fixtures.
+- Browser flow covers catalogue rendering, category filtering, text search, add-to-basket, basket review, guest checkout form submission and the order confirmation/tracking-token response.
+- The checkout API is intercepted in Playwright and returns a synthetic order. The test asserts the outgoing payload, including customer fields, delivery zone, COD method and product quantity.
+- No Cloudflare API, preview/production Worker, D1, real customer details, real order or payment is used.
+
+### Status
+- P3-09 is **IMPLEMENTED / CI PENDING** pending a successful run on the resulting branch head.
+- P3-10 is next: authenticated admin browser tests using mocked sessions and API data.
