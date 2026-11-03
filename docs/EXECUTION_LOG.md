@@ -78,3 +78,9 @@ P3-09: extend the customer storefront browser suite with synthetic product fixtu
 ### Status
 - P3-09 is **IMPLEMENTED / CI PENDING** pending a successful run on the resulting branch head.
 - P3-10 is next: authenticated admin browser tests using mocked sessions and API data.
+
+
+### CI compatibility correction - Playwright runner image
+- The first browser-test CI attempts exposed a runner compatibility failure, not an application/test assertion failure: the hosted `ubuntu-latest` image had advanced to Ubuntu 26.04, which Playwright 1.56.1 does not support for browser installation.
+- Pinned the validation job to `ubuntu-24.04`, a supported and stable runner image for this Playwright version. This also reduces CI environment drift.
+- The retry on the updated workflow/branch head is the verification gate; no browser suite is marked passed until that run succeeds.
