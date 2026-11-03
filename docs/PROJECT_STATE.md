@@ -3,7 +3,7 @@
 **Last reconciled:** 3 November 2026  
 **Repository:** `perfectlooparts786-ai/fryzar`  
 **Development branch:** `foundation/fresh-build`  
-**Current branch HEAD:** `1e750c743a5c3aa0df6f9305befa23cae4c33c4b`  
+**Code changes under Phase 3 verification:** `d420cae9f260fc1aa2e7abc741bce96c71eaa44a` (migration catalog and local D1 migration verification added; final CI pending)  
 **PR #1:** [open, draft, unmerged](https://github.com/perfectlooparts786-ai/fryzar/pull/1)
 
 This file is the concise current-state source of truth. Historical audit narratives remain in the dated audit documents; do not interpret old status statements as current.
@@ -12,10 +12,11 @@ This file is the concise current-state source of truth. Historical audit narrati
 
 - Final-head CI run [41569582732](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41569582732) passed on the current branch HEAD. The earlier audit-head run [41568524358](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41568524358) also passed.
 - CI uses Node 22 and `npm ci --ignore-scripts --no-audit --no-fund`. Root `package-lock.json` (lockfileVersion 3) is committed. The lockfile-backed CI install has passed. Windows-specific installation has not been independently verified.
-- Existing local Wrangler D1 suites cover checkout, cancellation, owner bootstrap, staff sessions, populated financial integrity and retention cleanup.
+- Existing local Wrangler D1 suites cover checkout, cancellation, owner bootstrap, staff sessions, populated financial integrity and retention cleanup. A seventh local D1 suite now verifies ordered migrations, schema objects, indexes, triggers, foreign keys and migration replay; its CI result is pending.
 - Storefront and admin production builds pass in CI. API, customer Worker and admin Worker Wrangler preview dry-runs pass in CI.
 - The storefront includes bilingual catalogue/search, cart, delivery selection, guest COD checkout, order confirmation and private-token tracking. A product-detail dialog includes focus entry/containment, Escape dismissal and focus restoration.
 - Admin includes authenticated role-aware overview, orders, catalogue, inventory, COD payments, delivery zones, team and store settings.
+- CI validation now has per-branch/PR concurrency cancellation, a 45-minute job timeout, npm dependency caching, and checkout credentials disabled. This workflow hardening and the new migration suite await final-head CI.
 - CI currently does not run lint or browser-based E2E tests.
 
 ## Architecture and environment boundaries
@@ -61,7 +62,7 @@ This file is the concise current-state source of truth. Historical audit narrati
 
 1. Add browser E2E infrastructure against isolated local/test fixtures, never live customer data.
 2. Verify the customer guest journey and admin workflows in a browser.
-3. Reconcile manual preview deployment workflow dependency install with the root lockfile, without changing its historical source pin or dispatching it.
+3. Keep the manual deployment workflow's historical candidate isolated. Its pinned commit predates the root lockfile, so `npm install` remains appropriate there unless a separately reviewed replacement candidate is selected.
 4. Complete private payment-proof/refund design before enabling manual transfer.
 5. Add support, notification and audit-read operations.
 6. Complete review and rehearsal gates before any preview deployment is separately authorized.
