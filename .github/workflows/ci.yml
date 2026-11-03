@@ -44,6 +44,20 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Emit temporary lockfile candidate for review
+        if: github.event_name == 'push' && github.ref == 'refs/heads/foundation/fresh-build'
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const value = fs.readFileSync("package-lock.json").toString("base64");
+          const chunkSize = 2400;
+          const total = Math.ceil(value.length / chunkSize);
+          for (let index = 0; index < total; index += 1) {
+            const part = value.slice(index * chunkSize, (index + 1) * chunkSize);
+            console.log("FRYZAR_LOCKFILE_CHUNK_" + String(index).padStart(3, "0") + "_OF_" + String(total).padStart(3, "0") + ":" + part);
+          }
+          NODE
+
       - name: Validate API and Worker routing tests
         run: npm test
 
