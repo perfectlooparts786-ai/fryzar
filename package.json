@@ -29,7 +29,8 @@
     "test:integration:financial": "node tests/financial-integrity.integration.cjs",
     "test:integration:retention": "node tests/retention.integration.cjs",
     "test:integration:migrations": "node tests/migrations.integration.cjs",
-    "test:config-safety": "node tests/preview-config-safety.test.cjs"
+    "test:config-safety": "node tests/preview-config-safety.test.cjs",
+    "test:integration:backup-restore": "node tests/backup-restore.integration.cjs"
   },
   "dependencies": {
     "react": "19.3.1",
