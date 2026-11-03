@@ -63,6 +63,9 @@ jobs:
       - name: Verify migration order, schema, indexes and foreign keys against local D1
         run: npm run test:integration:migrations
 
+      - name: Verify Worker and D1 configs are preview-only
+        run: npm run test:config-safety
+
       - name: Build customer storefront
         run: npm run build:storefront
 
