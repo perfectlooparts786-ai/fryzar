@@ -44,6 +44,8 @@ const COPY = {
     basket: "Basket",
     items: "items",
     add: "Add to basket",
+    viewDetails: "View details",
+    productDetails: "Product details",
     remove: "Remove",
     quantity: "Quantity",
     subtotal: "Subtotal",
@@ -151,6 +153,8 @@ const COPY = {
     basket: "ٹوکری",
     items: "اشیا",
     add: "ٹوکری میں شامل کریں",
+    viewDetails: "تفصیل دیکھیں",
+    productDetails: "مصنوعات کی تفصیل",
     remove: "ہٹائیں",
     quantity: "تعداد",
     subtotal: "ذیلی رقم",
@@ -322,6 +326,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartOpen, setCartOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -384,6 +389,15 @@ export default function App() {
     void load();
     return () => controller.abort();
   }, [refreshCount]);
+
+  useEffect(() => {
+    if (!selectedProduct) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedProduct(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedProduct]);
 
   const storeOpen = settings.store_status === "open" && isTrue(settings.launch_ready);
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId) ?? null;
@@ -718,7 +732,7 @@ export default function App() {
                   </div>
                   <div className="product-info">
                     <small>{language === "ur" ? product.category_name_ur : product.category_name_en}</small>
-                    <h3>{productName(product, language)}</h3>
+                    <h3><button className="product-detail-trigger" type="button" onClick={() => setSelectedProduct(product)} aria-label={t.viewDetails + ": " + productName(product, language)}>{productName(product, language)}</button></h3>
                     <p>{productDescription(product, language)}</p>
                     <div className="product-footer">
                       <strong>{money(product.price_paisa, language)}</strong>
@@ -871,6 +885,28 @@ export default function App() {
         <span className="footer-currency">{t.currency} · {isUrdu ? "اردو اور انگریزی" : "English and Urdu"}</span>
         <span className="footer-copy">© {new Date().getFullYear()} FRYZAR</span>
       </footer>
+
+      {selectedProduct ? (
+        <div className="overlay product-detail-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedProduct(null); }}>
+          <section className="product-detail-panel" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+            <div className="drawer-header">
+              <div><small>FRYZAR</small><h2 id="product-detail-title">{t.productDetails}</h2></div>
+              <button className="icon-button" type="button" onClick={() => setSelectedProduct(null)} aria-label={t.close}><Icon name="close" /></button>
+            </div>
+            <div className="product-detail-image">
+              <div className="product-image-placeholder">FRYZAR</div>
+              {selectedProduct.image_url ? <img src={selectedProduct.image_url} alt={productName(selectedProduct, language)} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+            </div>
+            <small className="product-detail-category">{language === "ur" ? selectedProduct.category_name_ur : selectedProduct.category_name_en}</small>
+            <h3>{productName(selectedProduct, language)}</h3>
+            <p>{productDescription(selectedProduct, language)}</p>
+            <strong className="product-detail-price">{money(selectedProduct.price_paisa, language)}</strong>
+            <button className="primary-button full-width" type="button" disabled={!storeOpen || !selectedProduct.is_available} onClick={() => { changeQuantity(selectedProduct.id, 1); setSelectedProduct(null); }}>
+              <Icon name="plus" />{t.add}
+            </button>
+          </section>
+        </div>
+      ) : null}
 
       {cartOpen ? (
         <div className="overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCartOpen(false); }}>
