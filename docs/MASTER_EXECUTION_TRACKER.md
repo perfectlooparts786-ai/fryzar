@@ -18,12 +18,12 @@
 
 ## Current verified baseline (3 November 2026)
 
-- Branch HEAD: `d8aa96f0a5404267e9c4950537e61ab94ef4b4c6`
+- Branch HEAD after the P3-07 documentation commit: `9e430602cba69724e2a778180882e0c50be609a6` (CI verification pending at the time of this tracker update).
 - PR #1: open, draft, unmerged.
-- CI run [41648726626](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41648726626): **SUCCESS** on the HEAD above.
-- CI passed API/routing tests, local D1 checkout/cancellation/bootstrap/session/financial/retention/migration suites, the new local backup/restore rehearsal, preview-only config safety, storefront/admin builds, and all three Worker dry-runs.
-- Local D1 snapshot/restore test is verified in CI. It does **not** establish a remote Cloudflare D1 backup/restore or PITR recovery drill.
-- No deployment or remote D1 write occurred in this batch. Production remains untouched.
+- Latest verified CI before the P3-07 documentation commit: runs [41650601034](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41650601034) and [41650590399](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41650590399), both **SUCCESS** on `7224cf3b4cc055acb0a6a8f1ac66d305df5b5c72`.
+- Those runs verified API/routing tests, local D1 checkout/cancellation/bootstrap/session/financial/retention/migration suites, local backup/restore rehearsal, preview-only config safety, storefront/admin builds, and all three Worker dry-runs.
+- Local D1 snapshot/restore does **not** establish a remote Cloudflare D1 backup/restore or PITR recovery drill.
+- P3-07 added a documented recovery design only. No remote export, restore, migration, deployment or database write occurred. Production remains untouched.
 
 ## Execution queue
 
@@ -34,8 +34,8 @@
 - [x] P3-03 Migration order, schema, indexes, triggers and FK integrity test. **COMPLETE**
 - [x] P3-04 Preview-only Worker/D1 configuration safety test. **COMPLETE**
 - [x] P3-05 Local disposable D1 backup/restore snapshot rehearsal and CI integration. **COMPLETE** (CI run 41648726626)
-- [ ] P3-06 Review manual preview deployment workflow end-to-end, document exact safety gates and candidate pin. **PARTIAL**
-- [ ] P3-07 Define remote D1 recovery/PITR procedure, retention, RPO/RTO and operator approval checklist. **NOT STARTED** (documentation/design first; no remote operation)
+- [x] P3-06 Review manual preview deployment workflow end-to-end, document exact safety gates and candidate pin. **COMPLETE** (`docs/PREVIEW_DEPLOY_WORKFLOW_AUDIT.md`; workflow not dispatched).
+- [x] P3-07 Define remote D1 recovery/PITR procedure, retention, proposed RPO/RTO and operator approval checklist. **IMPLEMENTED / CI PENDING** (`docs/D1_RECOVERY_RUNBOOK.md`). This is a documented design, not an operational remote backup/restore implementation or drill.
 - [ ] P3-08 Add browser E2E test harness and deterministic local test setup. **NOT STARTED**
 - [ ] P3-09 Add browser E2E coverage for storefront navigation, bilingual/RTL, cart and guest checkout. **NOT STARTED**
 - [ ] P3-10 Add browser E2E coverage for admin auth, role access, catalogue and order operations. **NOT STARTED**
@@ -113,7 +113,7 @@
 
 ## Immediate next task
 
-**P3-06: deployment workflow review and safety-gate documentation.** Inspect the exact workflow source, referenced scripts, permissions, environment protection, commit pin, secrets handling, D1 migration behavior and smoke checks. Document what it does and does not do. Do not run it or change its deployment target.
+**P3-08: add browser E2E test harness and deterministic local test setup.** First inspect existing frontend tooling and package scripts; implement the smallest reliable browser-test foundation without deploying or mutating remote resources.
 
 ## How to continue
 
