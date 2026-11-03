@@ -102,13 +102,18 @@ async function createLocalD1(options = {}) {
       try { return runWrangler(["d1", "execute", DATABASE, "--local", "--persist-to", persistTo, "--config", CONFIG, "--file", file], persistTo); }
       finally { fs.rmSync(file, { force: true }); }
     },
-    queryRow(sql, keys) {
-      const output = runWrangler(["d1", "execute", DATABASE, "--local", "--persist-to", persistTo, "--config", CONFIG, "--command", sql, "--json"], persistTo);
+    queryRow(sql, keys, targetPersistTo = persistTo) {
+      const output = runWrangler(["d1", "execute", DATABASE, "--local", "--persist-to", targetPersistTo, "--config", CONFIG, "--command", sql, "--json"], targetPersistTo);
       let parsed;
       try { parsed = JSON.parse(output); } catch { throw new Error("Wrangler local D1 query returned invalid JSON."); }
       const row = findRow(parsed, keys);
       if (!row) throw new Error("Expected local D1 query row was absent.");
       return row;
+    },
+    snapshotTo(destination) {
+      if (fs.existsSync(destination)) throw new Error("Snapshot destination must not already exist.");
+      fs.cpSync(persistTo, destination, { recursive: true, errorOnExist: true, force: false });
+      return destination;
     },
     async startWorker() {
       const port = await freePort();
