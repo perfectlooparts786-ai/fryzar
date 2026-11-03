@@ -2,7 +2,7 @@
 
 **Last reconciled:** 3 November 2026  
 **Current branch:** `foundation/fresh-build`  
-**Current verified HEAD:** `1e750c743a5c3aa0df6f9305befa23cae4c33c4b`  
+**Latest Phase 3 implementation commit:** `d420cae9f260fc1aa2e7abc741bce96c71eaa44a` (final CI pending)  
 **Latest final-head CI:** [41569582732](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41569582732) (success)  
 **Audit-head CI:** [41568524358](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41568524358) (success)
 
@@ -20,6 +20,7 @@ The CI workflow runs:
 - Local Wrangler D1 session lifecycle integration.
 - Local Wrangler D1 populated financial integrity integration.
 - Local Wrangler D1 bounded retention integration.
+- Local Wrangler D1 migration integrity/replay integration.
 - Customer storefront production build.
 - Admin portal production build.
 - API, customer and admin Wrangler preview dry-runs.
@@ -35,6 +36,7 @@ Latest final-head CI completed successfully. See the workflow run for exact step
 - `npm run test:integration:session`
 - `npm run test:integration:financial`
 - `npm run test:integration:retention`
+- `npm run test:integration:migrations`
 - `npm run build:storefront`
 - `npm run build:admin`
 
@@ -44,7 +46,8 @@ Latest final-head CI completed successfully. See the workflow run for exact step
 |---|---|---|
 | API typecheck/unit tests | PASS in current final-head CI | Mocked D1 for many route tests |
 | Worker routing tests | PASS | Not a browser UI test |
-| Six local D1 suites | PASS | Synthetic fixtures in isolated local Wrangler D1 |
+| Six existing local D1 suites | PASS in earlier final-head CI | Synthetic fixtures in isolated local Wrangler D1 |
+| Migration integrity suite | IMPLEMENTED, UNVERIFIED | New suite awaits final-head CI; asserts 5 ordered migrations, 21 tables, 21 indexes, 2 triggers, zero FK violations and no-op replay |
 | Storefront/admin builds | PASS | Build success does not prove browser usability |
 | Wrangler preview dry-runs | PASS | No deployment, remote mutation or live smoke test |
 | Lockfile install | PASS in CI | No independent Windows install test |
@@ -107,6 +110,7 @@ npm run test:integration:bootstrap
 npm run test:integration:session
 npm run test:integration:financial
 npm run test:integration:retention
+npm run test:integration:migrations
 npm run build:storefront
 npm run build:admin
 ```
