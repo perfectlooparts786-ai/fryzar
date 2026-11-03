@@ -30,7 +30,8 @@
     "test:integration:retention": "node tests/retention.integration.cjs",
     "test:integration:migrations": "node tests/migrations.integration.cjs",
     "test:config-safety": "node tests/preview-config-safety.test.cjs",
-    "test:integration:backup-restore": "node tests/backup-restore.integration.cjs"
+    "test:integration:backup-restore": "node tests/backup-restore.integration.cjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "react": "19.3.1",
