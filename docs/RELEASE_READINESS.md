@@ -1,61 +1,53 @@
 # FRYZAR release readiness
 
-**Current verdict: NOT READY FOR PRODUCTION**
+**Current verdict: NOT READY FOR PRODUCTION**  
+**Last reconciled:** 3 November 2026  
+**Branch:** `foundation/fresh-build`  
+**Current verified HEAD:** `1e750c743a5c3aa0df6f9305befa23cae4c33c4b`  
+**PR #1:** open, draft, unmerged.
 
-## Verified preview baseline
+## Verified engineering baseline
 
-- [x] Main reconciled into `foundation/fresh-build` by merge commit `c82152df7675b926ffdf9c53970c5d557a5da3c8`; branch is 0 commits behind main.
-- [x] Candidate preview deployment at `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`; API, storefront, admin and D1 bindings verified.
-- [x] Preview HTTP smoke tests passed in deployment run [41383813602](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41383813602).
-- [x] CI [41468365672](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468365672) passed after main reconciliation: 82 API tests, 6 routing tests, local D1 integration, both frontend builds, and Wrangler dry-runs for all three preview Workers.
-- [x] Root `package-lock.json` is committed; npm ci passed in final push and PR runs [41567708917](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41567708917) and [41567713314](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41567713314).
-- [ ] PR #1 remains a draft; no merge occurred.
+- [x] Separate API, customer and admin Worker configuration targets preview-only resources.
+- [x] Root lockfile is committed and CI uses `npm ci`.
+- [x] Latest final-head CI run [41569582732](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41569582732) passed.
+- [x] API typecheck/unit tests, Worker routing tests and six isolated local D1 integration suites pass in CI.
+- [x] Customer and admin production builds pass.
+- [x] All three preview Worker Wrangler dry-runs pass.
+- [x] Customer product-detail dialog keyboard focus management implemented.
+- [ ] Browser E2E and screen-reader acceptance.
+- [ ] Lint/static quality gate.
+- [ ] Remote preview deployment of current branch is not authorized/performed.
 
-## Production and owner gates
+## Application functionality still required
 
-- [ ] Production cutover is not approved. Existing API/frontend Workers still bind to two different production D1 databases with divergent schemas.
-- [ ] Owner bootstrap has not been run. Preview secret names are configured, but no staff account exists.
-- [ ] Genuine products, pricing, delivery zones, images, support contact and business policies are not configured.
-- [ ] Keep preview ordering closed and manual transfer disabled until owner-provided data and release gates are complete.
+- [ ] Product variants/modifiers and server pricing semantics.
+- [ ] R2 image upload and private/admin media lifecycle.
+- [ ] Manual-transfer proof upload, secure storage, finance review and rejection.
+- [ ] Refund lifecycle and immutable reconciliation ledger.
+- [ ] Support ticket API/UI.
+- [ ] Internal notifications and optional external adapters.
+- [ ] Audit-log read/search interface.
+- [ ] Complete customer/admin browser workflows and mobile acceptance.
 
-## Data integrity and recovery
+## Operational and security gates
 
-- [ ] Perform remote D1 concurrency/rollback verification and a backup/restore rehearsal.
-- [ ] Verify cancellation stock restoration and inventory adjustment behavior against isolated remote D1.
-- [ ] Reconcile legacy schemas/data and establish an approved cutover/rollback plan before any production change.
+- [ ] Repeatable isolated D1 backup/restore rehearsal with verified artifacts/hashes.
+- [ ] Migration compatibility and rollback review.
+- [ ] Preview deployment candidate reviewed independently from current deployed version.
+- [ ] Controlled preview deployment rehearsal, only after separate authorization.
+- [ ] Owner bootstrap rehearsal against isolated test data; no remote first-owner setup as a side effect.
+- [ ] Genuine business identity, products, prices, delivery zones, hours, policies and support contact supplied.
+- [ ] Payment configuration reviewed; no gateway success simulation.
+- [ ] Monitoring, error reporting and incident/support process.
+- [ ] Privacy, security, CSRF/origin, rate-limit and authorization review.
+- [ ] Domain/TLS/DNS plan and rollback approved separately.
+- [ ] Real-device customer journey acceptance.
 
-## Security and application integration
+## Strict environment boundary
 
-- [ ] Review the recovered legacy customer Worker's wildcard CORS finding before any production transition.
-- [ ] Verify authentication, role boundaries, rate limits and PII projections through authenticated browser/API integration.
-- [ ] Complete customer/admin browser E2E on mobile and desktop.
-- [ ] Manual-transfer proof upload, private storage and financial review are not implemented; keep disabled.
-- [ ] No payment gateway, private proof storage, or Android client is active.
+The manual preview deployment workflow remains pinned to historical candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. Do not update this pin or dispatch the workflow as part of routine development. A successful CI dry-run does not deploy current source.
 
-## Deployment operations
+Production Workers, production D1 databases, secrets, DNS/routes and payment settings must remain unchanged. No production cutover is authorized by this checklist.
 
-- [x] Preview deployment workflow is pinned to reviewed candidate `84fefde`, validates preview-only resource names/IDs, and uses the required `preview` environment.
-- [ ] Do not advance the pin until the replacement commit passes CI and code review.
-- [ ] Rehearse preview rollback and D1 recovery; no production deployment or domain/DNS work is authorized in this phase.
-
-Passing CI and preview smoke tests do not certify production readiness. No production resources have been modified.
-
-
-## Phase 3 repository audit refresh — 3 November 2026
-
-This section is the current source-backed status and supersedes older phase notes above where they conflict. Audited branch head: `01421f77d4e525c5eba4d4fe401b0da7786b5615`; PR #1 remains open, draft and unmerged. Latest full push and PR CI on that exact head passed: [push run 41567708917](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41567708917) and [PR run 41567713314](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41567713314). Each completed the npm ci install, typecheck/API tests, Worker routing, six isolated local D1 suites, both frontend builds and all three Wrangler preview dry-runs. No deploy step ran.
-
-The committed root `package-lock.json` is lockfileVersion 3 and was generated by npm 10.9.9 from the exact root manifest without changing declared dependency versions. CI now uses `npm ci --ignore-scripts --no-audit --no-fund`; that command passed in both runs above. The direct workstation registry attempt was denied with EACCES, so lockfile generation was performed and verified by GitHub Actions. Lint remains unconfigured; browser E2E remains unimplemented.
-
-### File-based implementation map and verified gaps
-
-- `apps/api/src/index.ts`: Worker route dispatch, request validation, auth/session helpers, checkout/order/payment/stock operations, retention handler and scheduled entry point. It is the only application D1 binding.
-- `apps/api/migrations/0001_core.sql`–`0005_retention_indexes.sql`: ordered core schema, checkout integrity, bootstrap claim, inventory adjustment ledger, and operational expiry indexes. Local CI applies these to isolated Wrangler D1; no remote migration ran in this audit.
-- `apps/storefront/src/App.tsx`, `api.ts`, `types.ts`, `styles.css`: bilingual React storefront with catalogue, search/category filtering, cart, delivery selection, guest checkout, order confirmation and token-based tracking. Product options/variants and a dedicated product-detail interaction are absent; product cards directly add an item.
-- `apps/admin/src/App.tsx`, `api.ts`, `styles.css`: authenticated role-aware operations UI for overview, orders, catalogue, inventory, payments, delivery, team and settings. API authorization is authoritative. Support, notification, audit-read, proof review and refund screens/routes are not implemented even where schema tables exist.
-- `apps/customer-worker` and `apps/admin-worker`: static asset Workers forwarding `/api` through the preview service binding. `apps/api/wrangler.toml`, `apps/customer-worker/wrangler.toml`, `apps/admin-worker/wrangler.toml` identify the candidate preview names and bindings.
-- `.github/workflows/ci.yml`: read-only repository permission, Node 22, lockfile-based install, unit/routing and six local D1 suites, builds and three preview dry-runs. There is no lint or browser E2E job.
-- `.github/workflows/deploy-preview.yml`: separate manual preview deployment workflow; source pin remains `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. It was not invoked. The tested branch head is not the deployed version.
-- `tests/*.test.cjs`, `tests/*.integration.cjs`, `tests/fixtures/*.sql`: mocked unit/routing coverage plus real local Wrangler D1 checkout, cancellation, bootstrap, session, financial and retention integrations. They do not exercise a real browser or live D1.
-
-No source evidence in this audit supports R2 uploads, variants, manual-transfer proof lifecycle, refunds, customer accounts, support workflow or external notification delivery. Those are not claimed complete. No remote Cloudflare state was queried during this audit refresh; preview deployment details above refer to the previously verified deployment record, not a fresh live read.
+A passing CI suite is not a penetration test, live deployment verification, or production sign-off.
