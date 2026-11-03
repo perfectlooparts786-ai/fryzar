@@ -392,11 +392,58 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedProduct) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedProduct(null);
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const dialog = document.querySelector<HTMLElement>(".product-detail-panel");
+    const focusableSelector = [
+      "a[href]",
+      "button:not([disabled])",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
+      '[tabindex]:not([tabindex="-1"])'
+    ].join(",");
+    const focusableElements = () => dialog
+      ? Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter(element => element.getAttribute("aria-hidden") !== "true")
+      : [];
+
+    const initialFocus = focusableElements()[0] ?? dialog;
+    initialFocus?.focus();
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedProduct(null);
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+
+      const elements = focusableElements();
+      if (elements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+
+    window.addEventListener("keydown", handleDialogKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleDialogKeyDown);
+      previouslyFocused?.focus();
+    };
   }, [selectedProduct]);
 
   const storeOpen = settings.store_status === "open" && isTrue(settings.launch_ready);
@@ -888,7 +935,7 @@ export default function App() {
 
       {selectedProduct ? (
         <div className="overlay product-detail-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedProduct(null); }}>
-          <section className="product-detail-panel" role="dialog" aria-modal="true" aria-labelledby="product-detail-title">
+          <section className="product-detail-panel" role="dialog" aria-modal="true" aria-labelledby="product-detail-title" tabIndex={-1}>
             <div className="drawer-header">
               <div><small>FRYZAR</small><h2 id="product-detail-title">{t.productDetails}</h2></div>
               <button className="icon-button" type="button" onClick={() => setSelectedProduct(null)} aria-label={t.close}><Icon name="close" /></button>
