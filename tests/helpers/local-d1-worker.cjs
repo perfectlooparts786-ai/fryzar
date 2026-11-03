@@ -93,6 +93,9 @@ async function createLocalD1(options = {}) {
     envFile,
     server: null,
     output: "",
+    applyMigrations() {
+      return runWrangler(["d1", "migrations", "apply", DATABASE, "--local", "--persist-to", persistTo, "--config", CONFIG], persistTo);
+    },
     execSql(sql) {
       const file = path.join(tempRoot, "sql-" + String(Date.now()) + "-" + Math.random().toString(16).slice(2) + ".sql");
       fs.writeFileSync(file, sql, { mode: 0o600 });
