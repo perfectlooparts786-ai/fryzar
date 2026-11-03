@@ -3,7 +3,7 @@
 **Current verdict: NOT READY FOR PRODUCTION**  
 **Last reconciled:** 3 November 2026  
 **Branch:** `foundation/fresh-build`  
-**Current verified HEAD:** `1e750c743a5c3aa0df6f9305befa23cae4c33c4b`  
+**Latest Phase 3 implementation commit:** `d420cae9f260fc1aa2e7abc741bce96c71eaa44a` (final CI pending)  
 **PR #1:** open, draft, unmerged.
 
 ## Verified engineering baseline
@@ -11,7 +11,8 @@
 - [x] Separate API, customer and admin Worker configuration targets preview-only resources.
 - [x] Root lockfile is committed and CI uses `npm ci`.
 - [x] Latest final-head CI run [41569582732](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41569582732) passed.
-- [x] API typecheck/unit tests, Worker routing tests and six isolated local D1 integration suites pass in CI.
+- [x] API typecheck/unit tests, Worker routing tests and six existing isolated local D1 integration suites pass in CI.
+- [ ] New migration integrity/replay suite and CI workflow hardening pass on final head.
 - [x] Customer and admin production builds pass.
 - [x] All three preview Worker Wrangler dry-runs pass.
 - [x] Customer product-detail dialog keyboard focus management implemented.
@@ -33,7 +34,9 @@
 ## Operational and security gates
 
 - [ ] Repeatable isolated D1 backup/restore rehearsal with verified artifacts/hashes.
-- [ ] Migration compatibility and rollback review.
+- [x] Migration catalog documents 0001–0005 purpose, preconditions, compatibility, rollback limitations and verification queries.
+- [ ] New local migration integrity suite passes in CI.
+- [ ] Repeatable isolated D1 backup/restore rehearsal.
 - [ ] Preview deployment candidate reviewed independently from current deployed version.
 - [ ] Controlled preview deployment rehearsal, only after separate authorization.
 - [ ] Owner bootstrap rehearsal against isolated test data; no remote first-owner setup as a side effect.
