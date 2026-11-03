@@ -1477,15 +1477,18 @@ async function changeAdminOrderStatus(
       "(id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) " +
       "SELECT lower(hex(randomblob(16))), ?1, ?2, 'order.status_changed', 'order', id, ?3 " +
       "FROM orders WHERE id = ?4 AND status = ?5 AND updated_at = ?6 " +
+      "AND EXISTS (SELECT 1 FROM order_status_events e WHERE e.order_id = ?4 " +
+      "AND e.old_status = ?7 AND e.new_status = ?5 AND e.actor_id = ?1) " +
       "AND NOT EXISTS (SELECT 1 FROM audit_logs a WHERE a.action = 'order.status_changed' " +
-      "AND a.entity_id = ?4 AND a.actor_staff_id = ?1 AND a.metadata_json = ?3 AND a.created_at = ?6)"
+      "AND a.entity_id = ?4 AND a.actor_staff_id = ?1 AND a.metadata_json = ?3)"
     ).bind(
       user.id,
       user.role,
       JSON.stringify({ old_status: order.status, new_status: nextStatusText }),
       orderId,
       nextStatusText,
-      timestamp
+      timestamp,
+      order.status
     )
   );
 

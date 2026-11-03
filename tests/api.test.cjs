@@ -989,6 +989,7 @@ test("manager cancellation atomically includes stock restoration and audit histo
   assert.ok(state.batchStatements.some(item => item.sql.includes("'order_cancelled'")));
   assert.ok(state.batchStatements.some(item => item.sql.includes("order_status_events")));
   assert.ok(state.batchStatements.some(item => item.sql.includes("order.status_changed")));
+  assert.ok(state.batchStatements.some(item => item.sql.includes("EXISTS (SELECT 1 FROM order_status_events e")));
   assert.ok(state.batchStatements.some(item => item.sql.includes("updated_at = ?2")));
 });
 
