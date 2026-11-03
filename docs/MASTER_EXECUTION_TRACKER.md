@@ -36,9 +36,9 @@
 - [x] P3-05 Local disposable D1 backup/restore snapshot rehearsal and CI integration. **COMPLETE** (CI run 41648726626)
 - [x] P3-06 Review manual preview deployment workflow end-to-end, document exact safety gates and candidate pin. **COMPLETE** (`docs/PREVIEW_DEPLOY_WORKFLOW_AUDIT.md`; workflow not dispatched).
 - [x] P3-07 Define remote D1 recovery/PITR procedure, retention, proposed RPO/RTO and operator approval checklist. **IMPLEMENTED / CI PENDING** (`docs/D1_RECOVERY_RUNBOOK.md`). This is a documented design, not an operational remote backup/restore implementation or drill.
-- [ ] P3-08 Add browser E2E test harness and deterministic local test setup. **NOT STARTED**
-- [ ] P3-09 Add browser E2E coverage for storefront navigation, bilingual/RTL, cart and guest checkout. **NOT STARTED**
-- [ ] P3-10 Add browser E2E coverage for admin auth, role access, catalogue and order operations. **NOT STARTED**
+- [x] P3-08 Add browser E2E test harness and deterministic local test setup. **IMPLEMENTED / CI PENDING** (Playwright config, isolated smoke tests, pinned CI install and local runbook; awaiting CI on this commit).
+- [ ] P3-09 Expand browser E2E coverage for storefront navigation, product discovery, cart and guest checkout. **PARTIAL** (initial bilingual/RTL and setup-state smoke coverage exists; cart/checkout not yet covered).
+- [ ] P3-10 Expand browser E2E coverage for admin auth, role access, catalogue and order operations. **PARTIAL** (unauthenticated sign-in/first-owner setup smoke coverage exists; authenticated role workflows not yet covered).
 - [ ] P3-11 Accessibility, responsive, keyboard and browser compatibility verification. **PARTIAL**
 - [ ] P3-12 Security/privacy regression review and release gate reconciliation. **NOT STARTED**
 - [ ] P3-13 Phase 3 closeout report with verified evidence and remaining blockers. **NOT STARTED**
@@ -113,7 +113,7 @@
 
 ## Immediate next task
 
-**P3-08: add browser E2E test harness and deterministic local test setup.** First inspect existing frontend tooling and package scripts; implement the smallest reliable browser-test foundation without deploying or mutating remote resources.
+**P3-09: expand customer storefront browser coverage** with synthetic product/category/zone fixtures, search/category filtering, cart interactions, checkout validation and a mocked successful/failed order response. Keep all API traffic intercepted; do not place a real order.
 
 ## How to continue
 
