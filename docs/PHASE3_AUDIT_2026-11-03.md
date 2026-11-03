@@ -150,3 +150,19 @@ Therefore:
 | Production changes | NONE |
 
 This audit is a source/configuration review, not a penetration test, full UX acceptance test, remote deployment verification, or production sign-off.
+
+
+## 10. Follow-up implementation after the audit
+
+**Implementation commit:** `4134b1a63b388eb35151e406bb1be9cb88990aec`  
+**File:** `apps/storefront/src/App.tsx`
+
+The product-detail dialog now has keyboard focus management:
+
+- Focus moves into the dialog when it opens.
+- Tab and Shift+Tab are constrained to the dialog's available focusable controls.
+- Escape closes the dialog.
+- Focus is restored to the previously focused product trigger when the dialog closes.
+- The dialog section has `tabIndex={-1}` as a focus fallback.
+
+This is a focused accessibility improvement, not a claim of complete WCAG conformance. It still requires browser-based keyboard/screen-reader verification. The implementation commit is on `foundation/fresh-build`; CI status for that commit must be checked before marking it fully verified.
