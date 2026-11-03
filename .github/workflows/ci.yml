@@ -28,7 +28,7 @@ jobs:
           node-version: 22
 
       - name: Install development dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Validate API and Worker routing tests
         run: npm test
