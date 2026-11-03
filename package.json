@@ -27,7 +27,8 @@
     "test:integration:bootstrap": "node tests/bootstrap.integration.cjs",
     "test:integration:session": "node tests/session.integration.cjs",
     "test:integration:financial": "node tests/financial-integrity.integration.cjs",
-    "test:integration:retention": "node tests/retention.integration.cjs"
+    "test:integration:retention": "node tests/retention.integration.cjs",
+    "test:integration:migrations": "node tests/migrations.integration.cjs"
   },
   "dependencies": {
     "react": "19.3.1",
