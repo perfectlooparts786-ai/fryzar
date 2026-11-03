@@ -44,3 +44,24 @@ P3-07: design and document the remote D1 recovery/PITR operating procedure, back
 ### Verification
 - Latest successful CI before the runbook commit: 41650601034 and 41650590399 on `7224cf3b4cc055acb0a6a8f1ac66d305df5b5c72`.
 - CI for the runbook/tracker commits must pass on the final branch HEAD before P3-07 is marked COMPLETE.
+
+
+## 3 November 2026 - P3-08 browser E2E foundation
+
+### Implemented
+- Added `playwright.config.mjs` with Chromium-only deterministic browser configuration, bounded timeouts, CI retry/worker settings, failure artifacts, and managed storefront/admin Vite web servers.
+- Added `tests/e2e/smoke.spec.cjs` covering storefront setup-state rendering, English/Urdu language switching and document LTR/RTL direction, plus admin unauthenticated login and first-owner setup form rendering.
+- All API traffic in these tests is intercepted with synthetic responses. The admin remains unauthenticated; no bootstrap or credentials are submitted.
+- Added `docs/BROWSER_E2E.md` with exact local setup/run commands and test isolation guarantees.
+- Added `test:e2e` npm script.
+- Updated CI to install pinned `@playwright/test@1.56.1` without changing the application lockfile, install Chromium and run the browser suite after dependency installation.
+- Updated the master tracker. P3-09/P3-10 now distinguish initial smoke coverage from the remaining cart/checkout and authenticated role workflows.
+
+### Safety and limitations
+- Tests target local Vite servers and mocked API responses only.
+- No preview or production Worker, D1, secrets, DNS, payment or deployment operation was performed.
+- Playwright is installed as a pinned CI-only test tool using `--no-save --package-lock=false`; application runtime dependencies and `package-lock.json` are unchanged.
+- P3-08 is **IMPLEMENTED / CI PENDING** until the workflow passes on the resulting branch head. Browser tests have not yet been executed in this chat environment.
+
+### Next
+P3-09: extend the customer storefront browser suite with synthetic product fixtures, search/category filtering, basket interactions and checkout validation/failure/success paths, all with mocked API responses.
