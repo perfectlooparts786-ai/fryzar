@@ -14,18 +14,28 @@ on:
 permissions:
   contents: read
 
+# Avoid wasting runners on superseded commits from the same PR/branch.
+# This workflow has no deployment or secret-bearing steps.
+concurrency:
+  group: fryzar-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Validate API, Worker routing, and web builds
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install development dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
