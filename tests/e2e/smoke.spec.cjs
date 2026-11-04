@@ -209,8 +209,9 @@ test.describe("FRYZAR kitchen operations", () => {
     await expect(page.getByRole("button", { name: "Mark ready" })).toBeVisible();
 
     await page.getByRole("button", { name: "Mark ready" }).click();
-    await expect(page.getByText("FZ-KIT-0001")).toHaveCount(0);
-    await expect(page.getByText("No orders in this stage.")).toHaveCount(2);
+    await expect(page.locator(".kitchen-ticket")).toHaveCount(0);
+    await expect(page.locator(".kitchen-lane .kitchen-empty")).toHaveCount(2);
+    await expect(page.getByRole("status")).toContainText("FZ-KIT-0001 moved to ready");
     expect(transitions).toEqual(["preparing", "ready"]);
   });
 });
