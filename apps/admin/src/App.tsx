@@ -1191,7 +1191,7 @@ function KitchenModule({ user }: { user: StaffUser }) {
   return (
     <section className="kitchen-module">
       <div className="module-heading">
-        <div><span className="kicker">FOOD PREPARATION</span><h1>Kitchen queue</h1><p>Work through confirmed orders and move each ticket to ready when preparation is complete.</p></div>
+        <div><span className="kicker">FOOD PREPARATION</span><h1>Kitchen queue</h1><p>Work through confirmed orders and move each ticket to ready when preparation is complete.</p><small className="kitchen-role">{user.role} access</small></div>
         <button type="button" className="secondary-button" onClick={() => void loadQueue()} disabled={loading}>Refresh queue</button>
       </div>
       {error ? <div className="orders-alert" role="alert">{error}</div> : null}
