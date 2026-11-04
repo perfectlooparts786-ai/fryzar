@@ -10,7 +10,8 @@ const EXPECTED_MIGRATIONS = [
   "0004_inventory_adjustments.sql",
   "0005_operational_retention.sql",
   "0006_product_variants_modifiers.sql",
-  "0007_delivery_and_support.sql"
+  "0007_delivery_and_support.sql",
+  "0008_inventory_bom_and_finance.sql"
 ];
 
 const EXPECTED_TABLES = [
@@ -20,7 +21,9 @@ const EXPECTED_TABLES = [
   "auth_login_attempts", "api_rate_limits", "audit_logs", "notifications",
   "support_cases", "bootstrap_claims", "inventory_adjustments",
   "product_variants", "modifier_groups", "modifier_options", "product_modifier_groups",
-  "coupons", "coupon_redemptions", "riders", "delivery_assignments", "support_messages"
+  "coupons", "coupon_redemptions", "riders", "delivery_assignments", "support_messages",
+  "ingredients", "recipes", "recipe_ingredients", "suppliers", "purchase_orders",
+  "purchase_order_items", "wastage_records", "refunds", "financial_ledger"
 ];
 
 const EXPECTED_INDEXES = [
@@ -37,7 +40,8 @@ const EXPECTED_INDEXES = [
   "idx_variants_product_available", "idx_modifier_options_group",
   "idx_coupons_code_active", "idx_redemptions_coupon", "idx_redemptions_phone",
   "idx_riders_status", "idx_delivery_assignments_order",
-  "idx_delivery_assignments_rider_status", "idx_support_messages_case"
+  "idx_delivery_assignments_rider_status", "idx_support_messages_case",
+  "idx_ingredients_active_stock", "idx_po_supplier_status", "idx_ledger_entry_created"
 ];
 
 async function main() {
