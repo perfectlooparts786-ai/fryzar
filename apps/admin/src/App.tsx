@@ -12,12 +12,16 @@ import {
   type Product,
   type StaffUser,
   type StaffMember,
-  type StoreSettings
+  type StoreSettings,
+  type Rider,
+  type SupportTicket,
+  type SupportMessage,
+  type NotificationItem
 } from "./api";
 
 type AuthState = "checking" | "signed-out" | "signed-in";
 type AuthMode = "login" | "bootstrap";
-type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "payments" | "delivery" | "team" | "settings";
+type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "payments" | "delivery" | "riders" | "support" | "team" | "settings";
 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
@@ -27,6 +31,8 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "inventory", label: "Inventory", icon: "▧" },
   { id: "payments", label: "Payments", icon: "◈" },
   { id: "delivery", label: "Delivery", icon: "⌖" },
+  { id: "riders", label: "Riders", icon: "🚲" },
+  { id: "support", label: "Support", icon: "💬" },
   { id: "team", label: "Team access", icon: "♙" },
   { id: "settings", label: "Store settings", icon: "⚙" }
 ];
@@ -1219,6 +1225,306 @@ function KitchenModule({ user }: { user: StaffUser }) {
   );
 }
 
+function RidersModule({ user }: { user: StaffUser }) {
+  const [riders, setRiders] = useState<Rider[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [staffUserId, setStaffUserId] = useState("");
+  const [vehicleType, setVehicleType] = useState("bike");
+  const [vehicleNumber, setVehicleNumber] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function loadData() {
+    setLoading(true);
+    setError("");
+    try {
+      const [rRes, sRes] = await Promise.all([
+        adminApi.riders(),
+        adminApi.staffDirectory().catch(() => ({ staff: [] }))
+      ]);
+      setRiders(rRes.riders);
+      setStaffList(sRes.staff);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadData(); }, []);
+
+  async function handleAddRider(e: FormEvent) {
+    e.preventDefault();
+    if (!staffUserId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminApi.saveRider({ staff_user_id: staffUserId, vehicle_type: vehicleType, vehicle_number: vehicleNumber });
+      setShowAdd(false);
+      setStaffUserId("");
+      setVehicleNumber("");
+      await loadData();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="inventory-module">
+      <div className="module-heading">
+        <div>
+          <span className="kicker">DELIVERY FLEET</span>
+          <h1>Riders & Dispatch Management</h1>
+          <p>Manage rider accounts, vehicle profiles, active availability, and dispatch assignments.</p>
+        </div>
+        <button className="primary-button" type="button" onClick={() => setShowAdd(!showAdd)}>
+          + Add Rider Profile
+        </button>
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+
+      {showAdd ? (
+        <form className="inventory-adjustment-panel" onSubmit={handleAddRider} style={{ marginBottom: "1.5rem" }}>
+          <h3>Link Staff User as Rider</h3>
+          <label>Select Staff Account
+            <select value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} required>
+              <option value="">Choose Staff User...</option>
+              {staffList.map((s) => (
+                <option key={s.id} value={s.id}>{s.display_name} ({s.email}) - {s.role}</option>
+              ))}
+            </select>
+          </label>
+          <label>Vehicle Type
+            <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
+              <option value="bike">Bike / Motorcycle</option>
+              <option value="scooter">Scooter</option>
+              <option value="car">Car</option>
+              <option value="van">Van</option>
+              <option value="bicycle">Bicycle</option>
+              <option value="foot">On Foot</option>
+            </select>
+          </label>
+          <label>Vehicle License Plate / Number
+            <input type="text" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="e.g. KHI-1234" />
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem" }}>
+            <button className="primary-button" type="submit" disabled={busy}>{busy ? "Saving..." : "Save Rider Profile"}</button>
+            <button className="secondary-button" type="button" onClick={() => setShowAdd(false)}>Cancel</button>
+          </div>
+        </form>
+      ) : null}
+
+      {loading ? <div className="orders-empty">Loading riders list...</div> : riders.length === 0 ? (
+        <div className="orders-empty">No rider profiles configured yet. Link a staff user account as a rider to begin dispatching.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Rider Name</th>
+                <th>Email</th>
+                <th>Vehicle</th>
+                <th>License Plate</th>
+                <th>Status</th>
+                <th>Active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {riders.map((r) => (
+                <tr key={r.id}>
+                  <td><strong>{r.display_name}</strong></td>
+                  <td>{r.email}</td>
+                  <td><span className="environment-pill">{r.vehicle_type}</span></td>
+                  <td>{r.vehicle_number || "—"}</td>
+                  <td>
+                    <span className={"order-status " + (r.current_status === "available" ? "status-confirmed" : r.current_status === "busy" ? "status-preparing" : "status-pending")}>
+                      {r.current_status}
+                    </span>
+                  </td>
+                  <td>{r.is_active ? "Active" : "Inactive"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SupportModule({ user }: { user: StaffUser }) {
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+  const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [replyText, setReplyText] = useState("");
+  const [newStatus, setNewStatus] = useState("in_progress");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function loadTickets() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await adminApi.supportTickets();
+      setTickets(res.tickets);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadTickets(); }, []);
+
+  async function openTicket(ticket: SupportTicket) {
+    setSelectedTicket(ticket);
+    setNewStatus(ticket.status);
+    setMessages([]);
+    try {
+      const res = await adminApi.supportTicketDetails(ticket.id);
+      setMessages(res.messages);
+    } catch (cause) {
+      setError(messageFor(cause));
+    }
+  }
+
+  async function handleSendReply(e: FormEvent) {
+    e.preventDefault();
+    if (!selectedTicket || !replyText.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminApi.replySupportTicket(selectedTicket.id, replyText, newStatus);
+      setReplyText("");
+      await openTicket(selectedTicket);
+      await loadTickets();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="inventory-module">
+      <div className="module-heading">
+        <div>
+          <span className="kicker">CUSTOMER CARE</span>
+          <h1>Support Tickets Desk</h1>
+          <p>Review customer issues, order inquiries, and respond with staff updates.</p>
+        </div>
+        <button className="secondary-button" type="button" onClick={() => void loadTickets()}>Refresh Tickets</button>
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: selectedTicket ? "1fr 1fr" : "1fr", gap: "1.5rem" }}>
+        <div>
+          {loading ? <div className="orders-empty">Loading support tickets...</div> : tickets.length === 0 ? (
+            <div className="orders-empty">No support tickets found. Customer submissions will appear here.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="orders-table">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Subject</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((t) => (
+                    <tr key={t.id} style={{ background: selectedTicket?.id === t.id ? "rgba(5, 150, 105, 0.08)" : "transparent" }}>
+                      <td><strong>{t.customer_name}</strong><small>{t.customer_phone}</small></td>
+                      <td><strong>{t.subject}</strong></td>
+                      <td>
+                        <span className={"order-status " + (t.status === "open" ? "status-pending" : t.status === "resolved" ? "status-confirmed" : "status-preparing")}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td><small>{new Date(t.created_at).toLocaleString()}</small></td>
+                      <td>
+                        <button className="refresh-button" type="button" onClick={() => void openTicket(t)}>
+                          View Thread
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {selectedTicket ? (
+          <div className="content-card">
+            <div className="card-heading">
+              <div>
+                <span className="kicker">TICKET DETAILS</span>
+                <h2>{selectedTicket.subject}</h2>
+                <small>From: {selectedTicket.customer_name} ({selectedTicket.customer_phone})</small>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setSelectedTicket(null)}>✕</button>
+            </div>
+
+            <div style={{ maxHeight: "300px", overflowY: "auto", margin: "1rem 0", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  style={{
+                    padding: "0.75rem",
+                    borderRadius: "0.5rem",
+                    background: m.sender_type === "staff" ? "rgba(59, 130, 246, 0.1)" : "rgba(243, 244, 246, 1)",
+                    alignSelf: m.sender_type === "staff" ? "flex-end" : "flex-start",
+                    maxWidth: "85%"
+                  }}
+                >
+                  <small style={{ fontWeight: 600, display: "block", marginBottom: "0.25rem" }}>
+                    {m.sender_type === "staff" ? "FRYZAR Support Staff" : selectedTicket.customer_name} · {new Date(m.created_at).toLocaleTimeString()}
+                  </small>
+                  <p style={{ margin: 0, fontSize: "0.9rem" }}>{m.message}</p>
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={handleSendReply}>
+              <label>Update Ticket Status
+                <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)}>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="waiting_customer">Waiting on Customer</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </label>
+              <label>Staff Reply
+                <textarea
+                  rows={3}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Type reply message to customer..."
+                  required
+                />
+              </label>
+              <button className="primary-button full-width" type="submit" disabled={busy} style={{ marginTop: "0.75rem" }}>
+                {busy ? "Sending..." : "Post Reply & Update Status"}
+              </button>
+            </form>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -1357,6 +1663,10 @@ export default function App() {
             <InventoryModule user={user} />
           ) : section === "delivery" ? (
             <DeliveryModule user={user} />
+          ) : section === "riders" ? (
+            <RidersModule user={user} />
+          ) : section === "support" ? (
+            <SupportModule user={user} />
           ) : section === "settings" ? (
             <StoreSettingsModule user={user} />
           ) : section === "team" ? (

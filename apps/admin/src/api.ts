@@ -1,3 +1,49 @@
+export interface Rider {
+  id: string;
+  staff_user_id: string;
+  display_name: string;
+  email: string;
+  vehicle_type: string;
+  vehicle_number: string;
+  current_status: "available" | "busy" | "offline";
+  is_active: number;
+}
+
+export interface SupportTicket {
+  id: string;
+  order_id: string | null;
+  customer_name: string;
+  customer_phone: string;
+  subject: string;
+  message: string;
+  status: "open" | "in_progress" | "waiting_customer" | "resolved" | "closed";
+  assigned_staff_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportMessage {
+  id: string;
+  case_id: string;
+  sender_type: "customer" | "staff";
+  sender_staff_id: string | null;
+  message: string;
+  created_at: string;
+}
+
+export interface NotificationItem {
+  id: string;
+  recipient_type: "staff" | "customer";
+  title_ur: string;
+  title_en: string;
+  body_ur: string;
+  body_en: string;
+  event_type: string;
+  related_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 export interface StaffUser {
   id: string;
   email: string;
@@ -466,5 +512,58 @@ export const adminApi = {
         method: "PATCH",
         body: JSON.stringify({ status, note })
       }
-    )
+    ),
+
+  riders: () =>
+    apiRequest<{ riders: Rider[] }>("/admin/riders"),
+
+  saveRider: (data: { staff_user_id?: string; vehicle_type: string; vehicle_number: string; current_status?: string; is_active?: boolean }, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      "/admin/riders" + (id ? "/" + encodeURIComponent(id) : ""),
+      {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  assignRider: (orderId: string, riderId: string, notes = "") =>
+    apiRequest<{ assigned: boolean; assignment_id: string; order_status: string }>(
+      "/admin/orders/" + encodeURIComponent(orderId) + "/assign-rider",
+      {
+        method: "POST",
+        body: JSON.stringify({ rider_id: riderId, notes })
+      }
+    ),
+
+  updateDeliveryStatus: (assignmentId: string, status: "picked_up" | "delivered" | "failed", failureReason = "", notes = "") =>
+    apiRequest<{ updated: boolean; status: string }>(
+      "/admin/deliveries/" + encodeURIComponent(assignmentId) + "/status",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status, failure_reason: failureReason, notes })
+      }
+    ),
+
+  riderAssignments: () =>
+    apiRequest<{ assignments: Record<string, unknown>[] }>("/rider/assignments"),
+
+  supportTickets: () =>
+    apiRequest<{ tickets: SupportTicket[] }>("/admin/support/tickets"),
+
+  supportTicketDetails: (id: string) =>
+    apiRequest<{ ticket: SupportTicket; messages: SupportMessage[] }>("/admin/support/tickets/" + encodeURIComponent(id)),
+
+  replySupportTicket: (id: string, message: string, status?: string) =>
+    apiRequest<{ saved: boolean; message_id: string }>("/admin/support/tickets/" + encodeURIComponent(id) + "/messages", {
+      method: "POST",
+      body: JSON.stringify({ message, status })
+    }),
+
+  notifications: () =>
+    apiRequest<{ notifications: NotificationItem[] }>("/admin/notifications"),
+
+  markNotificationRead: (id: string) =>
+    apiRequest<{ read: boolean; id: string }>("/admin/notifications/" + encodeURIComponent(id) + "/read", {
+      method: "PATCH"
+    })
 };

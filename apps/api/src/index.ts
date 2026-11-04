@@ -2999,6 +2999,383 @@ async function adminCouponsApi(
   return null;
 }
 
+const RIDER_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "rider"];
+const RIDER_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator"];
+
+async function adminRidersAndDispatchApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const ridersPath = url.pathname === "/api/v1/admin/riders";
+  const riderSingleMatch = url.pathname.match(/^\/api\/v1\/admin\/riders\/([0-9a-f-]{36})$/i);
+  const assignMatch = url.pathname.match(/^\/api\/v1\/admin\/orders\/([0-9a-f-]{36})\/assign-rider$/i);
+  const deliveryStatusMatch = url.pathname.match(/^\/api\/v1\/admin\/deliveries\/([0-9a-f-]{36})\/status$/i);
+  const riderAssignmentsPath = url.pathname === "/api/v1/rider/assignments";
+
+  if (!(ridersPath || riderSingleMatch || assignMatch || deliveryStatusMatch || riderAssignmentsPath)) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && riderAssignmentsPath) {
+    if (user.role !== "rider" && user.role !== "owner" && user.role !== "manager") return roleDenied();
+    const rider = await env.DB.prepare(
+      "SELECT id FROM riders WHERE staff_user_id = ?1 LIMIT 1"
+    ).bind(user.id).first<{ id: string }>();
+
+    if (!rider) return json({ assignments: [] });
+
+    const result = await env.DB.prepare(
+      "SELECT da.id, da.order_id, da.status, da.failure_reason, da.notes, da.assigned_at, da.picked_up_at, da.delivered_at, " +
+      "o.order_number, o.customer_name, o.customer_phone, o.delivery_address, o.total_paisa, o.payment_method, o.payment_status " +
+      "FROM delivery_assignments da JOIN orders o ON o.id = da.order_id " +
+      "WHERE da.rider_id = ?1 ORDER BY da.assigned_at DESC LIMIT 100"
+    ).bind(rider.id).all<JsonRecord>();
+
+    return json({ assignments: result.results });
+  }
+
+  if (request.method === "GET" && ridersPath) {
+    if (!hasRole(user, RIDER_READ_ROLES)) return roleDenied();
+    const result = await env.DB.prepare(
+      "SELECT r.id, r.staff_user_id, r.vehicle_type, r.vehicle_number, r.current_status, r.is_active, r.created_at, r.updated_at, " +
+      "s.display_name, s.email " +
+      "FROM riders r JOIN staff_users s ON s.id = r.staff_user_id " +
+      "ORDER BY r.is_active DESC, s.display_name ASC LIMIT 200"
+    ).all<JsonRecord>();
+    return json({ riders: result.results });
+  }
+
+  if (request.method === "POST" && ridersPath) {
+    if (!hasRole(user, RIDER_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const staffUserId = safeString(body.staff_user_id).toLowerCase();
+    const vehicleType = safeString(body.vehicle_type || "bike");
+    const vehicleNumber = safeString(body.vehicle_number);
+
+    if (!validUuid(staffUserId) || !["bike", "scooter", "car", "van", "bicycle", "foot"].includes(vehicleType)) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const staff = await env.DB.prepare(
+      "SELECT id, role FROM staff_users WHERE id = ?1 LIMIT 1"
+    ).bind(staffUserId).first<{ id: string; role: string }>();
+
+    if (!staff) return json({ error: "staff_user_not_found" }, 404);
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO riders (id, staff_user_id, vehicle_type, vehicle_number, current_status, is_active, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, 'available', 1, ?5, ?5)"
+    ).bind(id, staffUserId, vehicleType, vehicleNumber, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (request.method === "PUT" && riderSingleMatch) {
+    if (!hasRole(user, RIDER_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+    const id = riderSingleMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const vehicleType = safeString(body.vehicle_type || "bike");
+    const vehicleNumber = safeString(body.vehicle_number);
+    const currentStatus = safeString(body.current_status || "available");
+    const isActive = body.is_active === undefined ? true : body.is_active === true;
+
+    if (!["bike", "scooter", "car", "van", "bicycle", "foot"].includes(vehicleType) ||
+        !["available", "busy", "offline"].includes(currentStatus)) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    await env.DB.prepare(
+      "UPDATE riders SET vehicle_type=?1, vehicle_number=?2, current_status=?3, is_active=?4, updated_at=?5 WHERE id=?6"
+    ).bind(vehicleType, vehicleNumber, currentStatus, isActive ? 1 : 0, now, id).run();
+
+    return json({ saved: true, id });
+  }
+
+  if (request.method === "POST" && assignMatch) {
+    if (!hasRole(user, RIDER_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+    const orderId = assignMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const riderId = safeString(body.rider_id).toLowerCase();
+    const notes = safeString(body.notes);
+
+    if (!validUuid(riderId)) return json({ error: "validation_failed" }, 400);
+
+    const order = await env.DB.prepare(
+      "SELECT id, status FROM orders WHERE id = ?1 LIMIT 1"
+    ).bind(orderId).first<{ id: string; status: string }>();
+
+    if (!order) return json({ error: "order_not_found" }, 404);
+    if (order.status === "cancelled" || order.status === "rejected" || order.status === "delivered") {
+      return json({ error: "order_cannot_be_assigned" }, 409);
+    }
+
+    const rider = await env.DB.prepare(
+      "SELECT id, is_active FROM riders WHERE id = ?1 LIMIT 1"
+    ).bind(riderId).first<{ id: string; is_active: number }>();
+
+    if (!rider || rider.is_active !== 1) return json({ error: "rider_unavailable" }, 409);
+
+    const assignmentId = crypto.randomUUID();
+    const statusEventId = crypto.randomUUID();
+    const auditId = crypto.randomUUID();
+
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        "INSERT INTO delivery_assignments (id, order_id, rider_id, assigned_by_staff_id, status, notes, assigned_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, 'assigned', ?5, ?6, ?6)"
+      ).bind(assignmentId, orderId, riderId, user.id, notes, now),
+      env.DB.prepare(
+        "UPDATE orders SET status = 'out_for_delivery', updated_at = ?1 WHERE id = ?2"
+      ).bind(now, orderId),
+      env.DB.prepare(
+        "UPDATE riders SET current_status = 'busy', updated_at = ?1 WHERE id = ?2"
+      ).bind(now, riderId),
+      env.DB.prepare(
+        "INSERT INTO order_status_events (id, order_id, old_status, new_status, actor_type, actor_id, note) " +
+        "VALUES (?1, ?2, ?3, 'out_for_delivery', 'staff', ?4, 'Assigned to rider for delivery')"
+      ).bind(statusEventId, orderId, order.status, user.id),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'delivery.assigned', 'order', ?4, ?5, ?6)"
+      ).bind(auditId, user.id, user.role, orderId, JSON.stringify({ rider_id: riderId, assignment_id: assignmentId }), now)
+    ];
+
+    await env.DB.batch(statements);
+    return json({ assigned: true, assignment_id: assignmentId, order_status: "out_for_delivery" }, 201);
+  }
+
+  if (request.method === "PATCH" && deliveryStatusMatch) {
+    if (!hasRole(user, RIDER_READ_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+    const assignmentId = deliveryStatusMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const status = safeString(body.status);
+    const failureReason = safeString(body.failure_reason);
+    const notes = safeString(body.notes);
+
+    if (!["picked_up", "delivered", "failed"].includes(status)) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const assignment = await env.DB.prepare(
+      "SELECT id, order_id, rider_id, status FROM delivery_assignments WHERE id = ?1 LIMIT 1"
+    ).bind(assignmentId).first<{ id: string; order_id: string; rider_id: string; status: string }>();
+
+    if (!assignment) return json({ error: "assignment_not_found" }, 404);
+
+    const statements: D1PreparedStatement[] = [];
+
+    if (status === "picked_up") {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE delivery_assignments SET status = 'picked_up', picked_up_at = ?1, notes = ?2, updated_at = ?1 WHERE id = ?3"
+        ).bind(now, notes, assignmentId)
+      );
+    } else if (status === "delivered") {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE delivery_assignments SET status = 'delivered', delivered_at = ?1, notes = ?2, updated_at = ?1 WHERE id = ?3"
+        ).bind(now, notes, assignmentId),
+        env.DB.prepare(
+          "UPDATE orders SET status = 'delivered', updated_at = ?1 WHERE id = ?2"
+        ).bind(now, assignment.order_id),
+        env.DB.prepare(
+          "UPDATE riders SET current_status = 'available', updated_at = ?1 WHERE id = ?2"
+        ).bind(now, assignment.rider_id),
+        env.DB.prepare(
+          "INSERT INTO order_status_events (id, order_id, old_status, new_status, actor_type, actor_id, note) " +
+          "VALUES (?1, ?2, 'out_for_delivery', 'delivered', 'staff', ?3, 'Delivered by rider')"
+        ).bind(crypto.randomUUID(), assignment.order_id, user.id)
+      );
+    } else if (status === "failed") {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE delivery_assignments SET status = 'failed', failed_at = ?1, failure_reason = ?2, notes = ?3, updated_at = ?1 WHERE id = ?4"
+        ).bind(now, failureReason, notes, assignmentId),
+        env.DB.prepare(
+          "UPDATE riders SET current_status = 'available', updated_at = ?1 WHERE id = ?2"
+        ).bind(now, assignment.rider_id),
+        env.DB.prepare(
+          "INSERT INTO order_status_events (id, order_id, old_status, new_status, actor_type, actor_id, note) " +
+          "VALUES (?1, ?2, 'out_for_delivery', 'out_for_delivery', 'staff', ?3, ?4)"
+        ).bind(crypto.randomUUID(), assignment.order_id, user.id, "Delivery failed: " + failureReason)
+      );
+    }
+
+    await env.DB.batch(statements);
+    return json({ updated: true, status });
+  }
+
+  return null;
+}
+
+async function createCustomerSupportTicket(request: Request, env: Env): Promise<Response> {
+  const body = await parseJsonBody(request, 8192);
+  if (!body) return json({ error: "invalid_request" }, 400);
+
+  const customerName = safeString(body.customer_name);
+  const customerPhone = safeString(body.customer_phone).replace(/\D/g, "");
+  const subject = safeString(body.subject);
+  const message = safeString(body.message);
+  const orderId = safeString(body.order_id) || null;
+
+  if (customerName.length < 2 || customerPhone.length < 10 || subject.length < 3 || message.length < 5) {
+    return json({ error: "validation_failed" }, 400);
+  }
+
+  const caseId = crypto.randomUUID();
+  const messageId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "INSERT INTO support_cases (id, order_id, customer_name, customer_phone, subject, message, status, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'open', ?7, ?7)"
+    ).bind(caseId, orderId, customerName, customerPhone, subject, message, now),
+    env.DB.prepare(
+      "INSERT INTO support_messages (id, case_id, sender_type, message, created_at) " +
+      "VALUES (?1, ?2, 'customer', ?3, ?4)"
+    ).bind(messageId, caseId, message, now),
+    env.DB.prepare(
+      "INSERT INTO notifications (id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, created_at) " +
+      "VALUES (?1, 'staff', 'نیا سپورٹ ٹکٹ', 'New Support Ticket', ?2, ?2, 'support_ticket_created', ?3, ?4)"
+    ).bind(crypto.randomUUID(), subject, caseId, now)
+  ];
+
+  await env.DB.batch(statements);
+  return json({ created: true, case_id: caseId }, 201);
+}
+
+const SUPPORT_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "support"];
+
+async function adminSupportApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const casesPath = url.pathname === "/api/v1/admin/support/tickets";
+  const caseMatch = url.pathname.match(/^\/api\/v1\/admin\/support\/tickets\/([0-9a-f-]{36})$/i);
+  const messageMatch = url.pathname.match(/^\/api\/v1\/admin\/support\/tickets\/([0-9a-f-]{36})\/messages$/i);
+
+  if (!(casesPath || caseMatch || messageMatch)) return null;
+
+  if (!hasRole(user, SUPPORT_READ_ROLES)) return roleDenied();
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && casesPath) {
+    const result = await env.DB.prepare(
+      "SELECT id, order_id, customer_name, customer_phone, subject, message, status, assigned_staff_id, created_at, updated_at " +
+      "FROM support_cases ORDER BY created_at DESC LIMIT 200"
+    ).all<JsonRecord>();
+    return json({ tickets: result.results });
+  }
+
+  if (request.method === "GET" && caseMatch) {
+    const caseId = caseMatch[1].toLowerCase();
+    const ticket = await env.DB.prepare(
+      "SELECT id, order_id, customer_name, customer_phone, subject, message, status, assigned_staff_id, created_at, updated_at " +
+      "FROM support_cases WHERE id = ?1 LIMIT 1"
+    ).bind(caseId).first<JsonRecord>();
+
+    if (!ticket) return json({ error: "ticket_not_found" }, 404);
+
+    const messages = await env.DB.prepare(
+      "SELECT id, case_id, sender_type, sender_staff_id, message, created_at " +
+      "FROM support_messages WHERE case_id = ?1 ORDER BY created_at ASC"
+    ).bind(caseId).all<JsonRecord>();
+
+    return json({ ticket, messages: messages.results });
+  }
+
+  if (request.method === "POST" && messageMatch) {
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+    const caseId = messageMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const message = safeString(body.message);
+    const newStatus = safeString(body.status);
+
+    if (!message) return json({ error: "validation_failed" }, 400);
+
+    const msgId = crypto.randomUUID();
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        "INSERT INTO support_messages (id, case_id, sender_type, sender_staff_id, message, created_at) " +
+        "VALUES (?1, ?2, 'staff', ?3, ?4, ?5)"
+      ).bind(msgId, caseId, user.id, message, now)
+    ];
+
+    if (newStatus && ["open", "in_progress", "waiting_customer", "resolved", "closed"].includes(newStatus)) {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE support_cases SET status = ?1, updated_at = ?2 WHERE id = ?3"
+        ).bind(newStatus, now, caseId)
+      );
+    }
+
+    await env.DB.batch(statements);
+    return json({ saved: true, message_id: msgId }, 201);
+  }
+
+  return null;
+}
+
+async function adminNotificationsApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const notifPath = url.pathname === "/api/v1/admin/notifications";
+  const notifReadMatch = url.pathname.match(/^\/api\/v1\/admin\/notifications\/([0-9a-f-]{36})\/read$/i);
+
+  if (!(notifPath || notifReadMatch)) return null;
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && notifPath) {
+    const result = await env.DB.prepare(
+      "SELECT id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, read_at, created_at " +
+      "FROM notifications WHERE recipient_type = 'staff' ORDER BY created_at DESC LIMIT 100"
+    ).all<JsonRecord>();
+    return json({ notifications: result.results });
+  }
+
+  if (request.method === "PATCH" && notifReadMatch) {
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+    const id = notifReadMatch[1].toLowerCase();
+    await env.DB.prepare(
+      "UPDATE notifications SET read_at = ?1 WHERE id = ?2"
+    ).bind(now, id).run();
+    return json({ read: true, id });
+  }
+
+  return null;
+}
+
 const DASHBOARD_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "finance"];
 
 async function adminDashboardMetrics(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
@@ -3083,6 +3460,15 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   const couponsResponse = await adminCouponsApi(request, env, url, user);
   if (couponsResponse) return couponsResponse;
 
+  const ridersResponse = await adminRidersAndDispatchApi(request, env, url, user);
+  if (ridersResponse) return ridersResponse;
+
+  const supportResponse = await adminSupportApi(request, env, url, user);
+  if (supportResponse) return supportResponse;
+
+  const notificationsResponse = await adminNotificationsApi(request, env, url, user);
+  if (notificationsResponse) return notificationsResponse;
+
   const orderResponse = await orderAdminApi(request, env, url, user);
   if (orderResponse) return orderResponse;
 
@@ -3111,6 +3497,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "POST" && url.pathname === "/api/v1/coupons/validate") {
     return validateCouponPublic(request, env);
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/support/tickets") {
+    return createCustomerSupportTicket(request, env);
+  }
+  if (url.pathname === "/api/v1/rider/assignments") {
+    return adminApi(request, env, url);
   }
   if (request.method === "GET" && url.pathname === "/api/v1/storefront-config") {
     return storefrontConfig(env);
