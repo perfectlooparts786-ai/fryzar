@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
     "test:build": "tsc --project apps/api/tsconfig.test.json",
-    "test:api": "npm run test:build && node --test tests/api.test.cjs tests/variants.test.cjs tests/delivery.test.cjs",
+    "test:api": "npm run test:build && node --test tests/api.test.cjs tests/variants.test.cjs tests/delivery.test.cjs tests/finance.test.cjs",
     "test": "npm run typecheck && npm run test:api && npm run test:workers",
     "dev:storefront": "vite --config apps/storefront/vite.config.ts",
     "build:storefront": "tsc --project apps/storefront/tsconfig.json && vite build --config apps/storefront/vite.config.ts",

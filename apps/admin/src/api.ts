@@ -1,3 +1,59 @@
+export interface Ingredient {
+  id: string;
+  name_ur: string;
+  name_en: string;
+  sku: string | null;
+  unit: string;
+  stock_qty: number;
+  min_threshold: number;
+  reorder_threshold: number;
+  cost_per_unit_paisa: number;
+  is_active: number;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  is_active: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  supplier_id: string;
+  supplier_name: string;
+  order_number: string;
+  status: "draft" | "submitted" | "received" | "cancelled";
+  total_cost_paisa: number;
+  created_at: string;
+}
+
+export interface WastageRecord {
+  id: string;
+  ingredient_id: string | null;
+  product_id: string | null;
+  ingredient_name_en?: string;
+  product_name_en?: string;
+  quantity: number;
+  reason: string;
+  cost_paisa: number;
+  note: string;
+  created_at: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  entry_type: string;
+  reference_id: string;
+  debit_paisa: number;
+  credit_paisa: number;
+  note: string;
+  created_at: string;
+}
+
 export interface Rider {
   id: string;
   staff_user_id: string;
@@ -565,5 +621,81 @@ export const adminApi = {
   markNotificationRead: (id: string) =>
     apiRequest<{ read: boolean; id: string }>("/admin/notifications/" + encodeURIComponent(id) + "/read", {
       method: "PATCH"
-    })
+    }),
+
+  ingredients: () =>
+    apiRequest<{ ingredients: Ingredient[] }>("/admin/ingredients"),
+
+  saveIngredient: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      "/admin/ingredients" + (id ? "/" + encodeURIComponent(id) : ""),
+      {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  productRecipe: (productId: string) =>
+    apiRequest<{ recipe: Record<string, unknown> | null; ingredients: Record<string, unknown>[] }>(
+      "/admin/products/" + encodeURIComponent(productId) + "/recipe"
+    ),
+
+  saveProductRecipe: (productId: string, data: Record<string, unknown>) =>
+    apiRequest<{ saved: boolean; recipe_id: string }>(
+      "/admin/products/" + encodeURIComponent(productId) + "/recipe",
+      {
+        method: "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  suppliers: () =>
+    apiRequest<{ suppliers: Supplier[] }>("/admin/suppliers"),
+
+  saveSupplier: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      "/admin/suppliers" + (id ? "/" + encodeURIComponent(id) : ""),
+      {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  purchaseOrders: () =>
+    apiRequest<{ purchase_orders: PurchaseOrder[] }>("/admin/purchase-orders"),
+
+  createPurchaseOrder: (data: { supplier_id: string; items: Array<{ ingredient_id: string; quantity: number; unit_cost_paisa: number }> }) =>
+    apiRequest<{ created: boolean; id: string; order_number: string; total_cost_paisa: number }>(
+      "/admin/purchase-orders",
+      {
+        method: "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  receivePurchaseOrder: (id: string) =>
+    apiRequest<{ received: boolean; id: string }>("/admin/purchase-orders/" + encodeURIComponent(id) + "/receive", {
+      method: "POST"
+    }),
+
+  wastageRecords: () =>
+    apiRequest<{ wastage_records: WastageRecord[] }>("/admin/wastage"),
+
+  logWastage: (data: { ingredient_id?: string; product_id?: string; quantity: number; reason: string; cost_paisa?: number; note?: string }) =>
+    apiRequest<{ logged: boolean; id: string }>("/admin/wastage", {
+      method: "POST",
+      body: JSON.stringify(data)
+    }),
+
+  financialLedger: () =>
+    apiRequest<{ ledger: LedgerEntry[] }>("/admin/finance/ledger"),
+
+  refundOrder: (orderId: string, data: { amount_paisa: number; reason: string }) =>
+    apiRequest<{ refunded: boolean; refund_id: string; amount_paisa: number }>(
+      "/admin/orders/" + encodeURIComponent(orderId) + "/refund",
+      {
+        method: "POST",
+        body: JSON.stringify(data)
+      }
+    )
 };

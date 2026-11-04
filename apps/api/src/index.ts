@@ -1717,6 +1717,420 @@ function validSlug(value: string): boolean {
 
 
 const INVENTORY_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen"];
+async function adminIngredientsAndBomApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const ingredientsPath = url.pathname === "/api/v1/admin/ingredients";
+  const ingredientSingleMatch = url.pathname.match(/^\/api\/v1\/admin\/ingredients\/([0-9a-f-]{36})$/i);
+  const recipeMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})\/recipe$/i);
+
+  if (!(ingredientsPath || ingredientSingleMatch || recipeMatch)) return null;
+
+  if (request.method === "GET") {
+    if (!hasRole(user, INVENTORY_READ_ROLES)) return roleDenied();
+  } else {
+    if (!hasRole(user, INVENTORY_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && ingredientsPath) {
+    const result = await env.DB.prepare(
+      "SELECT id, name_ur, name_en, sku, unit, stock_qty, min_threshold, reorder_threshold, cost_per_unit_paisa, is_active, created_at, updated_at " +
+      "FROM ingredients ORDER BY name_en ASC LIMIT 300"
+    ).all<JsonRecord>();
+    return json({ ingredients: result.results });
+  }
+
+  if (request.method === "POST" && ingredientsPath) {
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const nameEn = safeString(body.name_en);
+    const nameUr = safeString(body.name_ur);
+    const sku = safeString(body.sku) || null;
+    const unit = safeString(body.unit || "gram");
+    const stockQty = Number(body.stock_qty || 0);
+    const minThreshold = Number(body.min_threshold || 0);
+    const reorderThreshold = Number(body.reorder_threshold || 0);
+    const costPerUnit = Number(body.cost_per_unit_paisa || 0);
+
+    if (!nameEn || !nameUr || !["gram", "kg", "ml", "liter", "piece", "pack"].includes(unit) || stockQty < 0) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO ingredients (id, name_ur, name_en, sku, unit, stock_qty, min_threshold, reorder_threshold, cost_per_unit_paisa, is_active, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)"
+    ).bind(id, nameUr, nameEn, sku, unit, stockQty, minThreshold, reorderThreshold, costPerUnit, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (request.method === "PUT" && ingredientSingleMatch) {
+    const id = ingredientSingleMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const nameEn = safeString(body.name_en);
+    const nameUr = safeString(body.name_ur);
+    const sku = safeString(body.sku) || null;
+    const unit = safeString(body.unit || "gram");
+    const stockQty = Number(body.stock_qty || 0);
+    const minThreshold = Number(body.min_threshold || 0);
+    const reorderThreshold = Number(body.reorder_threshold || 0);
+    const costPerUnit = Number(body.cost_per_unit_paisa || 0);
+    const isActive = body.is_active === undefined ? true : body.is_active === true;
+
+    await env.DB.prepare(
+      "UPDATE ingredients SET name_ur=?1, name_en=?2, sku=?3, unit=?4, stock_qty=?5, min_threshold=?6, reorder_threshold=?7, cost_per_unit_paisa=?8, is_active=?9, updated_at=?10 WHERE id=?11"
+    ).bind(nameUr, nameEn, sku, unit, stockQty, minThreshold, reorderThreshold, costPerUnit, isActive ? 1 : 0, now, id).run();
+
+    return json({ saved: true, id });
+  }
+
+  if (recipeMatch) {
+    const productId = recipeMatch[1].toLowerCase();
+    if (request.method === "GET") {
+      const recipe = await env.DB.prepare(
+        "SELECT id, product_id, variant_id, name_en, name_ur, instructions FROM recipes WHERE product_id = ?1 LIMIT 1"
+      ).bind(productId).first<JsonRecord>();
+
+      if (!recipe) return json({ recipe: null, ingredients: [] });
+
+      const items = await env.DB.prepare(
+        "SELECT ri.ingredient_id, ri.quantity_required, ri.unit, i.name_en, i.name_ur, i.cost_per_unit_paisa " +
+        "FROM recipe_ingredients ri JOIN ingredients i ON i.id = ri.ingredient_id " +
+        "WHERE ri.recipe_id = ?1"
+      ).bind(String(recipe.id)).all<JsonRecord>();
+
+      return json({ recipe, ingredients: items.results });
+    }
+
+    if (request.method === "POST") {
+      const body = await parseJsonBody(request, 16384);
+      if (!body) return json({ error: "invalid_request" }, 400);
+
+      const nameEn = safeString(body.name_en);
+      const nameUr = safeString(body.name_ur);
+      const instructions = safeString(body.instructions);
+      const variantId = safeString(body.variant_id) || null;
+      const rawIngredients = Array.isArray(body.ingredients) ? body.ingredients : [];
+
+      const recipeId = crypto.randomUUID();
+      const statements: D1PreparedStatement[] = [
+        env.DB.prepare("DELETE FROM recipes WHERE product_id = ?1").bind(productId),
+        env.DB.prepare(
+          "INSERT INTO recipes (id, product_id, variant_id, name_en, name_ur, instructions, created_at, updated_at) " +
+          "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)"
+        ).bind(recipeId, productId, variantId, nameEn, nameUr, instructions, now)
+      ];
+
+      for (const item of rawIngredients) {
+        if (isRecord(item)) {
+          const ingId = safeString(item.ingredient_id).toLowerCase();
+          const qty = Number(item.quantity_required);
+          const unit = safeString(item.unit || "gram");
+          if (validUuid(ingId) && qty > 0) {
+            statements.push(
+              env.DB.prepare(
+                "INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity_required, unit) VALUES (?1, ?2, ?3, ?4)"
+              ).bind(recipeId, ingId, qty, unit)
+            );
+          }
+        }
+      }
+
+      await env.DB.batch(statements);
+      return json({ saved: true, recipe_id: recipeId }, 201);
+    }
+  }
+
+  return null;
+}
+
+async function adminProcurementAndWastageApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const suppliersPath = url.pathname === "/api/v1/admin/suppliers";
+  const supplierSingleMatch = url.pathname.match(/^\/api\/v1\/admin\/suppliers\/([0-9a-f-]{36})$/i);
+  const poPath = url.pathname === "/api/v1/admin/purchase-orders";
+  const poReceiveMatch = url.pathname.match(/^\/api\/v1\/admin\/purchase-orders\/([0-9a-f-]{36})\/receive$/i);
+  const wastagePath = url.pathname === "/api/v1/admin/wastage";
+
+  if (!(suppliersPath || supplierSingleMatch || poPath || poReceiveMatch || wastagePath)) return null;
+
+  if (request.method === "GET") {
+    if (!hasRole(user, INVENTORY_READ_ROLES)) return roleDenied();
+  } else {
+    if (!hasRole(user, INVENTORY_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && suppliersPath) {
+    const result = await env.DB.prepare("SELECT id, name, contact_name, phone, email, address, is_active, created_at, updated_at FROM suppliers ORDER BY name ASC LIMIT 200").all<JsonRecord>();
+    return json({ suppliers: result.results });
+  }
+
+  if (request.method === "POST" && suppliersPath) {
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+    const name = safeString(body.name);
+    const contactName = safeString(body.contact_name);
+    const phone = safeString(body.phone);
+    const email = safeString(body.email);
+    const address = safeString(body.address);
+    if (!name) return json({ error: "validation_failed" }, 400);
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO suppliers (id, name, contact_name, phone, email, address, is_active, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)"
+    ).bind(id, name, contactName, phone, email, address, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (request.method === "GET" && poPath) {
+    const result = await env.DB.prepare(
+      "SELECT po.id, po.supplier_id, po.order_number, po.status, po.total_cost_paisa, po.created_at, s.name AS supplier_name " +
+      "FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id ORDER BY po.created_at DESC LIMIT 200"
+    ).all<JsonRecord>();
+    return json({ purchase_orders: result.results });
+  }
+
+  if (request.method === "POST" && poPath) {
+    const body = await parseJsonBody(request, 16384);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const supplierId = safeString(body.supplier_id).toLowerCase();
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+
+    if (!validUuid(supplierId) || rawItems.length === 0) return json({ error: "validation_failed" }, 400);
+
+    const poId = crypto.randomUUID();
+    const orderNum = "PO-" + Date.now().toString().slice(-8);
+    let totalCost = 0;
+
+    const statements: D1PreparedStatement[] = [];
+
+    for (const item of rawItems) {
+      if (isRecord(item)) {
+        const ingId = safeString(item.ingredient_id).toLowerCase();
+        const qty = Number(item.quantity);
+        const unitCost = Number(item.unit_cost_paisa);
+        const lineTotal = qty * unitCost;
+        if (validUuid(ingId) && qty > 0 && unitCost >= 0) {
+          totalCost += lineTotal;
+          statements.push(
+            env.DB.prepare(
+              "INSERT INTO purchase_order_items (id, purchase_order_id, ingredient_id, quantity, unit_cost_paisa, line_total_paisa) " +
+              "VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+            ).bind(crypto.randomUUID(), poId, ingId, qty, unitCost, lineTotal)
+          );
+        }
+      }
+    }
+
+    statements.unshift(
+      env.DB.prepare(
+        "INSERT INTO purchase_orders (id, supplier_id, order_number, status, total_cost_paisa, actor_staff_id, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, 'submitted', ?4, ?5, ?6, ?6)"
+      ).bind(poId, supplierId, orderNum, totalCost, user.id, now)
+    );
+
+    await env.DB.batch(statements);
+    return json({ created: true, id: poId, order_number: orderNum, total_cost_paisa: totalCost }, 201);
+  }
+
+  if (request.method === "POST" && poReceiveMatch) {
+    const poId = poReceiveMatch[1].toLowerCase();
+    const po = await env.DB.prepare(
+      "SELECT id, status, total_cost_paisa FROM purchase_orders WHERE id = ?1 LIMIT 1"
+    ).bind(poId).first<{ id: string; status: string; total_cost_paisa: number }>();
+
+    if (!po) return json({ error: "purchase_order_not_found" }, 404);
+    if (po.status === "received") return json({ error: "already_received" }, 409);
+
+    const items = await env.DB.prepare(
+      "SELECT ingredient_id, quantity FROM purchase_order_items WHERE purchase_order_id = ?1"
+    ).bind(poId).all<{ ingredient_id: string; quantity: number }>();
+
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare("UPDATE purchase_orders SET status = 'received', updated_at = ?1 WHERE id = ?2").bind(now, poId),
+      env.DB.prepare(
+        "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
+        "VALUES (?1, 'purchase_expense', ?2, ?3, 0, ?4, 'Purchase order received', ?5)"
+      ).bind(crypto.randomUUID(), poId, po.total_cost_paisa, user.id, now)
+    ];
+
+    for (const item of items.results) {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE ingredients SET stock_qty = stock_qty + ?1, updated_at = ?2 WHERE id = ?3"
+        ).bind(item.quantity, now, item.ingredient_id)
+      );
+    }
+
+    await env.DB.batch(statements);
+    return json({ received: true, id: poId });
+  }
+
+  if (request.method === "GET" && wastagePath) {
+    const result = await env.DB.prepare(
+      "SELECT w.id, w.ingredient_id, w.product_id, w.quantity, w.reason, w.cost_paisa, w.note, w.created_at, " +
+      "i.name_en AS ingredient_name_en, p.name_en AS product_name_en " +
+      "FROM wastage_records w LEFT JOIN ingredients i ON i.id = w.ingredient_id LEFT JOIN products p ON p.id = w.product_id " +
+      "ORDER BY w.created_at DESC LIMIT 200"
+    ).all<JsonRecord>();
+    return json({ wastage_records: result.results });
+  }
+
+  if (request.method === "POST" && wastagePath) {
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const ingId = safeString(body.ingredient_id) || null;
+    const prodId = safeString(body.product_id) || null;
+    const qty = Number(body.quantity);
+    const reason = safeString(body.reason || "other");
+    const costPaisa = Number(body.cost_paisa || 0);
+    const note = safeString(body.note);
+
+    if (qty <= 0 || !["damaged", "expired", "spilled", "prep_loss", "other"].includes(reason)) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const wastageId = crypto.randomUUID();
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        "INSERT INTO wastage_records (id, ingredient_id, product_id, quantity, reason, cost_paisa, actor_staff_id, note, created_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+      ).bind(wastageId, ingId, prodId, qty, reason, costPaisa, user.id, note, now),
+      env.DB.prepare(
+        "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
+        "VALUES (?1, 'wastage_expense', ?2, ?3, 0, ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), wastageId, costPaisa, user.id, "Wastage: " + reason, now)
+    ];
+
+    if (ingId && validUuid(ingId)) {
+      statements.push(
+        env.DB.prepare("UPDATE ingredients SET stock_qty = MAX(0, stock_qty - ?1), updated_at = ?2 WHERE id = ?3").bind(qty, now, ingId)
+      );
+    }
+
+    await env.DB.batch(statements);
+    return json({ logged: true, id: wastageId }, 201);
+  }
+
+  return null;
+}
+
+async function adminFinanceAndLedgerApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const ledgerPath = url.pathname === "/api/v1/admin/finance/ledger";
+  const refundMatch = url.pathname.match(/^\/api\/v1\/admin\/orders\/([0-9a-f-]{36})\/refund$/i);
+
+  if (!(ledgerPath || refundMatch)) return null;
+
+  if (!hasRole(user, PAYMENT_READ_ROLES)) return roleDenied();
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && ledgerPath) {
+    const result = await env.DB.prepare(
+      "SELECT id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at " +
+      "FROM financial_ledger ORDER BY created_at DESC LIMIT 300"
+    ).all<JsonRecord>();
+    return json({ ledger: result.results });
+  }
+
+  if (request.method === "POST" && refundMatch) {
+    if (!hasRole(user, PAYMENT_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+
+    const orderId = refundMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 4096);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const amountPaisa = Number(body.amount_paisa);
+    const reason = safeString(body.reason);
+
+    if (!Number.isSafeInteger(amountPaisa) || amountPaisa <= 0 || !reason) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const order = await env.DB.prepare("SELECT id, total_paisa FROM orders WHERE id = ?1 LIMIT 1").bind(orderId).first<{ id: string; total_paisa: number }>();
+    if (!order) return json({ error: "order_not_found" }, 404);
+
+    const refundId = crypto.randomUUID();
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        "INSERT INTO refunds (id, order_id, amount_paisa, reason, status, reviewer_staff_id, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, 'approved', ?5, ?6, ?6)"
+      ).bind(refundId, orderId, amountPaisa, reason, user.id, now),
+      env.DB.prepare(
+        "UPDATE orders SET payment_status = 'refunded', updated_at = ?1 WHERE id = ?2"
+      ).bind(now, orderId),
+      env.DB.prepare(
+        "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
+        "VALUES (?1, 'refund', ?2, ?3, 0, ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), refundId, amountPaisa, user.id, "Refund for order: " + reason, now)
+    ];
+
+    await env.DB.batch(statements);
+    return json({ refunded: true, refund_id: refundId, amount_paisa: amountPaisa }, 201);
+  }
+
+  return null;
+}
+
+async function submitCustomerPaymentProof(request: Request, env: Env, orderId: string): Promise<Response> {
+  const body = await parseJsonBody(request, 8192);
+  if (!body) return json({ error: "invalid_request" }, 400);
+
+  const objectKey = safeString(body.private_object_key);
+  const filename = safeString(body.original_filename);
+  const mime = safeString(body.detected_mime_type);
+  const size = Number(body.file_size_bytes);
+
+  if (!objectKey || !filename || !mime || size <= 0) {
+    return json({ error: "validation_failed" }, 400);
+  }
+
+  const payment = await env.DB.prepare("SELECT id FROM payments WHERE order_id = ?1 LIMIT 1").bind(orderId).first<{ id: string }>();
+  if (!payment) return json({ error: "payment_not_found" }, 404);
+
+  const proofId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const statements: D1PreparedStatement[] = [
+    env.DB.prepare(
+      "INSERT INTO payment_proofs (id, payment_id, private_object_key, original_filename, detected_mime_type, file_size_bytes, submitted_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+    ).bind(proofId, payment.id, objectKey, filename, mime, size, now),
+    env.DB.prepare("UPDATE payments SET status = 'pending_review', updated_at = ?1 WHERE id = ?2").bind(now, payment.id),
+    env.DB.prepare("UPDATE orders SET payment_status = 'pending_review', updated_at = ?1 WHERE id = ?2").bind(now, orderId)
+  ];
+
+  await env.DB.batch(statements);
+  return json({ submitted: true, proof_id: proofId }, 201);
+}
+
 const INVENTORY_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 
 async function adminInventoryApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
@@ -3451,6 +3865,15 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   const inventoryResponse = await adminInventoryApi(request, env, url, user);
   if (inventoryResponse) return inventoryResponse;
 
+  const ingredientsBomResponse = await adminIngredientsAndBomApi(request, env, url, user);
+  if (ingredientsBomResponse) return ingredientsBomResponse;
+
+  const procurementWastageResponse = await adminProcurementAndWastageApi(request, env, url, user);
+  if (procurementWastageResponse) return procurementWastageResponse;
+
+  const financeLedgerResponse = await adminFinanceAndLedgerApi(request, env, url, user);
+  if (financeLedgerResponse) return financeLedgerResponse;
+
   const catalogueResponse = await adminCatalogueApi(request, env, url, user);
   if (catalogueResponse) return catalogueResponse;
 
@@ -3512,6 +3935,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "POST" && url.pathname === "/api/v1/orders") {
     return checkout(request, env);
+  }
+
+  const proofMatch = url.pathname.match(/^\/api\/v1\/orders\/([0-9a-f-]{36})\/payment-proof$/i);
+  if (request.method === "POST" && proofMatch) {
+    return submitCustomerPaymentProof(request, env, proofMatch[1].toLowerCase());
   }
 
   const trackingMatch = url.pathname.match(/^\/api\/v1\/orders\/track\/([a-f0-9]{64})$/i);

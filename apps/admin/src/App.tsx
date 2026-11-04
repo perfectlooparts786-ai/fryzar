@@ -16,20 +16,27 @@ import {
   type Rider,
   type SupportTicket,
   type SupportMessage,
-  type NotificationItem
+  type NotificationItem,
+  type Ingredient,
+  type Supplier,
+  type PurchaseOrder,
+  type WastageRecord,
+  type LedgerEntry
 } from "./api";
 
 type AuthState = "checking" | "signed-out" | "signed-in";
 type AuthMode = "login" | "bootstrap";
-type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "payments" | "delivery" | "riders" | "support" | "team" | "settings";
+type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "procurement" | "payments" | "finance" | "delivery" | "riders" | "support" | "team" | "settings";
 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
   { id: "orders", label: "Orders", icon: "▤" },
   { id: "kitchen", label: "Kitchen", icon: "♨" },
   { id: "catalogue", label: "Catalogue", icon: "▦" },
-  { id: "inventory", label: "Inventory", icon: "▧" },
+  { id: "inventory", label: "Inventory & BOM", icon: "▧" },
+  { id: "procurement", label: "Procurement & Wastage", icon: "📦" },
   { id: "payments", label: "Payments", icon: "◈" },
+  { id: "finance", label: "Financial Ledger", icon: "📑" },
   { id: "delivery", label: "Delivery", icon: "⌖" },
   { id: "riders", label: "Riders", icon: "🚲" },
   { id: "support", label: "Support", icon: "💬" },
@@ -1525,6 +1532,237 @@ function SupportModule({ user }: { user: StaffUser }) {
   );
 }
 
+function ProcurementModule({ user }: { user: StaffUser }) {
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [wastageRecords, setWastageRecords] = useState<WastageRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState<"suppliers" | "purchase" | "wastage">("purchase");
+
+  async function loadData() {
+    setLoading(true);
+    setError("");
+    try {
+      const [sRes, poRes, wRes] = await Promise.all([
+        adminApi.suppliers(),
+        adminApi.purchaseOrders(),
+        adminApi.wastageRecords()
+      ]);
+      setSuppliers(sRes.suppliers);
+      setPurchaseOrders(poRes.purchase_orders);
+      setWastageRecords(wRes.wastage_records);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadData(); }, []);
+
+  async function handleReceivePO(id: string) {
+    setError("");
+    try {
+      await adminApi.receivePurchaseOrder(id);
+      await loadData();
+    } catch (cause) {
+      setError(messageFor(cause));
+    }
+  }
+
+  return (
+    <section className="inventory-module">
+      <div className="module-heading">
+        <div>
+          <span className="kicker">SUPPLY CHAIN & WASTAGE</span>
+          <h1>Procurement, Suppliers & Wastage</h1>
+          <p>Manage ingredient suppliers, track purchase orders, receive inventory stock, and log prep loss or wastage.</p>
+        </div>
+        <button className="secondary-button" type="button" onClick={() => void loadData()}>Refresh Data</button>
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+
+      <div className="catalog-tabs" style={{ marginBottom: "1.5rem" }}>
+        <button className={tab === "purchase" ? "active" : ""} type="button" onClick={() => setTab("purchase")}>Purchase Orders</button>
+        <button className={tab === "suppliers" ? "active" : ""} type="button" onClick={() => setTab("suppliers")}>Suppliers Directory</button>
+        <button className={tab === "wastage" ? "active" : ""} type="button" onClick={() => setTab("wastage")}>Wastage Logs</button>
+      </div>
+
+      {loading ? <div className="orders-empty">Loading procurement data...</div> : (
+        <>
+          {tab === "purchase" && (
+            <div className="table-wrap">
+              <table className="orders-table">
+                <thead>
+                  <tr>
+                    <th>PO Number</th>
+                    <th>Supplier</th>
+                    <th>Total Cost</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchaseOrders.map((po) => (
+                    <tr key={po.id}>
+                      <td><strong>{po.order_number}</strong></td>
+                      <td>{po.supplier_name}</td>
+                      <td><strong>{money(po.total_cost_paisa)}</strong></td>
+                      <td>
+                        <span className={"order-status " + (po.status === "received" ? "status-confirmed" : "status-pending")}>
+                          {po.status}
+                        </span>
+                      </td>
+                      <td><small>{new Date(po.created_at).toLocaleString()}</small></td>
+                      <td>
+                        {po.status !== "received" ? (
+                          <button className="refresh-button" type="button" onClick={() => void handleReceivePO(po.id)}>
+                            Receive Stock
+                          </button>
+                        ) : <small className="restricted-action">Received</small>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tab === "suppliers" && (
+            <div className="table-wrap">
+              <table className="orders-table">
+                <thead>
+                  <tr>
+                    <th>Supplier Name</th>
+                    <th>Contact Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Address</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppliers.map((s) => (
+                    <tr key={s.id}>
+                      <td><strong>{s.name}</strong></td>
+                      <td>{s.contact_name || "—"}</td>
+                      <td>{s.phone || "—"}</td>
+                      <td>{s.email || "—"}</td>
+                      <td>{s.address || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tab === "wastage" && (
+            <div className="table-wrap">
+              <table className="orders-table">
+                <thead>
+                  <tr>
+                    <th>Item / Ingredient</th>
+                    <th>Quantity</th>
+                    <th>Reason</th>
+                    <th>Cost Impact</th>
+                    <th>Note</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wastageRecords.map((w) => (
+                    <tr key={w.id}>
+                      <td><strong>{w.ingredient_name_en || w.product_name_en || "General Item"}</strong></td>
+                      <td>{w.quantity}</td>
+                      <td><span className="environment-pill">{w.reason}</span></td>
+                      <td><strong>{money(w.cost_paisa)}</strong></td>
+                      <td>{w.note || "—"}</td>
+                      <td><small>{new Date(w.created_at).toLocaleString()}</small></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function FinanceModule({ user }: { user: StaffUser }) {
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadLedger() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await adminApi.financialLedger();
+      setLedger(res.ledger);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadLedger(); }, []);
+
+  return (
+    <section className="inventory-module">
+      <div className="module-heading">
+        <div>
+          <span className="kicker">AUDITABLE FINANCIAL RECORDS</span>
+          <h1>Immutable Financial Ledger</h1>
+          <p>Review debit/credit transaction entries for sales, COD collections, purchase expenses, wastage, and refunds.</p>
+        </div>
+        <button className="secondary-button" type="button" onClick={() => void loadLedger()}>Refresh Ledger</button>
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+
+      {loading ? <div className="orders-empty">Loading financial ledger...</div> : ledger.length === 0 ? (
+        <div className="orders-empty">No transaction entries found in financial ledger.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Entry Type</th>
+                <th>Reference ID</th>
+                <th>Debit</th>
+                <th>Credit</th>
+                <th>Note</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.map((entry) => (
+                <tr key={entry.id}>
+                  <td><span className="environment-pill">{entry.entry_type}</span></td>
+                  <td><small>{entry.reference_id}</small></td>
+                  <td style={{ color: entry.debit_paisa > 0 ? "#dc2626" : "inherit" }}>
+                    {entry.debit_paisa > 0 ? money(entry.debit_paisa) : "—"}
+                  </td>
+                  <td style={{ color: entry.credit_paisa > 0 ? "#059669" : "inherit" }}>
+                    {entry.credit_paisa > 0 ? money(entry.credit_paisa) : "—"}
+                  </td>
+                  <td>{entry.note || "—"}</td>
+                  <td><small>{new Date(entry.created_at).toLocaleString()}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -1661,6 +1899,10 @@ export default function App() {
             <CatalogueModule user={user} />
           ) : section === "inventory" ? (
             <InventoryModule user={user} />
+          ) : section === "procurement" ? (
+            <ProcurementModule user={user} />
+          ) : section === "finance" ? (
+            <FinanceModule user={user} />
           ) : section === "delivery" ? (
             <DeliveryModule user={user} />
           ) : section === "riders" ? (
