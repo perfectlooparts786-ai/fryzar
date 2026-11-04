@@ -16,11 +16,12 @@ import {
 
 type AuthState = "checking" | "signed-out" | "signed-in";
 type AuthMode = "login" | "bootstrap";
-type Section = "overview" | "orders" | "catalogue" | "inventory" | "payments" | "delivery" | "team" | "settings";
+type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "payments" | "delivery" | "team" | "settings";
 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
   { id: "orders", label: "Orders", icon: "▤" },
+  { id: "kitchen", label: "Kitchen", icon: "♨" },
   { id: "catalogue", label: "Catalogue", icon: "▦" },
   { id: "inventory", label: "Inventory", icon: "▧" },
   { id: "payments", label: "Payments", icon: "◈" },
@@ -91,6 +92,7 @@ function Icon({ name }: { name: string }) {
   const paths: Record<string, string> = {
     overview: "M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z",
     orders: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5",
+    kitchen: "M4 18h16M6 18V9h12v9M8 9V6a4 4 0 0 1 8 0v3M9 13h6",
     catalogue: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
     inventory: "M3 7h18v13H3zM3 7l3-4h12l3 4M12 7v13",
     payments: "M3 6h18v12H3zM3 10h18M7 15h4",
@@ -1126,6 +1128,85 @@ function PaymentsModule({ user }: { user: StaffUser }) {
   );
 }
 
+function KitchenModule({ user }: { user: StaffUser }) {
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function loadQueue() {
+    setLoading(true);
+    setError("");
+    try {
+      const [confirmed, preparing] = await Promise.all([
+        adminApi.orders("confirmed"),
+        adminApi.orders("preparing")
+      ]);
+      setOrders([...confirmed.orders, ...preparing.orders].sort(
+        (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
+      ));
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadQueue(); }, []);
+
+  async function advance(order: AdminOrder, status: "preparing" | "ready") {
+    setBusyId(order.id);
+    setError("");
+    setNotice("");
+    try {
+      await adminApi.updateOrderStatus(order.id, status, "Kitchen workflow");
+      setNotice(order.order_number + " moved to " + status + ".");
+      await loadQueue();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  const queued = orders.filter(order => order.status === "confirmed");
+  const active = orders.filter(order => order.status === "preparing");
+  const lane = (title: string, items: AdminOrder[], next: "preparing" | "ready") => (
+    <section className="kitchen-lane">
+      <header><h2>{title}</h2><span>{items.length}</span></header>
+      {items.length === 0 ? <div className="kitchen-empty">No orders in this stage.</div> : items.map(order => (
+        <article className="kitchen-ticket" key={order.id}>
+          <div className="kitchen-ticket-head"><strong>{order.order_number}</strong><time>{new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div>
+          <p>{order.customer_language === "ur" ? "اردو آرڈر" : "Customer order"}</p>
+          <div className="kitchen-ticket-total">{money(order.total_paisa)}</div>
+          <button type="button" disabled={busyId === order.id} onClick={() => void advance(order, next)}>
+            {busyId === order.id ? "Saving…" : next === "preparing" ? "Start preparing" : "Mark ready"}
+          </button>
+        </article>
+      ))}
+    </section>
+  );
+
+  return (
+    <section className="kitchen-module">
+      <div className="module-heading">
+        <div><span className="kicker">FOOD PREPARATION</span><h1>Kitchen queue</h1><p>Work through confirmed orders and move each ticket to ready when preparation is complete.</p></div>
+        <button type="button" className="secondary-button" onClick={() => void loadQueue()} disabled={loading}>Refresh queue</button>
+      </div>
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+      {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+      {loading ? <div className="kitchen-empty">Loading kitchen queue…</div> : (
+        <div className="kitchen-board">
+          {lane("Waiting to start", queued, "preparing")}
+          {lane("In preparation", active, "ready")}
+        </div>
+      )}
+      <p className="orders-footnote">Kitchen accounts only receive order references, language, totals and timestamps. Customer contact and delivery details remain restricted.</p>
+    </section>
+  );
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -1256,6 +1337,8 @@ export default function App() {
         <div className="page-content">
           {section === "orders" ? (
             <OrdersModule user={user} />
+          ) : section === "kitchen" ? (
+            <KitchenModule user={user} />
           ) : section === "catalogue" ? (
             <CatalogueModule user={user} />
           ) : section === "inventory" ? (
