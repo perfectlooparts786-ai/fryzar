@@ -3,6 +3,7 @@ import {
   AdminApiError,
   adminApi,
   type AdminOrder,
+  type AdminOrderItem,
   type AdminPayment,
   type DashboardMetrics,
   type Category,
@@ -1130,6 +1131,7 @@ function PaymentsModule({ user }: { user: StaffUser }) {
 
 function KitchenModule({ user }: { user: StaffUser }) {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [orderItems, setOrderItems] = useState<Record<string, AdminOrderItem[]>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -1143,9 +1145,12 @@ function KitchenModule({ user }: { user: StaffUser }) {
         adminApi.orders("confirmed"),
         adminApi.orders("preparing")
       ]);
-      setOrders([...confirmed.orders, ...preparing.orders].sort(
+      const queue = [...confirmed.orders, ...preparing.orders].sort(
         (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)
-      ));
+      );
+      const details = await Promise.all(queue.map(order => adminApi.adminOrder(order.id)));
+      setOrders(queue);
+      setOrderItems(Object.fromEntries(queue.map((order, index) => [order.id, details[index].items])));
     } catch (cause) {
       setError(messageFor(cause));
     } finally {
@@ -1179,6 +1184,14 @@ function KitchenModule({ user }: { user: StaffUser }) {
         <article className="kitchen-ticket" key={order.id}>
           <div className="kitchen-ticket-head"><strong>{order.order_number}</strong><time>{new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div>
           <p>{order.customer_language === "ur" ? "اردو آرڈر" : "Customer order"}</p>
+          <ul className="kitchen-items">
+            {(orderItems[order.id] ?? []).map((item, index) => (
+              <li key={order.id + "-" + index}>
+                <span>{order.customer_language === "ur" ? item.product_name_ur_snapshot : item.product_name_en_snapshot}</span>
+                <strong>× {item.quantity}</strong>
+              </li>
+            ))}
+          </ul>
           <div className="kitchen-ticket-total">{money(order.total_paisa)}</div>
           <button type="button" disabled={busyId === order.id} onClick={() => void advance(order, next)}>
             {busyId === order.id ? "Saving…" : next === "preparing" ? "Start preparing" : "Mark ready"}
