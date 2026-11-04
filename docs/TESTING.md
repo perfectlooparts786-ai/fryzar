@@ -1,35 +1,71 @@
 # FRYZAR testing and verification
 
-**Last reconciled:** 3 November 2026  
-**Current branch:** `foundation/fresh-build`  
-**Latest Phase 3 implementation commit:** `d420cae9f260fc1aa2e7abc741bce96c71eaa44a` (final CI pending)  
-**Latest final-head CI:** [41569582732](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41569582732) (success)  
-**Audit-head CI:** [41568524358](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41568524358) (success)
+**Last reconciled:** 4 November 2026  
+**Branch:** `foundation/fresh-build`  
+**Latest verified baseline CI:** [41841766788](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41841766788), successful on `f7f86b4e0da847e3635c9507640d0e887be694b5`. The Kitchen browser regression in the current change awaits a new CI result.
 
-## Automated CI coverage
+## CI pipeline
 
-The workflow uses Node 22 and `npm ci --ignore-scripts --no-audit --no-fund`. Root `package-lock.json` is lockfileVersion 3 and committed. The lockfile-backed install passed in CI; Windows-specific installation has not been independently tested.
+The workflow uses Node 22 and `npm ci --ignore-scripts --no-audit --no-fund` with the committed lockfile. It runs:
 
-The CI workflow runs:
+1. API TypeScript check, API unit tests and Worker routing tests.
+2. Pinned Playwright runner and Chromium installation.
+3. Browser tests for the customer setup state, English/Urdu document direction, mocked catalogue/search/cart/guest-COD ordering, and admin sign-in/first-owner setup shell.
+4. Isolated local Wrangler D1 checkout, cancellation, owner-bootstrap, session, financial-integrity, retention and migration-integrity suites.
+5. Isolated local D1 backup/restore rehearsal.
+6. Preview-only Worker/D1 configuration safety tests.
+7. Customer and admin production builds.
+8. API, customer and admin Wrangler preview dry-runs.
 
-- API typecheck and API unit tests via `npm test`.
-- Worker routing tests.
-- Local Wrangler D1 checkout integration.
-- Local Wrangler D1 cancellation integration.
-- Local Wrangler D1 owner bootstrap integration.
-- Local Wrangler D1 session lifecycle integration.
-- Local Wrangler D1 populated financial integrity integration.
-- Local Wrangler D1 bounded retention integration.
-- Local Wrangler D1 migration integrity/replay integration.
-- Customer storefront production build.
-- Admin portal production build.
-- API, customer and admin Wrangler preview dry-runs.
+The baseline run passed every listed step. Dry-runs do not deploy Workers or apply remote migrations.
 
-Latest final-head CI completed successfully. See the workflow run for exact step results. CI dry-runs do not deploy Workers or apply remote migrations.
+## Browser test scope and limitations
+
+- Browser tests use synthetic fixtures and mocked `/api/v1/*` responses. They verify UI behavior, not live API availability or remote customer data.
+- The guest-ordering browser path covers product discovery, category filtering, search, basket and COD checkout request/confirmation. The real Worker/D1 checkout transaction is tested separately by local D1 integration.
+- Storefront language coverage verifies document `lang` and `dir` switching for English LTR and Urdu RTL. It does not replace keyboard, contrast or screen-reader review.
+- Admin baseline browser coverage verifies unauthenticated sign-in and first-owner setup screens. It does not yet cover full staff lifecycle and all admin modules.
+- A Kitchen browser regression has been added to exercise a synthetic kitchen session, privacy-limited order data and `confirmed → preparing → ready`. Its CI result is pending.
+- Playwright currently runs Desktop Chromium. Mobile viewports, other browsers, real devices and assistive technology are not yet accepted.
+
+## Local D1 integration coverage
+
+The isolated local D1 suites cover:
+
+- Checkout idempotency, concurrency, conditional stock reservations and atomic rollback.
+- Cancellation race handling, exactly-once stock restoration and atomic rollback.
+- First-owner bootstrap concurrency, validation and rollback.
+- Staff sessions, expiry/logout/deactivation/password reset/role changes and access boundaries.
+- Populated financial fixtures, COD amount consistency, collection replay and rollback.
+- Bounded retention expiry while excluding active sessions and financial/audit history.
+- Migration order, schema objects, indexes, triggers, foreign-key integrity and idempotent replay.
+- Backup/restore against synthetic isolated database state.
+
+These tests do not write to remote preview or production D1.
+
+## Verification matrix
+
+| Area | Status | Limitation |
+|---|---|---|
+| API typecheck/unit tests | PASS in baseline CI | Many route tests use mocked D1 |
+| Worker routing tests | PASS in baseline CI | Not a browser test |
+| Local D1 checkout/cancellation/bootstrap/session/finance/retention | PASS in baseline CI | Synthetic isolated local database |
+| Migration integrity and replay | PASS in baseline CI | Local migration validation, not remote schema inspection |
+| Backup/restore rehearsal | PASS in baseline CI | Isolated local fixtures, not a live customer-data recovery |
+| Customer/admin production builds | PASS in baseline CI | Build success does not prove full usability |
+| Browser E2E baseline | PASS in baseline CI | Mocked API, desktop Chromium, scoped journeys |
+| Kitchen browser regression | PENDING | Added in current development change |
+| Preview Worker dry-runs/config safety | PASS in baseline CI | Does not deploy or remotely mutate |
+| Lint/static quality gate | NOT CONFIGURED | No lint gate in CI |
+| Screen-reader/mobile acceptance | NOT PERFORMED | Requires separate browser/device review |
+| Current branch deployed to preview | NOT VERIFIED | Deployment workflow remains pinned to historical candidate |
+| Remote D1 concurrency/rollback | NOT PERFORMED for current branch | Do not infer from local D1 |
+| Production test/deployment | NOT PERFORMED | Explicitly out of scope |
 
 ## Existing test scripts
 
 - `npm test`
+- `npm run test:e2e`
 - `npm run test:integration:local`
 - `npm run test:integration:cancellation`
 - `npm run test:integration:bootstrap`
@@ -37,65 +73,20 @@ Latest final-head CI completed successfully. See the workflow run for exact step
 - `npm run test:integration:financial`
 - `npm run test:integration:retention`
 - `npm run test:integration:migrations`
+- `npm run test:integration:backup-restore`
+- `npm run test:config-safety`
 - `npm run build:storefront`
 - `npm run build:admin`
 
-## Verification boundaries
-
-| Area | Status | Limitation |
-|---|---|---|
-| API typecheck/unit tests | PASS in current final-head CI | Mocked D1 for many route tests |
-| Worker routing tests | PASS | Not a browser UI test |
-| Six existing local D1 suites | PASS in earlier final-head CI | Synthetic fixtures in isolated local Wrangler D1 |
-| Migration integrity suite | IMPLEMENTED, UNVERIFIED | New suite awaits final-head CI; asserts 5 ordered migrations, 21 tables, 21 indexes, 2 triggers, zero FK violations and no-op replay |
-| Storefront/admin builds | PASS | Build success does not prove browser usability |
-| Wrangler preview dry-runs | PASS | No deployment, remote mutation or live smoke test |
-| Lockfile install | PASS in CI | No independent Windows install test |
-| Lint | NOT CONFIGURED | No lint gate in CI |
-| Browser E2E | NOT IMPLEMENTED | Critical customer/admin workflows need browser automation |
-| Screen-reader testing | NOT PERFORMED | Requires actual browser/assistive technology review |
-| Remote preview D1 concurrency/rollback | NOT PERFORMED for current branch | Do not infer from local D1 |
-| Current HEAD deployed to preview | NOT VERIFIED | Manual deployment workflow remains pinned to historical candidate |
-| Production test/deployment | NOT PERFORMED | Production explicitly out of scope |
-
-## Browser E2E acceptance plan
-
-Use Playwright or another maintained browser framework only after verifying compatibility with the current Node/Vite/Worker stack.
-
-The first browser suite should use an isolated local/test Worker + local D1 with synthetic fixtures. Do not point automated checkout tests at live preview or production.
-
-Customer acceptance journey:
-1. Load storefront and public configuration.
-2. Browse categories and search.
-3. Open a product detail view.
-4. Add/update/remove cart items.
-5. Select delivery zone.
-6. Submit invalid checkout and verify field/error feedback.
-7. Submit valid guest COD order against synthetic test data.
-8. Verify confirmation and private tracking token handling.
-9. Track order and verify status/PII projection.
-10. Verify setup/closed-store and API-offline states.
-
-Admin acceptance journey:
-1. Bootstrap/login only against isolated synthetic test data.
-2. Verify session state and logout.
-3. Verify role-specific navigation and direct API access denial.
-4. Create/update catalogue items.
-5. Adjust stock and verify ledger.
-6. Process order status transitions and cancellation.
-7. Record COD collection after permitted delivery state.
-8. Verify deactivated staff/session revocation.
-9. Verify finance and kitchen data projections.
-
 ## Security and data handling
 
-- Test credentials and tokens must be synthetic and generated for test runs.
+- Test credentials and tokens are synthetic and generated for test runs.
 - Never persist secrets in fixtures, screenshots, logs or artifacts.
-- Never use real customer data.
-- Preserve 24-hour idempotency replay behaviour.
+- Never use real customer data in automated checkout tests.
+- Preserve 24-hour idempotency replay behavior.
 - Never delete financial, order, inventory or audit history as part of cleanup tests.
-- Keep manual transfer disabled until proof storage/review is implemented and verified.
-- No test is a penetration test or production-readiness approval unless a separately scoped professional assessment is performed.
+- Manual transfer remains disabled until private proof storage and finance review are implemented and verified.
+- A passing CI suite is not a penetration test or production-readiness approval.
 
 ## Reproducing locally
 
@@ -104,6 +95,7 @@ From a clean checkout with Node 22:
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
 npm test
+npm run test:e2e
 npm run test:integration:local
 npm run test:integration:cancellation
 npm run test:integration:bootstrap
@@ -111,8 +103,10 @@ npm run test:integration:session
 npm run test:integration:financial
 npm run test:integration:retention
 npm run test:integration:migrations
+npm run test:integration:backup-restore
+npm run test:config-safety
 npm run build:storefront
 npm run build:admin
 ```
 
-Use only isolated local D1 state for integration scripts. Do not use remote D1 commands for test fixtures.
+Use isolated local D1 state for integration scripts. Never use remote D1 commands for synthetic fixtures.
