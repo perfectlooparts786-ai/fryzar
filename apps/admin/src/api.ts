@@ -113,6 +113,15 @@ export interface InventoryMovement {
   created_at: string;
 }
 
+export interface AdminOrderItem {
+  product_name_ur_snapshot: string;
+  product_name_en_snapshot: string;
+  sku_snapshot: string | null;
+  unit_price_paisa: number;
+  quantity: number;
+  line_total_paisa: number;
+}
+
 export interface AdminOrder {
   id: string;
   order_number: string;
@@ -332,6 +341,11 @@ export const adminApi = {
       headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(data)
     }),
+
+  adminOrder: (orderId: string) =>
+    apiRequest<{ order: AdminOrder & { notes?: string }; items: AdminOrderItem[]; history: Array<{ old_status: string | null; new_status: string; note: string; created_at: string }> }>(
+      "/admin/orders/" + encodeURIComponent(orderId)
+    ),
 
   updateOrderStatus: (orderId: string, status: string, note = "") =>
     apiRequest<{ updated: boolean; order_id: string; old_status: string; status: string }>(
