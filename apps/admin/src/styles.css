@@ -443,3 +443,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .kitchen-ticket button:disabled { opacity: .55; cursor: wait; }
 .kitchen-role { display: inline-block; margin-top: 8px; color: #849187; font-size: 9px; text-transform: capitalize; }
 @media (max-width: 850px) { .kitchen-board { grid-template-columns: 1fr; } }
+
+
+.kitchen-items { display: flex; flex-direction: column; gap: 7px; margin: 13px 0; padding: 0; list-style: none; }
+.kitchen-items li { display: flex; justify-content: space-between; gap: 12px; color: #56645a; font-size: 10px; line-height: 1.5; }
+.kitchen-items li strong { flex: 0 0 auto; color: var(--forest); font-weight: 800; }
