@@ -20,6 +20,7 @@ This is the actionable backlog. Older dated status narratives have been consolid
 | BE-008 | Bounded operational retention | COMPLETE | Local D1 retention integration and migration 0005 |
 | OPS-001 | Lockfile and deterministic CI installation | COMPLETE | Committed root lockfile; final-head CI uses npm ci |
 | UX-001 | Product dialog keyboard focus management | IMPLEMENTED; browser verification pending | Focus management code on branch; no browser E2E evidence |
+| OPS-KIT-001 | Kitchen preparation queue in admin | IMPLEMENTED; CI verification pending | Role-authorized confirmed/preparing queue, privacy-safe order details, line-item tickets and guarded preparing/ready transitions |
 
 ## Phase 3: release engineering
 
@@ -50,7 +51,7 @@ This is the actionable backlog. Older dated status narratives have been consolid
 |---|---|---|---|
 | ADM-001 | Admin browser E2E foundation | OPEN | Login, session, role-based route tests |
 | ADM-002 | Catalogue and inventory workflows | PARTIAL | CRUD/adjustment journey with audit verification |
-| ADM-003 | Order and kitchen workflow | PARTIAL | All permitted transitions and cancellation states |
+| ADM-003 | Order and kitchen workflow | PARTIAL | Order operations plus kitchen ticket queue implemented; full preparation timing, item modifiers and dispatch handoff remain open |
 | ADM-004 | Audit log read/search UI and API | NOT STARTED | Role-restricted, paginated, PII-minimized records |
 | ADM-005 | Delivery operations workflow | PARTIAL | Assignment/handoff/confirmation design and tests |
 | ADM-006 | Dashboard refinement | PARTIAL | Metrics definitions, date windows and consistent empty states |
