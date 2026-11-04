@@ -41,7 +41,7 @@ This file is the concise current-state source of truth. Historical audit narrati
 - Lockfile-based reproducible dependency installation in CI.
 - Product detail dialog keyboard focus management.
 
-## Known product and release gaps
+## Latest implementation update (4 November 2026)\n\n- Added an admin Kitchen queue with separate confirmed and preparing lanes. It loads order details through the existing role-authorized detail endpoint, displays bilingual product-name snapshots and quantities, and supports the existing kitchen-only `confirmed → preparing → ready` transitions.\n- The API already omits customer phone/address/name for kitchen-role list and detail responses; the new screen does not expose those fields. The API remains the authorization boundary.\n- This source change is not yet CI-verified and is not deployed.\n\n## Known product and release gaps
 
 - No browser E2E or real-device UX acceptance evidence.
 - No configured lint gate.
