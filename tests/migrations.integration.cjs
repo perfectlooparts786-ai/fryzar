@@ -8,7 +8,9 @@ const EXPECTED_MIGRATIONS = [
   "0002_checkout_integrity.sql",
   "0003_admin_bootstrap.sql",
   "0004_inventory_adjustments.sql",
-  "0005_operational_retention.sql"
+  "0005_operational_retention.sql",
+  "0006_product_variants_modifiers.sql",
+  "0007_delivery_and_support.sql"
 ];
 
 const EXPECTED_TABLES = [
@@ -16,7 +18,9 @@ const EXPECTED_TABLES = [
   "staff_users", "staff_sessions", "orders", "order_items", "order_status_events",
   "payments", "payment_proofs", "inventory_movements", "idempotency_keys",
   "auth_login_attempts", "api_rate_limits", "audit_logs", "notifications",
-  "support_cases", "bootstrap_claims", "inventory_adjustments"
+  "support_cases", "bootstrap_claims", "inventory_adjustments",
+  "product_variants", "modifier_groups", "modifier_options", "product_modifier_groups",
+  "coupons", "coupon_redemptions", "riders", "delivery_assignments", "support_messages"
 ];
 
 const EXPECTED_INDEXES = [
@@ -29,7 +33,11 @@ const EXPECTED_INDEXES = [
   "idx_notifications_recipient_created", "idx_payments_one_per_order",
   "idx_inventory_order_movement_once", "idx_inventory_adjustments_product_created",
   "idx_inventory_adjustment_movement_once", "idx_idempotency_expiry",
-  "idx_auth_attempts_retention"
+  "idx_auth_attempts_retention",
+  "idx_variants_product_available", "idx_modifier_options_group",
+  "idx_coupons_code_active", "idx_redemptions_coupon", "idx_redemptions_phone",
+  "idx_riders_status", "idx_delivery_assignments_order",
+  "idx_delivery_assignments_rider_status", "idx_support_messages_case"
 ];
 
 async function main() {
@@ -82,8 +90,11 @@ async function main() {
     assert.equal(Number(afterReplay.migration_count), EXPECTED_MIGRATIONS.length);
 
     console.log(
-      "Local D1 migration verification passed: 5 ordered migrations, 21 application tables, " +
-      "21 expected indexes, 2 integrity triggers, zero foreign-key violations, replay unchanged."
+      "Local D1 migration verification passed: " +
+      EXPECTED_MIGRATIONS.length + " ordered migrations, " +
+      EXPECTED_TABLES.length + " application tables, " +
+      EXPECTED_INDEXES.length + " expected indexes, " +
+      "2 integrity triggers, zero foreign-key violations, replay unchanged."
     );
   } finally {
     await db.cleanup();
