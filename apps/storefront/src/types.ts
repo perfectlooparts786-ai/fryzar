@@ -10,6 +10,60 @@ export interface Category {
   sort_order: number;
 }
 
+export interface ProductVariant {
+  id: string;
+  sku: string | null;
+  name_en: string;
+  name_ur: string;
+  price_paisa: number;
+  compare_at_paisa: number | null;
+  stock_qty: number | null;
+  is_available: number;
+  sort_order: number;
+}
+
+export interface ModifierOption {
+  id: string;
+  group_id: string;
+  name_en: string;
+  name_ur: string;
+  price_paisa: number;
+  is_available: number;
+  sort_order: number;
+}
+
+export interface ModifierGroup {
+  id: string;
+  name_en: string;
+  name_ur: string;
+  description_en: string;
+  description_ur: string;
+  min_selection: number;
+  max_selection: number;
+  is_required: number;
+  sort_order: number;
+  options: ModifierOption[];
+}
+
+export interface ProductDetails extends Product {
+  variants?: ProductVariant[];
+  modifier_groups?: ModifierGroup[];
+}
+
+export interface CartItem {
+  id: string;
+  product: Product;
+  variant?: ProductVariant;
+  selected_modifiers?: ModifierOption[];
+  quantity: number;
+  unit_price_paisa: number;
+}
+
+export interface AppliedCoupon {
+  code: string;
+  discount_paisa: number;
+}
+
 export interface Product {
   id: string;
   slug: string;
@@ -27,6 +81,8 @@ export interface Product {
   category_slug?: string | null;
   category_name_en?: string | null;
   category_name_ur?: string | null;
+  variants?: ProductVariant[];
+  modifier_groups?: ModifierGroup[];
 }
 
 export interface DeliveryZone {

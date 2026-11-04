@@ -54,6 +54,8 @@ interface StoredOrderResponse {
 
 interface CheckoutLine {
   product_id: string;
+  variant_id?: string;
+  selected_modifier_option_ids?: string[];
   quantity: number;
 }
 
@@ -64,6 +66,7 @@ interface CheckoutInput {
   delivery_zone_id: string;
   customer_language: "ur" | "en";
   payment_method: "cod" | "manual_transfer";
+  coupon_code?: string;
   notes: string;
   items: CheckoutLine[];
 }
@@ -366,6 +369,8 @@ async function readCheckoutInput(request: Request): Promise<
   const notes = safeString(body.notes);
   const rawItems = body.items;
 
+  const couponCode = safeString(body.coupon_code).trim() || undefined;
+
   if (customerName.length < 2 || customerName.length > 100) {
     return { ok: false, response: json({ error: "invalid_customer_name" }, 400) };
   }
@@ -400,17 +405,40 @@ async function readCheckoutInput(request: Request): Promise<
     }
 
     const productId = safeString(item.product_id);
+    const variantId = safeString(item.variant_id) || undefined;
+    const rawOptions = item.selected_modifier_option_ids;
     const quantity = item.quantity;
 
     if (!validUuid(productId) || !Number.isInteger(quantity) || (quantity as number) < 1 || (quantity as number) > 20) {
       return { ok: false, response: json({ error: "invalid_cart_line" }, 400) };
     }
-    if (seen.has(productId)) {
+    if (variantId && !validUuid(variantId)) {
+      return { ok: false, response: json({ error: "invalid_cart_line" }, 400) };
+    }
+
+    let selectedModifierOptionIds: string[] | undefined;
+    if (Array.isArray(rawOptions)) {
+      selectedModifierOptionIds = [];
+      for (const optId of rawOptions) {
+        const strOpt = safeString(optId);
+        if (validUuid(strOpt)) {
+          selectedModifierOptionIds.push(strOpt);
+        }
+      }
+    }
+
+    const itemKey = productId + ":" + (variantId || "") + ":" + (selectedModifierOptionIds ? selectedModifierOptionIds.sort().join(",") : "");
+    if (seen.has(itemKey)) {
       return { ok: false, response: json({ error: "duplicate_cart_product" }, 400) };
     }
 
-    seen.add(productId);
-    items.push({ product_id: productId, quantity: quantity as number });
+    seen.add(itemKey);
+    items.push({
+      product_id: productId,
+      variant_id: variantId,
+      selected_modifier_option_ids: selectedModifierOptionIds,
+      quantity: quantity as number
+    });
   }
 
   return {
@@ -422,6 +450,7 @@ async function readCheckoutInput(request: Request): Promise<
       delivery_zone_id: deliveryZoneId,
       customer_language: language,
       payment_method: paymentMethod,
+      coupon_code: couponCode,
       notes,
       items
     }
@@ -516,34 +545,123 @@ async function checkout(request: Request, env: Env): Promise<Response> {
   }
 
   const placeholders = input.items.map((_, index) => "?" + String(index + 1)).join(", ");
+  const uniqueProductIds = Array.from(new Set(input.items.map((item) => item.product_id)));
+  const productPlaceholders = uniqueProductIds.map((_, index) => "?" + String(index + 1)).join(", ");
+
   const productResult = await env.DB.prepare(
     "SELECT p.id, p.sku, p.name_ur, p.name_en, p.price_paisa, p.stock_qty, p.is_available " +
     "FROM products p LEFT JOIN categories c ON c.id = p.category_id " +
-    "WHERE p.id IN (" + placeholders + ") AND p.is_available = 1 " +
+    "WHERE p.id IN (" + productPlaceholders + ") AND p.is_available = 1 " +
     "AND (p.category_id IS NULL OR c.is_active = 1)"
-  ).bind(...input.items.map((item) => item.product_id)).all<ProductRow>();
+  ).bind(...uniqueProductIds).all<ProductRow>();
 
-  if (productResult.results.length !== input.items.length) {
+  if (productResult.results.length !== uniqueProductIds.length) {
     return json({ error: "product_unavailable" }, 409);
   }
 
   const products = new Map(productResult.results.map((product) => [product.id, product]));
+
+  const variantIds = input.items.map((i) => i.variant_id).filter(Boolean) as string[];
+  const variantsMap = new Map<string, JsonRecord>();
+  if (variantIds.length > 0) {
+    const varPlaceholders = variantIds.map((_, idx) => "?" + String(idx + 1)).join(", ");
+    const varResult = await env.DB.prepare(
+      "SELECT id, product_id, sku, name_ur, name_en, price_paisa, stock_qty, is_available " +
+      "FROM product_variants WHERE id IN (" + varPlaceholders + ") AND is_available = 1"
+    ).bind(...variantIds).all<JsonRecord>();
+    for (const v of varResult.results) {
+      variantsMap.set(String(v.id), v);
+    }
+  }
+
+  const allModifierOptionIds = input.items.flatMap((i) => i.selected_modifier_option_ids || []);
+  const optionsMap = new Map<string, JsonRecord>();
+  if (allModifierOptionIds.length > 0) {
+    const optPlaceholders = allModifierOptionIds.map((_, idx) => "?" + String(idx + 1)).join(", ");
+    const optResult = await env.DB.prepare(
+      "SELECT id, group_id, name_ur, name_en, price_paisa, is_available " +
+      "FROM modifier_options WHERE id IN (" + optPlaceholders + ") AND is_available = 1"
+    ).bind(...allModifierOptionIds).all<JsonRecord>();
+    for (const o of optResult.results) {
+      optionsMap.set(String(o.id), o);
+    }
+  }
+
   let subtotal = 0;
+  const calculatedItems: Array<{
+    product: ProductRow;
+    variant?: JsonRecord;
+    modifiers: JsonRecord[];
+    unit_price_paisa: number;
+    quantity: number;
+    line_total_paisa: number;
+    name_ur_snapshot: string;
+    name_en_snapshot: string;
+    sku_snapshot: string | null;
+  }> = [];
 
   for (const item of input.items) {
     const product = products.get(item.product_id);
     if (!product) return json({ error: "product_unavailable" }, 409);
-    if (product.stock_qty !== null && product.stock_qty < item.quantity) {
-      return json({ error: "insufficient_stock" }, 409);
+
+    let baseUnitPrice = product.price_paisa;
+    let nameUr = product.name_ur;
+    let nameEn = product.name_en;
+    let sku = product.sku;
+    let variantObj: JsonRecord | undefined;
+
+    if (item.variant_id) {
+      variantObj = variantsMap.get(item.variant_id);
+      if (!variantObj || String(variantObj.product_id) !== product.id) {
+        return json({ error: "product_variant_unavailable" }, 409);
+      }
+      const vStock = variantObj.stock_qty === null ? null : Number(variantObj.stock_qty);
+      if (vStock !== null && vStock < item.quantity) {
+        return json({ error: "insufficient_stock" }, 409);
+      }
+      baseUnitPrice = Number(variantObj.price_paisa);
+      nameUr = product.name_ur + " (" + String(variantObj.name_ur) + ")";
+      nameEn = product.name_en + " (" + String(variantObj.name_en) + ")";
+      if (variantObj.sku) sku = String(variantObj.sku);
+    } else {
+      if (product.stock_qty !== null && product.stock_qty < item.quantity) {
+        return json({ error: "insufficient_stock" }, 409);
+      }
     }
-    if (!Number.isSafeInteger(product.price_paisa) || product.price_paisa < 0) {
+
+    let modifierTotal = 0;
+    const selectedOptions: JsonRecord[] = [];
+    if (item.selected_modifier_option_ids && item.selected_modifier_option_ids.length > 0) {
+      for (const optId of item.selected_modifier_option_ids) {
+        const optionObj = optionsMap.get(optId);
+        if (!optionObj) return json({ error: "modifier_option_unavailable" }, 409);
+        modifierTotal += Number(optionObj.price_paisa);
+        selectedOptions.push(optionObj);
+      }
+    }
+
+    const unitPrice = baseUnitPrice + modifierTotal;
+    if (!Number.isSafeInteger(unitPrice) || unitPrice < 0) {
       return json({ error: "product_price_invalid" }, 409);
     }
 
-    subtotal += product.price_paisa * item.quantity;
+    const lineTotal = unitPrice * item.quantity;
+    subtotal += lineTotal;
     if (!Number.isSafeInteger(subtotal) || subtotal > 1_000_000_000) {
       return json({ error: "order_total_exceeded" }, 422);
     }
+
+    calculatedItems.push({
+      product,
+      variant: variantObj,
+      modifiers: selectedOptions,
+      unit_price_paisa: unitPrice,
+      quantity: item.quantity,
+      line_total_paisa: lineTotal,
+      name_ur_snapshot: nameUr,
+      name_en_snapshot: nameEn,
+      sku_snapshot: sku
+    });
   }
 
   if (subtotal < zone.minimum_order_paisa) {
@@ -553,12 +671,46 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     }, 422);
   }
 
+  let discountPaisa = 0;
+  let validatedCoupon: JsonRecord | null = null;
+  if (input.coupon_code) {
+    const coupon = await env.DB.prepare(
+      "SELECT id, code, discount_type, discount_value, min_order_paisa, max_discount_paisa, usage_limit, used_count, start_at, expires_at, is_active " +
+      "FROM coupons WHERE LOWER(code) = LOWER(?1) LIMIT 1"
+    ).bind(input.coupon_code).first<JsonRecord>();
+
+    const nowIso = new Date().toISOString();
+    if (!coupon || coupon.is_active !== 1 ||
+        (coupon.start_at && String(coupon.start_at) > nowIso) ||
+        (coupon.expires_at && String(coupon.expires_at) < nowIso) ||
+        subtotal < Number(coupon.min_order_paisa || 0) ||
+        (coupon.usage_limit !== null && Number(coupon.used_count || 0) >= Number(coupon.usage_limit))) {
+      return json({ error: "coupon_invalid_or_expired" }, 422);
+    }
+
+    const discountType = String(coupon.discount_type);
+    const discountValue = Number(coupon.discount_value);
+    if (discountType === "fixed") {
+      discountPaisa = discountValue;
+    } else if (discountType === "percent") {
+      discountPaisa = Math.round((subtotal * discountValue) / 100);
+    }
+    const maxDiscount = coupon.max_discount_paisa === null ? null : Number(coupon.max_discount_paisa);
+    if (maxDiscount !== null && discountPaisa > maxDiscount) {
+      discountPaisa = maxDiscount;
+    }
+    if (discountPaisa > subtotal) {
+      discountPaisa = subtotal;
+    }
+    validatedCoupon = coupon;
+  }
+
   const deliveryFee = zone.delivery_fee_paisa;
   if (!Number.isSafeInteger(deliveryFee) || deliveryFee < 0) {
     return json({ error: "delivery_configuration_invalid" }, 503);
   }
 
-  const total = subtotal + deliveryFee;
+  const total = Math.max(0, subtotal - discountPaisa) + deliveryFee;
   if (!Number.isSafeInteger(total) || total > 1_000_000_000) {
     return json({ error: "order_total_exceeded" }, 422);
   }
@@ -611,7 +763,7 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       "delivery_area, delivery_zone_id, customer_language, payment_method, payment_status, status, " +
       "subtotal_paisa, delivery_fee_paisa, discount_paisa, total_paisa, notes" +
       ") VALUES (" +
-      "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12, ?13, 0, ?14, ?15)"
+      "?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12, ?13, ?14, ?15, ?16)"
     ).bind(
       orderId,
       orderNumber,
@@ -626,6 +778,7 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       paymentStatus,
       subtotal,
       deliveryFee,
+      discountPaisa,
       total,
       input.notes
     ),
@@ -647,10 +800,19 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     }))
   ];
 
-  for (const item of input.items) {
-    const product = products.get(item.product_id);
-    if (!product) return json({ error: "product_unavailable" }, 409);
+  if (validatedCoupon) {
+    statements.push(
+      env.DB.prepare(
+        "UPDATE coupons SET used_count = used_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?1"
+      ).bind(validatedCoupon.id),
+      env.DB.prepare(
+        "INSERT INTO coupon_redemptions (id, coupon_id, order_id, customer_phone, discount_applied_paisa) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5)"
+      ).bind(crypto.randomUUID(), validatedCoupon.id, orderId, input.customer_phone, discountPaisa)
+    );
+  }
 
+  for (const item of calculatedItems) {
     statements.push(
       env.DB.prepare(
         "INSERT INTO order_items (" +
@@ -660,27 +822,38 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       ).bind(
         crypto.randomUUID(),
         orderId,
-        product.id,
-        product.name_ur,
-        product.name_en,
-        product.sku,
-        product.price_paisa,
+        item.product.id,
+        item.name_ur_snapshot,
+        item.name_en_snapshot,
+        item.sku_snapshot,
+        item.unit_price_paisa,
         item.quantity,
-        product.price_paisa * item.quantity
+        item.line_total_paisa
       ),
       env.DB.prepare(
         "UPDATE products SET " +
         "stock_qty = CASE WHEN stock_qty IS NULL THEN NULL ELSE stock_qty - ?1 END, " +
         "updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND is_available = 1 " +
         "AND (stock_qty IS NULL OR stock_qty >= ?1)"
-      ).bind(item.quantity, product.id),
+      ).bind(item.quantity, item.product.id),
       env.DB.prepare(
         "INSERT INTO inventory_movements (" +
         "id, product_id, delta_qty, reason, reference_type, reference_id, note" +
         ") SELECT ?1, id, ?2, 'order_reserved', 'order', ?3, 'Stock reserved for order' " +
         "FROM products WHERE id = ?4 AND stock_qty IS NOT NULL"
-      ).bind(crypto.randomUUID(), -item.quantity, orderId, product.id)
+      ).bind(crypto.randomUUID(), -item.quantity, orderId, item.product.id)
     );
+
+    if (item.variant) {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE product_variants SET " +
+          "stock_qty = CASE WHEN stock_qty IS NULL THEN NULL ELSE stock_qty - ?1 END, " +
+          "updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND is_available = 1 " +
+          "AND (stock_qty IS NULL OR stock_qty >= ?1)"
+        ).bind(item.quantity, String(item.variant.id))
+      );
+    }
   }
 
   try {
@@ -2381,6 +2554,451 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
 }
 
 
+async function getProductDetails(env: Env, idOrSlug: string): Promise<Response> {
+  const product = await env.DB.prepare(
+    "SELECT p.id, p.slug, p.sku, p.category_id, " +
+    "p.name_ur, p.name_en, p.description_ur, p.description_en, " +
+    "p.price_paisa, p.compare_at_paisa, p.image_url, p.is_available, p.is_featured " +
+    "FROM products p WHERE (p.id = ?1 OR p.slug = ?1) AND p.is_available = 1 LIMIT 1"
+  ).bind(idOrSlug).first<JsonRecord>();
+
+  if (!product) {
+    return json({ error: "product_not_found" }, 404);
+  }
+
+  const productId = String(product.id);
+
+  const variants = await env.DB.prepare(
+    "SELECT id, sku, name_ur, name_en, price_paisa, compare_at_paisa, stock_qty, is_available, sort_order " +
+    "FROM product_variants WHERE product_id = ?1 AND is_available = 1 ORDER BY sort_order ASC, name_en ASC"
+  ).bind(productId).all<JsonRecord>();
+
+  const groups = await env.DB.prepare(
+    "SELECT mg.id, mg.name_ur, mg.name_en, mg.description_ur, mg.description_en, " +
+    "mg.min_selection, mg.max_selection, mg.is_required, pmg.sort_order " +
+    "FROM modifier_groups mg " +
+    "JOIN product_modifier_groups pmg ON pmg.group_id = mg.id " +
+    "WHERE pmg.product_id = ?1 ORDER BY pmg.sort_order ASC"
+  ).bind(productId).all<JsonRecord>();
+
+  const groupIds = groups.results.map((g) => String(g.id));
+  let options: JsonRecord[] = [];
+  if (groupIds.length > 0) {
+    const placeholders = groupIds.map((_, i) => "?" + String(i + 1)).join(", ");
+    const optionsResult = await env.DB.prepare(
+      "SELECT id, group_id, name_ur, name_en, price_paisa, is_available, sort_order " +
+      "FROM modifier_options WHERE group_id IN (" + placeholders + ") AND is_available = 1 " +
+      "ORDER BY sort_order ASC, name_en ASC"
+    ).bind(...groupIds).all<JsonRecord>();
+    options = optionsResult.results;
+  }
+
+  const groupList = groups.results.map((group) => {
+    const groupOptions = options.filter((opt) => String(opt.group_id) === String(group.id));
+    return {
+      ...group,
+      options: groupOptions
+    };
+  });
+
+  return json({
+    product: {
+      ...product,
+      variants: variants.results,
+      modifier_groups: groupList
+    }
+  });
+}
+
+async function validateCouponPublic(request: Request, env: Env): Promise<Response> {
+  const body = await parseJsonBody(request, 4096);
+  if (!body) return json({ error: "invalid_request" }, 400);
+
+  const code = safeString(body.code).trim();
+  const subtotalPaisa = Number(body.subtotal_paisa);
+
+  if (!code || !Number.isSafeInteger(subtotalPaisa) || subtotalPaisa < 0) {
+    return json({ error: "validation_failed" }, 400);
+  }
+
+  const coupon = await env.DB.prepare(
+    "SELECT id, code, discount_type, discount_value, min_order_paisa, max_discount_paisa, usage_limit, used_count, start_at, expires_at, is_active " +
+    "FROM coupons WHERE LOWER(code) = LOWER(?1) LIMIT 1"
+  ).bind(code).first<JsonRecord>();
+
+  if (!coupon || coupon.is_active !== 1) {
+    return json({ valid: false, error: "invalid_coupon" }, 400);
+  }
+
+  const now = new Date().toISOString();
+  if (coupon.start_at && String(coupon.start_at) > now) {
+    return json({ valid: false, error: "coupon_not_started" }, 400);
+  }
+  if (coupon.expires_at && String(coupon.expires_at) < now) {
+    return json({ valid: false, error: "coupon_expired" }, 400);
+  }
+  const minOrder = Number(coupon.min_order_paisa || 0);
+  if (subtotalPaisa < minOrder) {
+    return json({ valid: false, error: "minimum_order_not_met", min_order_paisa: minOrder }, 400);
+  }
+  const usageLimit = coupon.usage_limit === null ? null : Number(coupon.usage_limit);
+  const usedCount = Number(coupon.used_count || 0);
+  if (usageLimit !== null && usedCount >= usageLimit) {
+    return json({ valid: false, error: "coupon_usage_limit_reached" }, 400);
+  }
+
+  const discountType = String(coupon.discount_type);
+  const discountValue = Number(coupon.discount_value);
+  let discountPaisa = 0;
+  if (discountType === "fixed") {
+    discountPaisa = discountValue;
+  } else if (discountType === "percent") {
+    discountPaisa = Math.round((subtotalPaisa * discountValue) / 100);
+  }
+  const maxDiscount = coupon.max_discount_paisa === null ? null : Number(coupon.max_discount_paisa);
+  if (maxDiscount !== null && discountPaisa > maxDiscount) {
+    discountPaisa = maxDiscount;
+  }
+  if (discountPaisa > subtotalPaisa) {
+    discountPaisa = subtotalPaisa;
+  }
+
+  return json({
+    valid: true,
+    discount_paisa: discountPaisa,
+    coupon: {
+      id: coupon.id,
+      code: coupon.code,
+      discount_type: coupon.discount_type,
+      discount_value: coupon.discount_value
+    }
+  });
+}
+
+async function adminVariantsAndModifiersApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const variantMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})\/variants$/i);
+  const variantSingleMatch = url.pathname.match(/^\/api\/v1\/admin\/variants\/([0-9a-f-]{36})$/i);
+
+  const groupPath = url.pathname === "/api/v1/admin/modifier-groups";
+  const groupMatch = url.pathname.match(/^\/api\/v1\/admin\/modifier-groups\/([0-9a-f-]{36})$/i);
+  const optionMatch = url.pathname.match(/^\/api\/v1\/admin\/modifier-groups\/([0-9a-f-]{36})\/options$/i);
+  const optionSingleMatch = url.pathname.match(/^\/api\/v1\/admin\/modifier-options\/([0-9a-f-]{36})$/i);
+  const productGroupMatch = url.pathname.match(/^\/api\/v1\/admin\/products\/([0-9a-f-]{36})\/modifier-groups(?:\/([0-9a-f-]{36}))?$/i);
+
+  if (!(variantMatch || variantSingleMatch || groupPath || groupMatch || optionMatch || optionSingleMatch || productGroupMatch)) {
+    return null;
+  }
+
+  if (request.method === "GET") {
+    if (!hasRole(user, CATALOG_READ_ROLES)) return roleDenied();
+  } else {
+    if (!hasRole(user, CATALOG_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && variantMatch) {
+    const productId = variantMatch[1].toLowerCase();
+    const result = await env.DB.prepare(
+      "SELECT id, product_id, sku, name_ur, name_en, price_paisa, compare_at_paisa, stock_qty, is_available, sort_order, created_at, updated_at " +
+      "FROM product_variants WHERE product_id = ?1 ORDER BY sort_order ASC, name_en ASC"
+    ).bind(productId).all<JsonRecord>();
+    return json({ variants: result.results });
+  }
+
+  if (request.method === "POST" && variantMatch) {
+    const productId = variantMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const nameEn = safeString(body.name_en);
+    const nameUr = safeString(body.name_ur);
+    const price = Number(body.price_paisa);
+    const sku = safeString(body.sku) || null;
+    const compareAt = body.compare_at_paisa === null || body.compare_at_paisa === undefined ? null : Number(body.compare_at_paisa);
+    const stock = body.stock_qty === null || body.stock_qty === undefined ? null : Number(body.stock_qty);
+    const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+    const available = body.is_available === undefined ? true : body.is_available === true;
+
+    if (!nameEn || !nameUr || !Number.isSafeInteger(price) || price < 0) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO product_variants (id, product_id, sku, name_ur, name_en, price_paisa, compare_at_paisa, stock_qty, is_available, sort_order, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)"
+    ).bind(id, productId, sku, nameUr, nameEn, price, compareAt, stock, available ? 1 : 0, sortOrder, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (variantSingleMatch) {
+    const id = variantSingleMatch[1].toLowerCase();
+    if (request.method === "DELETE") {
+      await env.DB.prepare("DELETE FROM product_variants WHERE id = ?1").bind(id).run();
+      return json({ deleted: true });
+    }
+    if (request.method === "PUT") {
+      const body = await parseJsonBody(request, 8192);
+      if (!body) return json({ error: "invalid_request" }, 400);
+      const nameEn = safeString(body.name_en);
+      const nameUr = safeString(body.name_ur);
+      const price = Number(body.price_paisa);
+      const sku = safeString(body.sku) || null;
+      const compareAt = body.compare_at_paisa === null || body.compare_at_paisa === undefined ? null : Number(body.compare_at_paisa);
+      const stock = body.stock_qty === null || body.stock_qty === undefined ? null : Number(body.stock_qty);
+      const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+      const available = body.is_available === undefined ? true : body.is_available === true;
+
+      await env.DB.prepare(
+        "UPDATE product_variants SET sku=?1, name_ur=?2, name_en=?3, price_paisa=?4, compare_at_paisa=?5, stock_qty=?6, is_available=?7, sort_order=?8, updated_at=?9 WHERE id=?10"
+      ).bind(sku, nameUr, nameEn, price, compareAt, stock, available ? 1 : 0, sortOrder, now, id).run();
+
+      return json({ saved: true, id });
+    }
+  }
+
+  if (request.method === "GET" && groupPath) {
+    const groups = await env.DB.prepare(
+      "SELECT id, name_ur, name_en, description_ur, description_en, min_selection, max_selection, is_required, sort_order, created_at, updated_at " +
+      "FROM modifier_groups ORDER BY sort_order ASC, name_en ASC"
+    ).all<JsonRecord>();
+    const options = await env.DB.prepare(
+      "SELECT id, group_id, name_ur, name_en, price_paisa, is_available, sort_order " +
+      "FROM modifier_options ORDER BY sort_order ASC, name_en ASC"
+    ).all<JsonRecord>();
+
+    const result = groups.results.map((g) => ({
+      ...g,
+      options: options.results.filter((o) => String(o.group_id) === String(g.id))
+    }));
+
+    return json({ modifier_groups: result });
+  }
+
+  if (request.method === "POST" && groupPath) {
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const nameEn = safeString(body.name_en);
+    const nameUr = safeString(body.name_ur);
+    const descEn = safeString(body.description_en);
+    const descUr = safeString(body.description_ur);
+    const minSel = Number.isInteger(body.min_selection) ? Number(body.min_selection) : 0;
+    const maxSel = Number.isInteger(body.max_selection) ? Number(body.max_selection) : 1;
+    const isReq = body.is_required === true;
+    const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+
+    if (!nameEn || !nameUr || minSel < 0 || maxSel < minSel) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO modifier_groups (id, name_ur, name_en, description_ur, description_en, min_selection, max_selection, is_required, sort_order, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)"
+    ).bind(id, nameUr, nameEn, descUr, descEn, minSel, maxSel, isReq ? 1 : 0, sortOrder, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (groupMatch) {
+    const id = groupMatch[1].toLowerCase();
+    if (request.method === "DELETE") {
+      await env.DB.prepare("DELETE FROM modifier_groups WHERE id = ?1").bind(id).run();
+      return json({ deleted: true });
+    }
+    if (request.method === "PUT") {
+      const body = await parseJsonBody(request, 8192);
+      if (!body) return json({ error: "invalid_request" }, 400);
+
+      const nameEn = safeString(body.name_en);
+      const nameUr = safeString(body.name_ur);
+      const descEn = safeString(body.description_en);
+      const descUr = safeString(body.description_ur);
+      const minSel = Number.isInteger(body.min_selection) ? Number(body.min_selection) : 0;
+      const maxSel = Number.isInteger(body.max_selection) ? Number(body.max_selection) : 1;
+      const isReq = body.is_required === true;
+      const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+
+      await env.DB.prepare(
+        "UPDATE modifier_groups SET name_ur=?1, name_en=?2, description_ur=?3, description_en=?4, min_selection=?5, max_selection=?6, is_required=?7, sort_order=?8, updated_at=?9 WHERE id=?10"
+      ).bind(nameUr, nameEn, descUr, descEn, minSel, maxSel, isReq ? 1 : 0, sortOrder, now, id).run();
+
+      return json({ saved: true, id });
+    }
+  }
+
+  if (request.method === "POST" && optionMatch) {
+    const groupId = optionMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const nameEn = safeString(body.name_en);
+    const nameUr = safeString(body.name_ur);
+    const price = Number.isInteger(body.price_paisa) ? Number(body.price_paisa) : 0;
+    const available = body.is_available === undefined ? true : body.is_available === true;
+    const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+
+    if (!nameEn || !nameUr || price < 0) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO modifier_options (id, group_id, name_ur, name_en, price_paisa, is_available, sort_order, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)"
+    ).bind(id, groupId, nameUr, nameEn, price, available ? 1 : 0, sortOrder, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (optionSingleMatch) {
+    const id = optionSingleMatch[1].toLowerCase();
+    if (request.method === "DELETE") {
+      await env.DB.prepare("DELETE FROM modifier_options WHERE id = ?1").bind(id).run();
+      return json({ deleted: true });
+    }
+    if (request.method === "PUT") {
+      const body = await parseJsonBody(request, 8192);
+      if (!body) return json({ error: "invalid_request" }, 400);
+
+      const nameEn = safeString(body.name_en);
+      const nameUr = safeString(body.name_ur);
+      const price = Number.isInteger(body.price_paisa) ? Number(body.price_paisa) : 0;
+      const available = body.is_available === undefined ? true : body.is_available === true;
+      const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+
+      await env.DB.prepare(
+        "UPDATE modifier_options SET name_ur=?1, name_en=?2, price_paisa=?3, is_available=?4, sort_order=?5, updated_at=?6 WHERE id=?7"
+      ).bind(nameUr, nameEn, price, available ? 1 : 0, sortOrder, now, id).run();
+
+      return json({ saved: true, id });
+    }
+  }
+
+  if (productGroupMatch) {
+    const productId = productGroupMatch[1].toLowerCase();
+    const groupId = productGroupMatch[2]?.toLowerCase();
+
+    if (request.method === "DELETE" && groupId) {
+      await env.DB.prepare(
+        "DELETE FROM product_modifier_groups WHERE product_id = ?1 AND group_id = ?2"
+      ).bind(productId, groupId).run();
+      return json({ deleted: true });
+    }
+
+    if (request.method === "POST") {
+      const body = await parseJsonBody(request, 4096);
+      if (!body) return json({ error: "invalid_request" }, 400);
+      const gId = safeString(body.group_id).toLowerCase();
+      const sortOrder = Number.isInteger(body.sort_order) ? Number(body.sort_order) : 0;
+      if (!validUuid(gId)) return json({ error: "validation_failed" }, 400);
+
+      await env.DB.prepare(
+        "INSERT OR REPLACE INTO product_modifier_groups (product_id, group_id, sort_order) VALUES (?1, ?2, ?3)"
+      ).bind(productId, gId, sortOrder).run();
+
+      return json({ saved: true }, 201);
+    }
+  }
+
+  return null;
+}
+
+async function adminCouponsApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  const couponPath = url.pathname === "/api/v1/admin/coupons";
+  const couponMatch = url.pathname.match(/^\/api\/v1\/admin\/coupons\/([0-9a-f-]{36})$/i);
+
+  if (!(couponPath || couponMatch)) return null;
+
+  if (request.method === "GET") {
+    if (!hasRole(user, CATALOG_READ_ROLES)) return roleDenied();
+  } else {
+    if (!hasRole(user, CATALOG_WRITE_ROLES)) return roleDenied();
+    if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const now = new Date().toISOString();
+
+  if (request.method === "GET" && couponPath) {
+    const result = await env.DB.prepare(
+      "SELECT id, code, discount_type, discount_value, min_order_paisa, max_discount_paisa, usage_limit, used_count, start_at, expires_at, is_active, created_at, updated_at " +
+      "FROM coupons ORDER BY created_at DESC LIMIT 200"
+    ).all<JsonRecord>();
+    return json({ coupons: result.results });
+  }
+
+  if (request.method === "POST" && couponPath) {
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const code = safeString(body.code).trim();
+    const discountType = safeString(body.discount_type);
+    const discountValue = Number(body.discount_value);
+    const minOrderPaisa = Number.isInteger(body.min_order_paisa) ? Number(body.min_order_paisa) : 0;
+    const maxDiscountPaisa = body.max_discount_paisa === null || body.max_discount_paisa === undefined ? null : Number(body.max_discount_paisa);
+    const usageLimit = body.usage_limit === null || body.usage_limit === undefined ? null : Number(body.usage_limit);
+    const startAt = safeString(body.start_at) || null;
+    const expiresAt = safeString(body.expires_at) || null;
+    const isActive = body.is_active === undefined ? true : body.is_active === true;
+
+    if (!code || (discountType !== "fixed" && discountType !== "percent") || !Number.isSafeInteger(discountValue) || discountValue <= 0) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO coupons (id, code, discount_type, discount_value, min_order_paisa, max_discount_paisa, usage_limit, used_count, start_at, expires_at, is_active, created_at, updated_at) " +
+      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11, ?11)"
+    ).bind(id, code, discountType, discountValue, minOrderPaisa, maxDiscountPaisa, usageLimit, startAt, expiresAt, isActive ? 1 : 0, now).run();
+
+    return json({ saved: true, id }, 201);
+  }
+
+  if (couponMatch) {
+    const id = couponMatch[1].toLowerCase();
+    if (request.method === "DELETE") {
+      await env.DB.prepare("DELETE FROM coupons WHERE id = ?1").bind(id).run();
+      return json({ deleted: true });
+    }
+    if (request.method === "PUT") {
+      const body = await parseJsonBody(request, 8192);
+      if (!body) return json({ error: "invalid_request" }, 400);
+
+      const code = safeString(body.code).trim();
+      const discountType = safeString(body.discount_type);
+      const discountValue = Number(body.discount_value);
+      const minOrderPaisa = Number.isInteger(body.min_order_paisa) ? Number(body.min_order_paisa) : 0;
+      const maxDiscountPaisa = body.max_discount_paisa === null || body.max_discount_paisa === undefined ? null : Number(body.max_discount_paisa);
+      const usageLimit = body.usage_limit === null || body.usage_limit === undefined ? null : Number(body.usage_limit);
+      const startAt = safeString(body.start_at) || null;
+      const expiresAt = safeString(body.expires_at) || null;
+      const isActive = body.is_active === undefined ? true : body.is_active === true;
+
+      await env.DB.prepare(
+        "UPDATE coupons SET code=?1, discount_type=?2, discount_value=?3, min_order_paisa=?4, max_discount_paisa=?5, usage_limit=?6, start_at=?7, expires_at=?8, is_active=?9, updated_at=?10 WHERE id=?11"
+      ).bind(code, discountType, discountValue, minOrderPaisa, maxDiscountPaisa, usageLimit, startAt, expiresAt, isActive ? 1 : 0, now, id).run();
+
+      return json({ saved: true, id });
+    }
+  }
+
+  return null;
+}
+
 const DASHBOARD_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "finance"];
 
 async function adminDashboardMetrics(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
@@ -2459,6 +3077,12 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   const catalogueResponse = await adminCatalogueApi(request, env, url, user);
   if (catalogueResponse) return catalogueResponse;
 
+  const variantsModifiersResponse = await adminVariantsAndModifiersApi(request, env, url, user);
+  if (variantsModifiersResponse) return variantsModifiersResponse;
+
+  const couponsResponse = await adminCouponsApi(request, env, url, user);
+  if (couponsResponse) return couponsResponse;
+
   const orderResponse = await orderAdminApi(request, env, url, user);
   if (orderResponse) return orderResponse;
 
@@ -2480,6 +3104,13 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === "GET" && url.pathname === "/api/v1/products") {
     return listProducts(request, env);
+  }
+  const productDetailMatch = url.pathname.match(/^\/api\/v1\/products\/([a-z0-9-]+)$/i);
+  if (request.method === "GET" && productDetailMatch) {
+    return getProductDetails(env, productDetailMatch[1]);
+  }
+  if (request.method === "POST" && url.pathname === "/api/v1/coupons/validate") {
+    return validateCouponPublic(request, env);
   }
   if (request.method === "GET" && url.pathname === "/api/v1/storefront-config") {
     return storefrontConfig(env);

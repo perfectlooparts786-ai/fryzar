@@ -41,6 +41,57 @@ export interface Category {
   is_active?: number;
 }
 
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  sku: string | null;
+  name_en: string;
+  name_ur: string;
+  price_paisa: number;
+  compare_at_paisa: number | null;
+  stock_qty: number | null;
+  is_available: number;
+  sort_order: number;
+}
+
+export interface ModifierOption {
+  id: string;
+  group_id: string;
+  name_en: string;
+  name_ur: string;
+  price_paisa: number;
+  is_available: number;
+  sort_order: number;
+}
+
+export interface ModifierGroup {
+  id: string;
+  name_en: string;
+  name_ur: string;
+  description_en: string;
+  description_ur: string;
+  min_selection: number;
+  max_selection: number;
+  is_required: number;
+  sort_order: number;
+  options?: ModifierOption[];
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  discount_type: "fixed" | "percent";
+  discount_value: number;
+  min_order_paisa: number;
+  max_discount_paisa: number | null;
+  usage_limit: number | null;
+  used_count: number;
+  start_at: string | null;
+  expires_at: string | null;
+  is_active: number;
+  created_at: string;
+}
+
 export interface Product {
   id: string;
   category_id?: string | null;
@@ -253,6 +304,67 @@ export const adminApi = {
       method: id ? "PATCH" : "POST",
       body: JSON.stringify(data)
     }),
+
+  productVariants: (productId: string) =>
+    apiRequest<{ variants: ProductVariant[] }>("/admin/products/" + encodeURIComponent(productId) + "/variants"),
+
+  saveProductVariant: (productId: string, data: Record<string, unknown>, variantId?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      variantId
+        ? "/admin/variants/" + encodeURIComponent(variantId)
+        : "/admin/products/" + encodeURIComponent(productId) + "/variants",
+      {
+        method: variantId ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  deleteProductVariant: (variantId: string) =>
+    apiRequest<{ deleted: boolean }>("/admin/variants/" + encodeURIComponent(variantId), { method: "DELETE" }),
+
+  modifierGroups: () =>
+    apiRequest<{ modifier_groups: ModifierGroup[] }>("/admin/modifier-groups"),
+
+  saveModifierGroup: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      "/admin/modifier-groups" + (id ? "/" + encodeURIComponent(id) : ""),
+      {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  deleteModifierGroup: (id: string) =>
+    apiRequest<{ deleted: boolean }>("/admin/modifier-groups/" + encodeURIComponent(id), { method: "DELETE" }),
+
+  saveModifierOption: (groupId: string, data: Record<string, unknown>, optionId?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      optionId
+        ? "/admin/modifier-options/" + encodeURIComponent(optionId)
+        : "/admin/modifier-groups/" + encodeURIComponent(groupId) + "/options",
+      {
+        method: optionId ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  deleteModifierOption: (optionId: string) =>
+    apiRequest<{ deleted: boolean }>("/admin/modifier-options/" + encodeURIComponent(optionId), { method: "DELETE" }),
+
+  coupons: () =>
+    apiRequest<{ coupons: Coupon[] }>("/admin/coupons"),
+
+  saveCoupon: (data: Record<string, unknown>, id?: string) =>
+    apiRequest<{ saved: boolean; id: string }>(
+      "/admin/coupons" + (id ? "/" + encodeURIComponent(id) : ""),
+      {
+        method: id ? "PUT" : "POST",
+        body: JSON.stringify(data)
+      }
+    ),
+
+  deleteCoupon: (id: string) =>
+    apiRequest<{ deleted: boolean }>("/admin/coupons/" + encodeURIComponent(id), { method: "DELETE" }),
 
   payments: (status = "") =>
     apiRequest<{ payments: AdminPayment[] }>("/admin/payments" + (status ? "?status=" + encodeURIComponent(status) : "")),

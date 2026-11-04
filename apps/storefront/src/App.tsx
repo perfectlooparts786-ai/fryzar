@@ -338,6 +338,10 @@ export default function App() {
   const [trackingError, setTrackingError] = useState("");
   const [copied, setCopied] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_paisa: number } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem("fryzar-language", language);
@@ -478,10 +482,31 @@ export default function App() {
     (sum, item) => sum + item.product.price_paisa * item.quantity,
     0
   );
+  const discountPaisa = appliedCoupon?.discount_paisa ?? 0;
   const deliveryFee = selectedZone?.delivery_fee_paisa ?? 0;
-  const total = subtotal + deliveryFee;
+  const total = Math.max(0, subtotal - discountPaisa) + deliveryFee;
   const minimumOrder = selectedZone?.minimum_order_paisa ?? 0;
   const minimumMet = subtotal >= minimumOrder;
+
+  async function handleApplyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+    setValidatingCoupon(true);
+    setCouponError("");
+    try {
+      const res = await api.validateCoupon(code, subtotal);
+      if (res.valid) {
+        setAppliedCoupon({ code: code.toUpperCase(), discount_paisa: res.discount_paisa });
+        setCouponInput("");
+      } else {
+        setCouponError(isUrdu ? "کوپن غیر فعال یا معیاد ختم ہو چکی ہے" : "Coupon invalid or expired");
+      }
+    } catch {
+      setCouponError(isUrdu ? "کوپن چیک کرنے میں ناکامی" : "Could not validate coupon code");
+    } finally {
+      setValidatingCoupon(false);
+    }
+  }
 
   function changeQuantity(productId: string, delta: number) {
     setCart((current) => {
@@ -511,6 +536,7 @@ export default function App() {
       delivery_zone_id: selectedZone.id,
       customer_language: language,
       payment_method: "cod" as const,
+      coupon_code: appliedCoupon?.code,
       notes: String(form.get("notes") ?? ""),
       items: cartItems.map((item) => ({
         product_id: item.product.id,
@@ -1028,8 +1054,45 @@ export default function App() {
               <div className="checkout-summary">
                 <div><span>{t.subtotal}</span><strong>{money(subtotal, language)}</strong></div>
                 <div><span>{t.delivery}</span><strong>{money(deliveryFee, language)}</strong></div>
+                {appliedCoupon ? (
+                  <div style={{ color: "#059669", display: "flex", justifyContent: "space-between" }}>
+                    <span>{isUrdu ? "کوپن رعایت" : "Coupon Discount"} ({appliedCoupon.code})</span>
+                    <strong>-{money(appliedCoupon.discount_paisa, language)}</strong>
+                  </div>
+                ) : null}
                 <div className="summary-total"><span>{t.estimatedTotal}</span><strong>{money(total, language)}</strong></div>
                 <small>{t.estimateNote}</small>
+              </div>
+              <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+                <label style={{ fontSize: "0.875rem", fontWeight: 600, display: "block", marginBottom: "0.25rem" }}>
+                  {isUrdu ? "کوپن کوڈ" : "Coupon Code"}
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    type="text"
+                    value={couponInput}
+                    onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }}
+                    placeholder={isUrdu ? "کوپن درج کریں" : "Enter coupon code"}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="outline-button"
+                    type="button"
+                    onClick={handleApplyCoupon}
+                    disabled={validatingCoupon || !couponInput.trim()}
+                  >
+                    {validatingCoupon ? "..." : (isUrdu ? "لگائیں" : "Apply")}
+                  </button>
+                </div>
+                {couponError ? <small className="form-error" style={{ color: "#dc2626", display: "block", marginTop: "0.25rem" }}>{couponError}</small> : null}
+                {appliedCoupon ? (
+                  <small style={{ color: "#059669", display: "block", marginTop: "0.25rem" }}>
+                    ✓ {isUrdu ? "کوپن لگ گیا:" : "Coupon applied:"} {appliedCoupon.code}
+                    <button type="button" onClick={() => setAppliedCoupon(null)} style={{ background: "none", border: "none", color: "#dc2626", marginLeft: "0.5rem", cursor: "pointer", textDecoration: "underline" }}>
+                      {isUrdu ? "ہٹائیں" : "Remove"}
+                    </button>
+                  </small>
+                ) : null}
               </div>
               {checkoutError ? <div className="inline-error" role="alert">{checkoutError}</div> : null}
               <button className="primary-button full-width" type="submit" disabled={submitting || !storeOpen || !selectedZone || !minimumMet}>

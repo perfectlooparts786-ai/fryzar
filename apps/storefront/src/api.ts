@@ -74,6 +74,42 @@ export const api = {
   deliveryZones: (signal?: AbortSignal) =>
     getJson<{ delivery_zones: DeliveryZone[]; currency: string }>("/delivery-zones", signal),
 
+  productDetails: (idOrSlug: string, signal?: AbortSignal) =>
+    getJson<{ product: Product }>("/products/" + idOrSlug, signal),
+
+  validateCoupon: async (
+    code: string,
+    subtotalPaisa: number
+  ): Promise<{
+    valid: boolean;
+    discount_paisa: number;
+    coupon?: { id: string; code: string; discount_type: string; discount_value: number };
+    error?: string;
+  }> => {
+    let response: Response;
+    try {
+      response = await fetch(API_ROOT + "/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ code, subtotal_paisa: subtotalPaisa })
+      });
+    } catch {
+      throw new ApiError("Could not validate coupon.", 0, "network_error");
+    }
+
+    const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!response.ok) {
+      const errCode = typeof body?.error === "string" ? body.error : "coupon_invalid";
+      throw new ApiError(errCode, response.status, errCode);
+    }
+    return body as unknown as {
+      valid: boolean;
+      discount_paisa: number;
+      coupon?: { id: string; code: string; discount_type: string; discount_value: number };
+      error?: string;
+    };
+  },
+
   trackOrder: (token: string, signal?: AbortSignal) => {
     if (!/^[a-f0-9]{64}$/i.test(token)) {
       throw new ApiError("Invalid tracking code.", 400, "invalid_tracking_code");
@@ -89,8 +125,14 @@ export const api = {
       delivery_zone_id: string;
       customer_language: "ur" | "en";
       payment_method: "cod";
+      coupon_code?: string;
       notes: string;
-      items: { product_id: string; quantity: number }[];
+      items: {
+        product_id: string;
+        variant_id?: string;
+        selected_modifier_option_ids?: string[];
+        quantity: number;
+      }[];
     },
     idempotencyKey: string
   ): Promise<OrderResponse> => {
