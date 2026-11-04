@@ -1,0 +1,41 @@
+name: "Multi-Post Viral YouTube Engine (100% Free)"
+
+on:
+  schedule:
+    # Post 1: 1:30 PM UTC (6:30 PM PKT) - US Morning / EU Afternoon Peak
+    - cron: '30 13 * * *'
+    # Post 2: 4:30 PM UTC (9:30 PM PKT) - US Midday Peak
+    - cron: '30 16 * * *'
+    # Post 3: 7:30 PM UTC (12:30 AM PKT) - US Prime Time Evening
+    - cron: '30 19 * * *'
+    # Post 4: 10:30 PM UTC (3:30 AM PKT) - US Night / Asia Early Morning
+    - cron: '30 22 * * *'
+  workflow_dispatch: # Allows manual trigger anytime for testing
+
+jobs:
+  viral-autopost:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.11'
+
+      - name: Install Google API Dependencies
+        run: |
+          pip install --upgrade google-api-python-client google-auth-oauthlib google-auth-httplib2
+
+      - name: Auto-Generate Satisfying 3D Loop Video (If Queue is Empty)
+        run: |
+          python scripts/generate_ai_video_loop.py content/videos/auto_viral_loop_$(date +%s).mp4
+
+      - name: Execute Multi-Post Viral Publisher
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: |
+          python scripts/upload_to_youtube.py

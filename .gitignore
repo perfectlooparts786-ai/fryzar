@@ -1,3 +1,6 @@
 .idea/
 desktop.ini
 *.lnk
+*.png
+client_secret*.json
+.env
