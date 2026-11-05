@@ -120,7 +120,15 @@ const COPY = {
     statusRejected: "Rejected",
     paymentUnpaid: "Unpaid",
     paymentCollected: "Collected",
-    trackingPrivacy: "This private code only shows order progress and item totals. Customer contact details and delivery address are not displayed."
+    trackingPrivacy: "This private code only shows order progress and item totals. Customer contact details and delivery address are not displayed.",
+    supportModalTitle: "Need help? Contact support",
+    supportName: "Your full name",
+    supportPhone: "Mobile number",
+    supportSubject: "Subject / Issue",
+    supportMessage: "How can we help you?",
+    supportOrderId: "Order ID (optional)",
+    submitTicket: "Submit support request",
+    ticketSubmitted: "Support request received! Our team will review your message shortly."
   },
   ur: {
     announcement: "اپنے علاقے کی خریداری، اب زیادہ آسان",
@@ -229,7 +237,15 @@ const COPY = {
     statusRejected: "مسترد",
     paymentUnpaid: "ادا نہیں ہوا",
     paymentCollected: "وصول ہو گیا",
-    trackingPrivacy: "یہ نجی کوڈ صرف آرڈر کی پیش رفت اور اشیا کی رقم دکھاتا ہے۔ کسٹمر کا فون نمبر اور ڈیلیوری پتہ ظاہر نہیں کیا جاتا۔"
+    trackingPrivacy: "یہ نجی کوڈ صرف آرڈر کی پیش رفت اور اشیا کی رقم دکھاتا ہے۔ کسٹمر کا فون نمبر اور ڈیلیوری پتہ ظاہر نہیں کیا جاتا۔",
+    supportModalTitle: "مدد چاہیے؟ رابطہ کریں",
+    supportName: "آپ کا پورا نام",
+    supportPhone: "موبائل نمبر",
+    supportSubject: "عنوان / مسئلہ",
+    supportMessage: "ہم آپ کی کیا مدد کر سکتے ہیں؟",
+    supportOrderId: "آرڈر آئی ڈی (اختیاری)",
+    submitTicket: "مدد کی درخواست بھیجیں",
+    ticketSubmitted: "آپ کی درخواست موصول ہو گئی ہے! عملہ جلد جائزہ لے گا۔"
   }
 } as const;
 
@@ -342,6 +358,10 @@ export default function App() {
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_paisa: number } | null>(null);
   const [couponError, setCouponError] = useState("");
   const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportSubmitting, setSupportSubmitting] = useState(false);
+  const [supportSuccess, setSupportSuccess] = useState(false);
+  const [supportError, setSupportError] = useState("");
 
   useEffect(() => {
     window.localStorage.setItem("fryzar-language", language);
@@ -599,6 +619,32 @@ export default function App() {
     }
   }
 
+  async function handleSupportSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const customer_name = String(form.get("customer_name") ?? "").trim();
+    const customer_phone = String(form.get("customer_phone") ?? "").trim();
+    const subject = String(form.get("subject") ?? "").trim();
+    const message = String(form.get("message") ?? "").trim();
+    const order_id = String(form.get("order_id") ?? "").trim() || undefined;
+
+    if (!customer_name || !customer_phone || !subject || !message) return;
+
+    setSupportSubmitting(true);
+    setSupportError("");
+    setSupportSuccess(false);
+
+    try {
+      await api.createSupportTicket({ customer_name, customer_phone, subject, message, order_id });
+      setSupportSuccess(true);
+      event.currentTarget.reset();
+    } catch {
+      setSupportError(isUrdu ? "درخواست جمع کرانے میں ناکامی۔ بعد میں کوشش کریں۔" : "Could not submit support request. Try again shortly.");
+    } finally {
+      setSupportSubmitting(false);
+    }
+  }
+
   function submitTracking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void lookupTracking();
@@ -641,7 +687,8 @@ export default function App() {
           <a href="#shop">{t.categories}</a>
           <a href="#how-it-works">{t.howItWorks}</a>
           <a href="#track-order">{t.trackOrder}</a>
-          {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noreferrer">{t.support}</a> : null}
+          <button className="text-button" type="button" onClick={() => setSupportOpen(true)} style={{ background: "none", border: "none", color: "inherit", font: "inherit", cursor: "pointer", padding: 0 }}>{t.support}</button>
+          {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noreferrer">WhatsApp</a> : null}
         </nav>
 
         <div className="header-actions">
@@ -1126,6 +1173,53 @@ export default function App() {
               window.location.hash = "track-order";
             }}>{t.trackOrder}</button>
             <button className="primary-button full-width" type="button" onClick={() => setOrderComplete(null)}>{t.close}</button>
+          </section>
+        </div>
+      ) : null}
+
+      {supportOpen ? (
+        <div className="overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSupportOpen(false); }}>
+          <section className="checkout-panel" role="dialog" aria-modal="true" aria-labelledby="support-modal-title">
+            <div className="drawer-header">
+              <div><small>FRYZAR</small><h2 id="support-modal-title">{t.supportModalTitle}</h2></div>
+              <button className="icon-button" type="button" onClick={() => setSupportOpen(false)} aria-label={t.close}><Icon name="close" /></button>
+            </div>
+            {supportSuccess ? (
+              <div className="support-success-box" style={{ padding: "1.5rem 0", textAlign: "center" }}>
+                <div className="success-icon" style={{ margin: "0 auto 1rem" }}><Icon name="check" /></div>
+                <p style={{ fontWeight: 600, color: "#059669" }}>{t.ticketSubmitted}</p>
+                <button className="primary-button full-width" type="button" onClick={() => { setSupportSuccess(false); setSupportOpen(false); }} style={{ marginTop: "1rem" }}>
+                  {t.close}
+                </button>
+              </div>
+            ) : (
+              <form className="checkout-form" onSubmit={(e) => void handleSupportSubmit(e)}>
+                <label className="form-field">
+                  <span>{t.supportName}</span>
+                  <input name="customer_name" type="text" required maxLength={100} placeholder="e.g. Ali Khan" />
+                </label>
+                <label className="form-field">
+                  <span>{t.supportPhone}</span>
+                  <input name="customer_phone" type="tel" required placeholder="03001234567" />
+                </label>
+                <label className="form-field">
+                  <span>{t.supportOrderId}</span>
+                  <input name="order_id" type="text" placeholder="e.g. 1001 or order UUID" />
+                </label>
+                <label className="form-field">
+                  <span>{t.supportSubject}</span>
+                  <input name="subject" type="text" required maxLength={150} placeholder="e.g. Order Status Inquiry" />
+                </label>
+                <label className="form-field">
+                  <span>{t.supportMessage}</span>
+                  <textarea name="message" required maxLength={1000} rows={4} style={{ width: "100%", padding: "0.5rem", borderRadius: "0.375rem", border: "1px solid #d1d5db" }} />
+                </label>
+                {supportError ? <div className="inline-error" role="alert">{supportError}</div> : null}
+                <button className="primary-button full-width" type="submit" disabled={supportSubmitting}>
+                  {supportSubmitting ? "..." : t.submitTicket}
+                </button>
+              </form>
+            )}
           </section>
         </div>
       ) : null}

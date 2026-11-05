@@ -21,12 +21,14 @@ const productA = "44444444-4444-4444-8444-444444444444";
 const productB = "33333333-3333-4333-8333-333333333333";
 const zoneId = "55555555-5555-4555-8555-555555555555";
 
+const workerdBin = path.join(root, "node_modules", "@cloudflare", "workerd-windows-64", "bin");
+
 function runWrangler(args) {
   try {
     return execFileSync(process.execPath, [wrangler, ...args], {
       cwd: root,
       encoding: "utf8",
-      env: { ...process.env, CI: "true" },
+      env: { ...process.env, PATH: workerdBin + ";" + (process.env.PATH || ""), CI: "true" },
       maxBuffer: 10 * 1024 * 1024
     });
   } catch (error) {
@@ -188,7 +190,7 @@ async function main() {
     const port = await findFreePort();
     const baseUrl = "http://127.0.0.1:" + port;
     server = spawn(process.execPath,[wrangler,"dev","--local","--config",config,"--persist-to",persistTo,"--env-file",envFile,"--compatibility-date","2026-10-30","--ip","127.0.0.1","--port",String(port),"--log-level","error"],{
-      cwd:root,env:{...process.env,CI:"true"},stdio:["ignore","pipe","pipe"]
+      cwd:root,env:{...process.env,PATH:workerdBin+";"+(process.env.PATH||""),CI:"true"},stdio:["ignore","pipe","pipe"]
     });
     server.stdout.on("data",append);
     server.stderr.on("data",append);
@@ -264,7 +266,7 @@ async function main() {
       server.kill("SIGTERM");
       await Promise.race([new Promise(resolve=>server.once("exit",resolve)),new Promise(resolve=>setTimeout(resolve,5000))]);
     }
-    fs.rmSync(tempRoot,{recursive:true,force:true});
+    fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 

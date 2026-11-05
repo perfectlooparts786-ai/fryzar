@@ -21,12 +21,13 @@ import {
   type Supplier,
   type PurchaseOrder,
   type WastageRecord,
-  type LedgerEntry
+  type LedgerEntry,
+  type AuditLogEntry
 } from "./api";
 
 type AuthState = "checking" | "signed-out" | "signed-in";
 type AuthMode = "login" | "bootstrap";
-type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "procurement" | "payments" | "finance" | "delivery" | "riders" | "support" | "team" | "settings";
+type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "procurement" | "payments" | "finance" | "delivery" | "riders" | "support" | "team" | "settings" | "audit";
 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
@@ -41,7 +42,8 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "riders", label: "Riders", icon: "🚲" },
   { id: "support", label: "Support", icon: "💬" },
   { id: "team", label: "Team access", icon: "♙" },
-  { id: "settings", label: "Store settings", icon: "⚙" }
+  { id: "settings", label: "Store settings", icon: "⚙" },
+  { id: "audit", label: "Audit logs", icon: "📋" }
 ];
 
 function isEnabled(value: unknown): boolean {
@@ -1763,6 +1765,119 @@ function FinanceModule({ user }: { user: StaffUser }) {
   );
 }
 
+function AuditLogsModule({ user }: { user: StaffUser }) {
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionFilter, setActionFilter] = useState("");
+  const [entityTypeFilter, setEntityTypeFilter] = useState("");
+
+  async function loadLogs() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await adminApi.auditLogs({
+        action: actionFilter || undefined,
+        entity_type: entityTypeFilter || undefined,
+        limit: 50
+      });
+      setLogs(res.audit_logs);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (user.role === "owner" || user.role === "manager") {
+      void loadLogs();
+    }
+  }, [actionFilter, entityTypeFilter]);
+
+  if (user.role !== "owner" && user.role !== "manager") {
+    return (
+      <section className="inventory-module">
+        <div className="orders-alert" role="alert">
+          Access denied. Audit logs are restricted to store owners and managers.
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="inventory-module">
+      <div className="module-heading">
+        <div>
+          <span className="kicker">SYSTEM TRANSPARENCY & AUDIT TRAIL</span>
+          <h1>Audit Logs Directory</h1>
+          <p>Review administrative, operational, inventory, financial, and security activity records.</p>
+        </div>
+        <button className="secondary-button" type="button" onClick={() => void loadLogs()}>Refresh Logs</button>
+      </div>
+
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+        <input
+          type="text"
+          placeholder="Filter by action (e.g. order.status_changed)..."
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          style={{ flex: 1, padding: "0.5rem 0.75rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", fontSize: "0.875rem" }}
+        />
+        <input
+          type="text"
+          placeholder="Filter by entity type (e.g. order, inventory)..."
+          value={entityTypeFilter}
+          onChange={(e) => setEntityTypeFilter(e.target.value)}
+          style={{ flex: 1, padding: "0.5rem 0.75rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", fontSize: "0.875rem" }}
+        />
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+
+      {loading ? (
+        <div className="orders-empty">Loading audit logs...</div>
+      ) : logs.length === 0 ? (
+        <div className="orders-empty">No audit log records found.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Actor</th>
+                <th>Entity Type</th>
+                <th>Entity ID</th>
+                <th>Metadata</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.id}>
+                  <td><span className="environment-pill">{log.action}</span></td>
+                  <td>
+                    <strong>{log.actor_display_name || "System / Automated"}</strong>
+                    {log.actor_role ? <small style={{ display: "block", color: "#6b7280" }}>Role: {log.actor_role}</small> : null}
+                  </td>
+                  <td>{log.entity_type}</td>
+                  <td><small>{log.entity_id || "—"}</small></td>
+                  <td>
+                    <code style={{ fontSize: "0.75rem", background: "rgba(0,0,0,0.04)", padding: "0.2rem 0.4rem", borderRadius: "0.25rem", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                      {JSON.stringify(log.metadata)}
+                    </code>
+                  </td>
+                  <td><small>{new Date(log.created_at).toLocaleString()}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PlaceholderSection({ section }: { section: Section }) {
   const item = NAV.find(nav => nav.id === section) ?? NAV[0];
   return (
@@ -1915,6 +2030,8 @@ export default function App() {
             <TeamAccessModule user={user} />
           ) : section === "payments" ? (
             <PaymentsModule user={user} />
+          ) : section === "audit" ? (
+            <AuditLogsModule user={user} />
           ) : section === "overview" ? (
             <Overview
               user={user}

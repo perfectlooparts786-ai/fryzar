@@ -3830,6 +3830,87 @@ async function adminDashboardMetrics(request: Request, env: Env, url: URL, user:
   });
 }
 
+async function adminAuditLogsApi(
+  request: Request,
+  env: Env,
+  url: URL,
+  user: SessionUser
+): Promise<Response | null> {
+  if (url.pathname !== "/api/v1/admin/audit-logs") return null;
+  if (request.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+
+  if (user.role !== "owner" && user.role !== "manager") {
+    return json({ error: "forbidden" }, 403);
+  }
+
+  const rawLimit = Number(url.searchParams.get("limit") ?? "50");
+  const limit = Number.isSafeInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 50;
+  const rawOffset = Number(url.searchParams.get("offset") ?? "0");
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+  const actionFilter = url.searchParams.get("action")?.trim() || "";
+  const entityTypeFilter = url.searchParams.get("entity_type")?.trim() || "";
+
+  let whereClauses: string[] = [];
+  let params: unknown[] = [];
+
+  if (actionFilter) {
+    params.push(actionFilter);
+    whereClauses.push(`a.action = ?${params.length}`);
+  }
+  if (entityTypeFilter) {
+    params.push(entityTypeFilter);
+    whereClauses.push(`a.entity_type = ?${params.length}`);
+  }
+
+  const whereSql = whereClauses.length > 0 ? " WHERE " + whereClauses.join(" AND ") : "";
+
+  const limitParamIndex = params.length + 1;
+  const offsetParamIndex = params.length + 2;
+  const queryParams = [...params, limit, offset];
+
+  const sql =
+    "SELECT a.id, a.actor_staff_id, a.actor_role, a.action, a.entity_type, a.entity_id, " +
+    "a.metadata_json, a.created_at, s.display_name AS actor_display_name " +
+    "FROM audit_logs a LEFT JOIN staff_users s ON a.actor_staff_id = s.id" +
+    whereSql +
+    ` ORDER BY a.created_at DESC, a.id DESC LIMIT ?${limitParamIndex} OFFSET ?${offsetParamIndex}`;
+
+  const rows = await env.DB.prepare(sql).bind(...queryParams).all<JsonRecord>();
+  const logs = (rows.results || []).map((row) => {
+    let metadata: unknown = {};
+    try {
+      metadata = JSON.parse(String(row.metadata_json || "{}"));
+      if (typeof metadata === "object" && metadata !== null) {
+        delete (metadata as Record<string, unknown>).password_hash;
+        delete (metadata as Record<string, unknown>).session_token;
+      }
+    } catch {
+      metadata = {};
+    }
+    return {
+      id: row.id,
+      actor_staff_id: row.actor_staff_id || null,
+      actor_role: row.actor_role || null,
+      actor_display_name: row.actor_display_name || null,
+      action: row.action,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id || null,
+      metadata,
+      created_at: row.created_at
+    };
+  });
+
+  return json({
+    audit_logs: logs,
+    pagination: {
+      limit,
+      offset,
+      returned: logs.length
+    }
+  });
+}
+
 async function adminApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && url.pathname === "/api/v1/admin/bootstrap-owner") {
     return ownerBootstrap(request, env);
@@ -3873,6 +3954,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
 
   const financeLedgerResponse = await adminFinanceAndLedgerApi(request, env, url, user);
   if (financeLedgerResponse) return financeLedgerResponse;
+
+  const auditLogsResponse = await adminAuditLogsApi(request, env, url, user);
+  if (auditLogsResponse) return auditLogsResponse;
 
   const catalogueResponse = await adminCatalogueApi(request, env, url, user);
   if (catalogueResponse) return catalogueResponse;

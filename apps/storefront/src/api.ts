@@ -163,5 +163,30 @@ export const api = {
     }
 
     return body as OrderResponse;
+  },
+
+  createSupportTicket: async (payload: {
+    customer_name: string;
+    customer_phone: string;
+    subject: string;
+    message: string;
+    order_id?: string;
+  }): Promise<{ created: boolean; case_id: string }> => {
+    let response: Response;
+    try {
+      response = await fetch(API_ROOT + "/support/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      throw new ApiError("Could not submit support ticket.", 0, "network_error");
+    }
+    const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!response.ok) {
+      const code = typeof body?.error === "string" ? body.error : "ticket_creation_failed";
+      throw new ApiError(code, response.status, code);
+    }
+    return body as { created: boolean; case_id: string };
   }
 };

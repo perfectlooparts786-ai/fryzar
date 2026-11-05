@@ -1,3 +1,15 @@
+export interface AuditLogEntry {
+  id: string;
+  actor_staff_id: string | null;
+  actor_role: string | null;
+  actor_display_name: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface Ingredient {
   id: string;
   name_ur: string;
@@ -383,6 +395,18 @@ export const adminApi = {
 
   dashboardMetrics: () =>
     apiRequest<{ metrics: DashboardMetrics }>("/admin/metrics"),
+
+  auditLogs: (params: { limit?: number; offset?: number; action?: string; entity_type?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.offset) query.set("offset", String(params.offset));
+    if (params.action) query.set("action", params.action);
+    if (params.entity_type) query.set("entity_type", params.entity_type);
+    const str = query.toString();
+    return apiRequest<{ audit_logs: AuditLogEntry[]; pagination: { limit: number; offset: number; returned: number } }>(
+      "/admin/audit-logs" + (str ? "?" + str : "")
+    );
+  },
 
   orders: (status = "") =>
     apiRequest<{ orders: AdminOrder[]; pagination: { limit: number; offset: number; returned: number } }>(

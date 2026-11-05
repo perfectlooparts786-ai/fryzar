@@ -16,12 +16,14 @@ const rollbackProductId = "33333333-3333-4333-8333-333333333333";
 const origin = "http://localhost:5173";
 const testSecret = "ci-only-not-a-real-secret-and-never-use-in-production";
 
+const workerdBin = path.join(root, "node_modules", "@cloudflare", "workerd-windows-64", "bin");
+
 function runWrangler(args) {
   try {
     return execFileSync(process.execPath, [wrangler, ...args], {
       cwd: root,
       encoding: "utf8",
-      env: { ...process.env, CI: "true" },
+      env: { ...process.env, PATH: workerdBin + ";" + (process.env.PATH || ""), CI: "true" },
       maxBuffer: 10 * 1024 * 1024
     });
   } catch (error) {
@@ -210,7 +212,7 @@ async function main() {
       "--log-level", "error"
     ], {
       cwd: root,
-      env: { ...process.env, CI: "true" },
+      env: { ...process.env, PATH: workerdBin + ";" + (process.env.PATH || ""), CI: "true" },
       stdio: ["ignore", "pipe", "pipe"]
     });
     server.stdout.on("data", appendOutput);
@@ -301,7 +303,7 @@ async function main() {
         new Promise((resolve) => setTimeout(resolve, 5000))
       ]);
     }
-    fs.rmSync(tempRoot, { recursive: true, force: true });
+    fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 

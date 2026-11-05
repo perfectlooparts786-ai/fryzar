@@ -12,6 +12,8 @@ const CONFIG = path.join(ROOT, "apps", "api", "wrangler.toml");
 const DATABASE = "fryzar-preview";
 const ORIGIN = "http://localhost:5173";
 
+const WORKERD_BIN = path.join(ROOT, "node_modules", "@cloudflare", "workerd-windows-64", "bin");
+
 function runWrangler(args, persistTo) {
   if (args.includes("--remote") || !args.includes("--local")) {
     throw new Error("Local D1 safety guard rejected Wrangler arguments.");
@@ -25,6 +27,7 @@ function runWrangler(args, persistTo) {
       encoding: "utf8",
       env: {
         ...process.env,
+        PATH: WORKERD_BIN + ";" + (process.env.PATH || ""),
         CI: "true",
         CLOUDFLARE_API_TOKEN: "",
         CLOUDFLARE_API_KEY: "",
@@ -123,6 +126,7 @@ async function createLocalD1(options = {}) {
         cwd: ROOT,
         env: {
           ...process.env,
+          PATH: WORKERD_BIN + ";" + (process.env.PATH || ""),
           CI: "true",
           CLOUDFLARE_API_TOKEN: "",
           CLOUDFLARE_API_KEY: "",
@@ -152,7 +156,7 @@ async function createLocalD1(options = {}) {
           new Promise((resolve) => setTimeout(resolve, 5000))
         ]);
       }
-      fs.rmSync(tempRoot, { recursive: true, force: true });
+      fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   };
 
