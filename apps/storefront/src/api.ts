@@ -1,8 +1,19 @@
+import {
+  DEFAULT_MONETIZATION_CONFIG,
+  normalizeMonetizationConfig,
+  type MonetizationRuntimeConfig
+} from "./ads/adConfig";
 import type {
   Category,
   DeliveryZone,
+  EditorialArticle,
   OrderResponse,
   Product,
+  ProductDetails,
+  ProductImage,
+  ModifierGroup,
+  ProductVariant,
+  PublicPromotion,
   StoreSettings,
   TrackedOrderResponse
 } from "./types";
@@ -74,8 +85,51 @@ export const api = {
   deliveryZones: (signal?: AbortSignal) =>
     getJson<{ delivery_zones: DeliveryZone[]; currency: string }>("/delivery-zones", signal),
 
-  productDetails: (idOrSlug: string, signal?: AbortSignal) =>
-    getJson<{ product: Product }>("/products/" + idOrSlug, signal),
+  promotions: async (signal?: AbortSignal): Promise<{ promotions: PublicPromotion[] }> => {
+    try {
+      return await getJson<{ promotions: PublicPromotion[] }>("/promotions", signal);
+    } catch {
+      return { promotions: [] };
+    }
+  },
+
+  editorialList: async (signal?: AbortSignal): Promise<{ posts: EditorialArticle[] }> => {
+    try {
+      return await getJson<{ posts: EditorialArticle[] }>("/editorial", signal);
+    } catch {
+      return { posts: [] };
+    }
+  },
+
+  editorialArticle: (slug: string, signal?: AbortSignal) =>
+    getJson<{ post: EditorialArticle }>("/editorial/" + encodeURIComponent(slug), signal),
+
+  monetizationConfig: async (signal?: AbortSignal): Promise<MonetizationRuntimeConfig> => {
+    try {
+      const raw = await getJson<Record<string, unknown>>("/monetization-config", signal);
+      return normalizeMonetizationConfig(raw);
+    } catch {
+      return DEFAULT_MONETIZATION_CONFIG;
+    }
+  },
+
+  productDetails: async (idOrSlug: string, signal?: AbortSignal): Promise<{ product: ProductDetails }> => {
+    const raw = await getJson<{
+      product: ProductDetails;
+      images?: ProductImage[];
+      variants?: ProductVariant[];
+      modifier_groups?: ModifierGroup[];
+    }>("/products/" + encodeURIComponent(idOrSlug), signal);
+
+    return {
+      product: {
+        ...raw.product,
+        images: raw.product.images ?? raw.images ?? [],
+        variants: raw.product.variants ?? raw.variants ?? [],
+        modifier_groups: raw.product.modifier_groups ?? raw.modifier_groups ?? []
+      }
+    };
+  },
 
   validateCoupon: async (
     code: string,

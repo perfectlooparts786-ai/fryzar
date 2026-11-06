@@ -70,6 +70,20 @@ test("customer Worker forwards the /api root and preflight requests to the centr
   assert.equal(assets.calls.length, 0);
 });
 
+test("customer Worker forwards /sitemap.xml and /robots.txt to the central API", async () => {
+  const worker = await customerWorkerPromise;
+  const api = createFetcher("central-api", 200);
+  const assets = createFetcher("customer-assets");
+
+  const sitemapRes = await worker.fetch(new Request("https://store.example/sitemap.xml"), { API: api, ASSETS: assets });
+  const robotsRes = await worker.fetch(new Request("https://store.example/robots.txt"), { API: api, ASSETS: assets });
+
+  assert.equal(await sitemapRes.text(), "central-api");
+  assert.equal(await robotsRes.text(), "central-api");
+  assert.equal(api.calls.length, 2);
+  assert.equal(assets.calls.length, 0);
+});
+
 test("customer Worker serves non-API routes from its static asset binding", async () => {
   const worker = await customerWorkerPromise;
   const api = createFetcher("central-api");
@@ -115,8 +129,7 @@ test("admin Worker serves its application shell and routes from static assets", 
   assert.equal(api.calls.length, 0);
 });
 
-
-test("preview Wrangler configs route both /api and /api/* through the central API", () => {
+test("preview Wrangler configs route API and crawl endpoints through the central API", () => {
   const customerConfig = fs.readFileSync(
     path.join(__dirname, "../apps/customer-worker/wrangler.toml"),
     "utf8"
@@ -130,10 +143,10 @@ test("preview Wrangler configs route both /api and /api/* through the central AP
     "utf8"
   );
 
-  for (const config of [customerConfig, adminConfig]) {
-    assert.ok(config.includes('run_worker_first = ["/api", "/api/*"]'));
-    assert.ok(config.includes('service = "fryzar-api-preview"'));
-  }
+  assert.ok(customerConfig.includes('run_worker_first = ["/api", "/api/*", "/sitemap.xml", "/robots.txt"]'));
+  assert.ok(customerConfig.includes('service = "fryzar-api-preview"'));
+  assert.ok(adminConfig.includes('run_worker_first = ["/api", "/api/*"]'));
+  assert.ok(adminConfig.includes('service = "fryzar-api-preview"'));
 
   assert.ok(apiConfig.includes('name = "fryzar-api-preview"'));
   assert.ok(apiConfig.includes('database_name = "fryzar-preview"'));

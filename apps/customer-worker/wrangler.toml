@@ -7,7 +7,7 @@ workers_dev = true
 directory = "../../dist/storefront"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api", "/api/*"]
+run_worker_first = ["/api", "/api/*", "/sitemap.xml", "/robots.txt"]
 
 [[services]]
 binding = "API"
