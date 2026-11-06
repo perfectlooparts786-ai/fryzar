@@ -638,6 +638,10 @@ async function checkout(request: Request, env: Env): Promise<Response> {
         modifierTotal += Number(optionObj.price_paisa);
         selectedOptions.push(optionObj);
       }
+      const modEn = selectedOptions.map((o) => String(o.name_en)).join(", ");
+      const modUr = selectedOptions.map((o) => String(o.name_ur)).join(", ");
+      nameEn += " [" + modEn + "]";
+      nameUr += " [" + modUr + "]";
     }
 
     const unitPrice = baseUnitPrice + modifierTotal;
@@ -1644,7 +1648,7 @@ async function changeAdminOrderStatus(
       "FROM orders WHERE id = ?5 AND status = ?2 AND updated_at = ?6 " +
       "AND NOT EXISTS (SELECT 1 FROM order_status_events e " +
       "WHERE e.order_id = ?5 AND e.old_status = ?1 AND e.new_status = ?2)"
-    ).bind(order.status, nextStatusText, user.id, note || null, orderId, timestamp),
+    ).bind(order.status, nextStatusText, user.id, note || "", orderId, timestamp),
     env.DB.prepare(
       "INSERT INTO audit_logs " +
       "(id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json) " +
@@ -2035,6 +2039,9 @@ async function adminProcurementAndWastageApi(
 
   return null;
 }
+
+const PAYMENT_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "finance"];
+const PAYMENT_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "finance"];
 
 async function adminFinanceAndLedgerApi(
   request: Request,
@@ -2809,9 +2816,6 @@ async function adminDeliveryApi(request: Request, env: Env, url: URL, user: Sess
   return json({ saved: true, id }, request.method === "POST" ? 201 : 200);
 }
 
-const PAYMENT_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "finance"];
-const PAYMENT_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "finance"];
-
 async function adminPaymentsApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/v1/admin/payments") {
     if (!hasRole(user, PAYMENT_READ_ROLES)) return roleDenied();
@@ -2928,6 +2932,11 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
       payment.payment_id
     ),
     env.DB.prepare(
+      "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
+      "SELECT lower(hex(randomblob(16))), 'cod_collection', ?1, ?2, 0, ?3, 'COD payment collected', ?4 " +
+      "FROM payments WHERE id=?1 AND status='collected'"
+    ).bind(payment.payment_id, payment.amount_paisa, user.id, timestamp),
+    env.DB.prepare(
       "INSERT INTO idempotency_keys (id, scope, idempotency_key, request_hash, response_json, expires_at) " +
       "SELECT ?1, 'cod_collection', ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM audit_logs WHERE id=?6)"
     ).bind(
@@ -2943,7 +2952,8 @@ async function adminPaymentsApi(request: Request, env: Env, url: URL, user: Sess
   try {
     const results = await env.DB.batch(statements);
     if ((results[1]?.meta?.changes ?? 0) !== 1 || (results[2]?.meta?.changes ?? 0) !== 1 ||
-        (results[3]?.meta?.changes ?? 0) !== 1 || (results[4]?.meta?.changes ?? 0) !== 1) {
+        (results[3]?.meta?.changes ?? 0) !== 1 || (results[4]?.meta?.changes ?? 0) !== 1 ||
+        (results[5]?.meta?.changes ?? 0) !== 1) {
       return json({ error: "payment_state_changed_retry" }, 409);
     }
   } catch {

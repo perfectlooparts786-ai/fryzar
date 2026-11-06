@@ -75,6 +75,12 @@ jobs:
       - name: Rehearse isolated local D1 backup and restore
         run: npm run test:integration:backup-restore
 
+      - name: Validate full operational end-to-end lifecycle against local D1
+        run: npm run test:integration:full-e2e
+
+      - name: Validate hardening and edge-case resilience against local D1
+        run: npm run test:integration:hardening
+
       - name: Verify Worker and D1 configs are preview-only
         run: npm run test:config-safety
 

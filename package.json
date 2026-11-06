@@ -31,6 +31,8 @@
     "test:integration:migrations": "node tests/migrations.integration.cjs",
     "test:config-safety": "node tests/preview-config-safety.test.cjs",
     "test:integration:backup-restore": "node tests/backup-restore.integration.cjs",
+    "test:integration:full-e2e": "node tests/full-lifecycle-e2e.integration.cjs",
+    "test:integration:hardening": "node tests/hardening-and-edge-cases.test.cjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

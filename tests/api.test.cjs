@@ -1974,7 +1974,7 @@ test("finance can collect a delivered COD payment with atomic payment and audit 
   };
   const { env, state } = createEnv({
     firstResults: [staff, null, payment],
-    batchChanges: [0, 1, 1, 1, 1]
+    batchChanges: [0, 1, 1, 1, 1, 1]
   });
   const response = await worker.fetch(
     request("/api/v1/admin/payments/cod-collection", {
@@ -1996,12 +1996,13 @@ test("finance can collect a delivered COD payment with atomic payment and audit 
   assert.equal(body.payment_status, "collected");
   assert.equal(body.amount_paisa, 72000);
   assert.equal(state.batchCount, 1);
-  assert.equal(state.batchStatements.length, 5);
+  assert.equal(state.batchStatements.length, 6);
   assert.match(state.batchStatements[1].sql, /UPDATE orders SET payment_status='collected'/);
   assert.match(state.batchStatements[2].sql, /UPDATE payments SET status='collected'/);
   assert.match(state.batchStatements[2].sql, /status='delivered' AND payment_status='collected'/);
   assert.match(state.batchStatements[3].sql, /payment.cod_collected/);
-  assert.match(state.batchStatements[4].sql, /cod_collection/);
+  assert.match(state.batchStatements[4].sql, /financial_ledger/);
+  assert.match(state.batchStatements[5].sql, /cod_collection/);
 });
 
 test("COD collection is rejected until the order is delivered", async () => {
