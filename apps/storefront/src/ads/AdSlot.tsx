@@ -87,34 +87,36 @@ export function AdSlot({
     let cancelled = false;
     const startLoad = () => {
       if (cancelled) return;
+      const startedAt = performance.now();
       setStatus("ready");
       reportAdTelemetry({
-        zoneId: matchingZone.id,
-        placementKey,
-        eventType: "slot_requested",
+        slotId: placementKey,
+        format: matchingZone.format,
         pageType: pageCategory,
-        language
+        eventType: "slot_rendered"
       });
 
       void loadAdsterraZoneScript(el, matchingZone).then((outcome) => {
         if (cancelled) return;
+        const elapsed = performance.now() - startedAt;
         if (outcome.ok) {
           setStatus("loaded");
           reportAdTelemetry({
-            zoneId: matchingZone.id,
-            placementKey,
-            eventType: "slot_loaded",
+            slotId: placementKey,
+            format: matchingZone.format,
             pageType: pageCategory,
-            language
+            eventType: "script_loaded",
+            loadMs: elapsed
           });
         } else {
           setStatus("collapsed");
           reportAdTelemetry({
-            zoneId: matchingZone.id,
-            placementKey,
-            eventType: outcome.reason === "blocked_or_error" ? "slot_blocked" : "slot_failed",
+            slotId: placementKey,
+            format: matchingZone.format,
             pageType: pageCategory,
-            language
+            eventType: outcome.reason === "timeout" ? "timeout" : "load_error",
+            loadMs: elapsed,
+            errorCode: outcome.reason
           });
         }
       });
@@ -127,14 +129,12 @@ export function AdSlot({
     return () => {
       cancelled = true;
     };
-  }, [registered, matchingZone, placementKey, pageCategory, language]);
+  }, [registered, matchingZone, placementKey, pageCategory]);
 
-  // Hard safety guard: never render anything on restricted pages or when master switch is off
   if (!config.masterEnabled || !routeSafe || !consentAllowed || !registered) {
     return null;
   }
 
-  // Safe preview mode when no live publisher credentials are active
   if (!matchingZone || !isValidPublisherZoneId(matchingZone.publisher_zone_id) || !isAllowedScriptOrigin(matchingZone.script_origin)) {
     if (config.previewTestMode && placement) {
       return (

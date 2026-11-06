@@ -1,11 +1,12 @@
 import { detectDeviceClass } from "./adRegistry";
 
 export type AdTelemetryEventType =
-  | "slot_requested"
-  | "slot_loaded"
-  | "slot_blocked"
-  | "slot_failed"
-  | "slot_clicked";
+  | "slot_rendered"
+  | "script_loaded"
+  | "load_error"
+  | "blocked_restricted"
+  | "blocked_safety"
+  | "timeout";
 
 const configuredBase = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
 const AD_EVENTS_URL = configuredBase + "/api/v1/ad-events";
@@ -41,22 +42,24 @@ export function observeNearViewport(
 }
 
 export function reportAdTelemetry(params: {
-  zoneId?: string | null;
-  placementKey: string;
-  eventType: AdTelemetryEventType;
+  slotId: string;
+  format: string;
   pageType: string;
-  language: "en" | "ur";
+  eventType: AdTelemetryEventType;
+  loadMs?: number;
+  errorCode?: string;
 }): void {
   if (typeof window === "undefined") return;
 
-  // Strictly non-PII payload: never include URL query, tracking token, phone, email, name, or address.
+  // Strictly non-PII payload matching /api/v1/ad-events schema
   const payload = {
-    zone_id: params.zoneId || undefined,
-    placement_key: params.placementKey.slice(0, 64),
+    slot_id: params.slotId.slice(0, 64),
+    format: params.format.slice(0, 32),
+    page_type: params.pageType.slice(0, 48),
     event_type: params.eventType,
-    page_type: params.pageType.slice(0, 40),
-    device_type: detectDeviceClass(),
-    language: params.language
+    device_category: detectDeviceClass(),
+    ...(typeof params.loadMs === "number" ? { load_ms: Math.max(0, Math.round(params.loadMs)) } : {}),
+    ...(params.errorCode ? { error_code: params.errorCode.slice(0, 80) } : {})
   };
 
   try {
