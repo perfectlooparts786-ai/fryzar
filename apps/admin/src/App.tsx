@@ -22,12 +22,16 @@ import {
   type PurchaseOrder,
   type WastageRecord,
   type LedgerEntry,
-  type AuditLogEntry
+  type AuditLogEntry,
+  type Coupon,
+  type ProductVariant,
+  type ModifierGroup,
+  type ModifierOption
 } from "./api";
 
 type AuthState = "checking" | "signed-out" | "signed-in";
 type AuthMode = "login" | "bootstrap";
-type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "procurement" | "payments" | "finance" | "delivery" | "riders" | "support" | "team" | "settings" | "audit";
+type Section = "overview" | "orders" | "kitchen" | "catalogue" | "inventory" | "procurement" | "payments" | "coupons" | "finance" | "delivery" | "riders" | "support" | "team" | "settings" | "audit";
 
 const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "overview", label: "Overview", icon: "◫" },
@@ -37,6 +41,7 @@ const NAV: { id: Section; label: string; icon: string; note?: string }[] = [
   { id: "inventory", label: "Inventory & BOM", icon: "▧" },
   { id: "procurement", label: "Procurement & Wastage", icon: "📦" },
   { id: "payments", label: "Payments", icon: "◈" },
+  { id: "coupons", label: "Coupons & Discounts", icon: "🎟" },
   { id: "finance", label: "Financial Ledger", icon: "📑" },
   { id: "delivery", label: "Delivery", icon: "⌖" },
   { id: "riders", label: "Riders", icon: "🚲" },
@@ -111,6 +116,7 @@ function Icon({ name }: { name: string }) {
     catalogue: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
     inventory: "M3 7h18v13H3zM3 7l3-4h12l3 4M12 7v13",
     payments: "M3 6h18v12H3zM3 10h18M7 15h4",
+    coupons: "M2 9h20v6H2zM6 9v6M18 9v6M10 12h4",
     delivery: "M12 21s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12zM12 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
     team: "M16 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 20v-2a4 4 0 0 0-3-3.87M16 4.13a3 3 0 0 1 0 5.82",
     settings: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.7 2.94-.09-.02a1.7 1.7 0 0 0-1.72.7l-.05.08h-3.4l-.05-.08a1.7 1.7 0 0 0-1.72-.7l-.09.02-1.7-2.94.06-.06A1.7 1.7 0 0 0 9.4 15l-.09-.05v-3.4l.09-.05a1.7 1.7 0 0 0-.34-1.88L9 9.56l1.7-2.94.09.02a1.7 1.7 0 0 0 1.72-.7l.05-.08h3.4l.05.08a1.7 1.7 0 0 0 1.72.7l.09-.02 1.7 2.94-.06.06a1.7 1.7 0 0 0-.34 1.88l.09.05v3.4z"
@@ -238,6 +244,238 @@ function AuthScreen({
         </div>
       </section>
     </main>
+  );
+}
+
+function CouponsModule({ user }: { user: StaffUser }) {
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [form, setForm] = useState<Record<string, string>>({
+    code: "",
+    discount_type: "fixed",
+    discount_value: "100",
+    min_order_paisa: "0",
+    max_discount_paisa: "",
+    usage_limit: "",
+    start_at: "",
+    expires_at: "",
+    is_active: "1"
+  });
+
+  const canEdit = user.role === "owner" || user.role === "manager";
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await adminApi.coupons();
+      setCoupons(res.coupons);
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  function resetForm() {
+    setEditingId("");
+    setForm({
+      code: "",
+      discount_type: "fixed",
+      discount_value: "100",
+      min_order_paisa: "0",
+      max_discount_paisa: "",
+      usage_limit: "",
+      start_at: "",
+      expires_at: "",
+      is_active: "1"
+    });
+  }
+
+  function editCoupon(c: Coupon) {
+    setEditingId(c.id);
+    setForm({
+      code: c.code,
+      discount_type: c.discount_type,
+      discount_value: c.discount_type === "fixed" ? (c.discount_value / 100).toFixed(2) : String(c.discount_value),
+      min_order_paisa: (c.min_order_paisa / 100).toFixed(2),
+      max_discount_paisa: c.max_discount_paisa == null ? "" : (c.max_discount_paisa / 100).toFixed(2),
+      usage_limit: c.usage_limit == null ? "" : String(c.usage_limit),
+      start_at: c.start_at ? c.start_at.slice(0, 16) : "",
+      expires_at: c.expires_at ? c.expires_at.slice(0, 16) : "",
+      is_active: String(c.is_active)
+    });
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete this coupon code?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminApi.deleteCoupon(id);
+      setNotice("Coupon deleted.");
+      resetForm();
+      await load();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const valNum = Number(form.discount_value);
+      const discountValue = form.discount_type === "fixed" ? Math.round(valNum * 100) : Math.round(valNum);
+      const payload = {
+        code: form.code.trim().toUpperCase(),
+        discount_type: form.discount_type,
+        discount_value: discountValue,
+        min_order_paisa: Math.round(Number(form.min_order_paisa || 0) * 100),
+        max_discount_paisa: form.max_discount_paisa ? Math.round(Number(form.max_discount_paisa) * 100) : null,
+        usage_limit: form.usage_limit ? Number(form.usage_limit) : null,
+        start_at: form.start_at ? new Date(form.start_at).toISOString() : null,
+        expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+        is_active: form.is_active !== "0"
+      };
+
+      await adminApi.saveCoupon(payload, editingId || undefined);
+      setNotice("Coupon saved successfully.");
+      resetForm();
+      await load();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="catalogue-module">
+      <div className="module-heading">
+        <div>
+          <span className="kicker">MARKETING & PROMOTIONS</span>
+          <h1>Coupons &amp; Discounts</h1>
+          <p>Create promotional discount codes. Fixed discounts are specified in PKR; percentage discounts apply to cart subtotal.</p>
+        </div>
+        <button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button>
+      </div>
+
+      {error ? <div className="orders-alert" role="alert">{error}</div> : null}
+      {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
+
+      {canEdit ? (
+        <form className="catalogue-editor" onSubmit={submit}>
+          <h2>{editingId ? "Edit" : "Create"} coupon</h2>
+          <div className="catalogue-form-grid">
+            <label className="catalogue-field">
+              <span>Coupon code</span>
+              <input type="text" required value={form.code} onChange={(e) => setForm((c) => ({ ...c, code: e.target.value }))} placeholder="e.g. WELCOME100" />
+            </label>
+            <label className="catalogue-field">
+              <span>Discount type</span>
+              <select value={form.discount_type} onChange={(e) => setForm((c) => ({ ...c, discount_type: e.target.value }))}>
+                <option value="fixed">Fixed PKR Amount</option>
+                <option value="percent">Percentage (%)</option>
+              </select>
+            </label>
+            <label className="catalogue-field">
+              <span>Discount value ({form.discount_type === "fixed" ? "PKR" : "%"})</span>
+              <input type="number" step={form.discount_type === "fixed" ? "0.01" : "1"} min="1" required value={form.discount_value} onChange={(e) => setForm((c) => ({ ...c, discount_value: e.target.value }))} />
+            </label>
+            <label className="catalogue-field">
+              <span>Minimum order (PKR)</span>
+              <input type="number" step="0.01" min="0" value={form.min_order_paisa} onChange={(e) => setForm((c) => ({ ...c, min_order_paisa: e.target.value }))} />
+            </label>
+            <label className="catalogue-field">
+              <span>Max discount cap (PKR, optional)</span>
+              <input type="number" step="0.01" min="0" value={form.max_discount_paisa} onChange={(e) => setForm((c) => ({ ...c, max_discount_paisa: e.target.value }))} />
+            </label>
+            <label className="catalogue-field">
+              <span>Usage limit (total redemptions)</span>
+              <input type="number" min="1" value={form.usage_limit} onChange={(e) => setForm((c) => ({ ...c, usage_limit: e.target.value }))} placeholder="Blank = unlimited" />
+            </label>
+            <label className="catalogue-field">
+              <span>Start date (optional)</span>
+              <input type="datetime-local" value={form.start_at} onChange={(e) => setForm((c) => ({ ...c, start_at: e.target.value }))} />
+            </label>
+            <label className="catalogue-field">
+              <span>Expiry date (optional)</span>
+              <input type="datetime-local" value={form.expires_at} onChange={(e) => setForm((c) => ({ ...c, expires_at: e.target.value }))} />
+            </label>
+            <label className="catalogue-field">
+              <span>Status</span>
+              <select value={form.is_active} onChange={(e) => setForm((c) => ({ ...c, is_active: e.target.value }))}>
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+          </div>
+          <div className="catalogue-actions">
+            <button type="submit" disabled={busy}>{busy ? "Saving…" : editingId ? "Save changes" : "Create coupon"}</button>
+            {editingId ? <button type="button" className="refresh-button" onClick={resetForm}>Cancel edit</button> : null}
+          </div>
+        </form>
+      ) : (
+        <p className="orders-footnote">Your role can view coupons but cannot create or edit them.</p>
+      )}
+
+      <div className="orders-table-card">
+        {loading ? (
+          <div className="orders-empty">Loading coupons…</div>
+        ) : coupons.length === 0 ? (
+          <div className="orders-empty"><strong>No coupons configured yet</strong><small>Create promotional coupons to offer discounts to customers.</small></div>
+        ) : (
+          <div className="table-wrap">
+            <table className="orders-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Discount</th>
+                  <th>Min Order</th>
+                  <th>Usage</th>
+                  <th>Validity</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coupons.map((c) => (
+                  <tr key={c.id}>
+                    <td><strong>{c.code}</strong></td>
+                    <td>{c.discount_type === "fixed" ? money(c.discount_value) : c.discount_value + "%"}</td>
+                    <td>{money(c.min_order_paisa)}</td>
+                    <td>{c.used_count} / {c.usage_limit ?? "∞"}</td>
+                    <td><small>{c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "No expiry"}</small></td>
+                    <td>
+                      <span className={"order-status " + (c.is_active ? "status-confirmed" : "status-cancelled")}>
+                        {c.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: "0.25rem" }}>
+                        <button type="button" className="refresh-button" onClick={() => editCoupon(c)} disabled={!canEdit}>Edit</button>
+                        <button type="button" className="refresh-button" onClick={() => handleDelete(c.id)} disabled={!canEdit} style={{ color: "#dc2626" }}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -2030,6 +2268,8 @@ export default function App() {
             <TeamAccessModule user={user} />
           ) : section === "payments" ? (
             <PaymentsModule user={user} />
+          ) : section === "coupons" ? (
+            <CouponsModule user={user} />
           ) : section === "audit" ? (
             <AuditLogsModule user={user} />
           ) : section === "overview" ? (

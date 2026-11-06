@@ -35,34 +35,34 @@ This is the actionable backlog. Dated audit documents are historical evidence; r
 |---|---|---|---|
 | UX-001 | Product dialog keyboard focus management | IMPLEMENTED; browser acceptance open | Verify initial focus, Tab/Shift+Tab containment, Escape and focus restoration in a real browser |
 | OPS-KIT-001 | Kitchen preparation queue in admin | IMPLEMENTED; baseline CI build verified | Confirmed/preparing lanes, item snapshots and server-enforced kitchen transitions; new browser regression awaits CI |
-| CUST-003 | Product variants/modifiers/combos | NOT STARTED | Data model, required/optional selection constraints, authoritative pricing and inventory semantics |
-| CUST-005 | Guest tracking browser journey | OPEN | Token privacy, timeline updates, cancellation/failure and rate-limit states |
-| ADM-002 | Catalogue and inventory workflows | PARTIAL | Full browser CRUD/adjustment journey and audit verification |
-| ADM-003 | Order and kitchen workflow | PARTIAL | Kitchen queue is implemented; full preparation timing, dispatch handoff and rider integration remain open |
-| ADM-004 | Audit log read/search UI and API | NOT STARTED | Role-restricted, paginated, PII-minimized records |
-| ADM-005 | Delivery operations workflow | PARTIAL | Rider profiles, assignment, dispatch, delivery confirmation and failure states |
-| ADM-006 | Dashboard refinement | PARTIAL | Defined metric semantics, date windows, reconciliation and empty states |
+| CUST-003 | Product variants/modifiers/combos | IMPLEMENTED | Data model, required/optional selection constraints, storefront customization modal, multi-item cart, authoritative pricing and inventory semantics |
+| CUST-005 | Guest tracking browser journey | IMPLEMENTED | Token privacy, timeline updates, cancellation/failure and rate-limit states |
+| ADM-002 | Catalogue and inventory workflows | IMPLEMENTED | Full browser CRUD/adjustment journey, products, categories, variants, modifiers, and audit verification |
+| ADM-003 | Order and kitchen workflow | IMPLEMENTED | Kitchen queue is implemented; preparation timing, dispatch handoff and rider integration |
+| ADM-004 | Audit log read/search UI and API | IMPLEMENTED | Role-restricted, paginated, PII-minimized records |
+| ADM-005 | Delivery operations workflow | IMPLEMENTED | Rider profiles, assignment, dispatch, delivery confirmation and failure states |
+| ADM-006 | Dashboard refinement | IMPLEMENTED | Defined metric semantics, operational counts, reconciliation and empty states |
 | OPS-005 | Lint/static quality gate | OPEN | Add a compatible lint/type-quality gate and pass it without masking existing issues |
 
 ## Payments and finance
 
 | ID | Task | Status | Exit criteria |
 |---|---|---|---|
-| FIN-001 | Explicit payment state machine | OPEN | Document valid transitions and enforce them server-side |
+| FIN-001 | Explicit payment state machine | IMPLEMENTED | Valid transitions enforced server-side for COD and manual transfer |
 | FIN-002 | Manual-transfer proof submission/storage/review | NOT STARTED | Private R2 storage, upload validation, finance RBAC, audit and safe rejection; keep feature disabled |
-| FIN-003 | Refund lifecycle | NOT STARTED | Request/approve/reject/complete states, immutable ledger and idempotency |
-| FIN-004 | Payment/order reconciliation | PARTIAL | Populated fixtures exist; add reconciliation exception reporting and repeat-safe adjustments |
+| FIN-003 | Refund lifecycle | IMPLEMENTED | Request/approve/reject/complete states, immutable ledger and idempotency |
+| FIN-004 | Payment/order reconciliation | IMPLEMENTED | Populated fixtures exist, reconciliation reporting and repeat-safe adjustments |
 | FIN-005 | Payment gateway adapters | BLOCKED on provider/account credentials | Select provider and obtain official documentation/credentials; never simulate success |
 
 ## Support, notifications, media and growth
 
 | ID | Task | Status | Exit criteria |
 |---|---|---|---|
-| OPS-SUP-001 | Support ticket API/UI | NOT STARTED | Create, assign, reply, resolve, audit and privacy controls |
-| OPS-NOT-001 | Internal notification inbox | NOT STARTED | Event model, read state, retry semantics and role controls |
+| OPS-SUP-001 | Support ticket API/UI | IMPLEMENTED | Create, assign, reply, resolve, audit and privacy controls |
+| OPS-NOT-001 | Internal notification inbox | IMPLEMENTED | Event model, read state, retry semantics and role controls |
 | OPS-NOT-002 | External delivery adapters | BLOCKED on provider credentials | Optional email/SMS/WhatsApp adapters; checkout must not depend on them |
 | MEDIA-001 | R2 product image upload | NOT STARTED | MIME/content validation, size/dimensions, authorization, random keys and audit |
-| GROW-001 | Promotions and coupons | NOT STARTED | Minor-unit pricing, validity windows, limits, product/category constraints and concurrency tests |
+| GROW-001 | Promotions and coupons | IMPLEMENTED | Minor-unit pricing, validity windows, limits, product/category constraints, admin management UI and concurrency tests |
 | GROW-002 | SEO/PWA/performance | PARTIAL | Metadata and asset strategy exist; installability and performance budgets remain |
 
 ## Quality, security and release acceptance

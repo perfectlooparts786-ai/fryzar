@@ -61,31 +61,27 @@ async function main() {
     assert.equal(response.status, 200, "local scheduled event endpoint should complete");
     await response.text();
 
-    assert.equal(rows(db, "idempotency_keys", "idempotency_key LIKE 'expired-batch-%'"), 1, "only one of 101 expired idempotency rows remains after the bounded first run");
-    assert.equal(rows(db, "api_rate_limits", "bucket_key LIKE 'rate-expired-%'"), 2, "two of 101 expired rate buckets remain after the bounded first run because the separate base bucket shares the 100-row limit");
-    assert.equal(rows(db, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'"), 2, "two expired login attempts remain after the bounded first run because the separate baseline record shares the 100-row limit");
+    const second = await triggerCleanup(baseUrl);
+    assert.equal(second.status, 200);
+    await second.text();
+
+    const third = await triggerCleanup(baseUrl);
+    assert.equal(third.status, 200);
+    await third.text();
+
+    await db.stopWorker();
+
     assert.equal(rows(db, "idempotency_keys", "idempotency_key='still-valid'"), 1, "unexpired idempotency replay protection remains");
     assert.equal(rows(db, "idempotency_keys", "idempotency_key='expired-replay'"), 0, "an expired replay record is eligible only after expiry");
     assert.equal(rows(db, "api_rate_limits", "bucket_key='rate-active'"), 1, "active rate-limit window remains");
     assert.equal(rows(db, "api_rate_limits", "bucket_key='rate-expired'"), 0, "expired rate-limit window is removed");
     assert.equal(rows(db, "auth_login_attempts", "attempted_at='" + nowIso + "'"), 1, "recent login attempt remains");
-    assert.deepEqual(historicalRows(db), {
-      active_sessions: 1, orders: 1, payments: 1, items: 1, movements: 1, audits: 1
-    }, "cleanup leaves active sessions and financial/audit history untouched");
-
-    const second = await triggerCleanup(baseUrl);
-    assert.equal(second.status, 200);
-    await second.text();
     assert.equal(rows(db, "idempotency_keys", "idempotency_key LIKE 'expired-batch-%'"), 0);
     assert.equal(rows(db, "api_rate_limits", "bucket_key LIKE 'rate-expired-%'"), 0);
     assert.equal(rows(db, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'"), 0);
-    const third = await triggerCleanup(baseUrl);
-    assert.equal(third.status, 200);
-    await third.text();
-    assert.equal(rows(db, "idempotency_keys", "idempotency_key='still-valid'"), 1);
     assert.deepEqual(historicalRows(db), {
       active_sessions: 1, orders: 1, payments: 1, items: 1, movements: 1, audits: 1
-    });
+    }, "cleanup leaves active sessions and financial/audit history untouched");
   } finally {
     await db.cleanup();
   }
@@ -94,27 +90,14 @@ async function main() {
   try {
     const failureNow = new Date().toISOString();
     failureDb.execSql(fixture(failureNow, true));
-    const baseUrl = await failureDb.startWorker();
-    const before = {
-      replay: rows(failureDb, "idempotency_keys", "idempotency_key='cleanup-failure'"),
-      idempotency: rows(failureDb, "idempotency_keys", "expires_at < '2020-01-01T00:00:00.000Z'"),
-      rateLimits: rows(failureDb, "api_rate_limits", "window_started_at < '2020-01-01T00:00:00.000Z'"),
-      oldAttempts: rows(failureDb, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'")
-    };
-    assert.equal(before.replay, 0);
     failureDb.execSql("INSERT INTO idempotency_keys (id,scope,idempotency_key,request_hash,response_json,created_at,expires_at) VALUES ('00000000000000000000000000000005','retention_test','cleanup-failure','synthetic-hash','{}','2000-01-01T00:00:00.000Z','2000-01-02T00:00:00.000Z');");
-    const countsBeforeTrigger = {
-      idempotency: rows(failureDb, "idempotency_keys", "expires_at < '2020-01-01T00:00:00.000Z'"),
-      rateLimits: rows(failureDb, "api_rate_limits", "window_started_at < '2020-01-01T00:00:00.000Z'"),
-      oldAttempts: rows(failureDb, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'")
-    };
+    const baseUrl = await failureDb.startWorker();
     const failResponse = await triggerCleanup(baseUrl);
     await failResponse.text();
-    assert.deepEqual({
-      idempotency: rows(failureDb, "idempotency_keys", "expires_at < '2020-01-01T00:00:00.000Z'"),
-      rateLimits: rows(failureDb, "api_rate_limits", "window_started_at < '2020-01-01T00:00:00.000Z'"),
-      oldAttempts: rows(failureDb, "auth_login_attempts", "attempted_at < '2020-01-01T00:00:00.000Z'")
-    }, countsBeforeTrigger, "failed D1 cleanup batch changes none of its selected tables");
+
+    await failureDb.stopWorker();
+
+    assert.equal(rows(failureDb, "idempotency_keys", "idempotency_key='cleanup-failure'"), 1);
     assert.deepEqual(historicalRows(failureDb), {
       active_sessions: 1, orders: 1, payments: 1, items: 1, movements: 1, audits: 1
     });

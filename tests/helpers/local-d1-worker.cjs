@@ -148,14 +148,18 @@ async function createLocalD1(options = {}) {
       }
       throw new Error("Timed out waiting for local API Worker:\n" + this.output);
     },
-    async cleanup() {
+    async stopWorker() {
       if (this.server && this.server.exitCode === null) {
         this.server.kill("SIGTERM");
         await Promise.race([
           new Promise((resolve) => this.server.once("exit", resolve)),
           new Promise((resolve) => setTimeout(resolve, 5000))
         ]);
+        this.server = null;
       }
+    },
+    async cleanup() {
+      await this.stopWorker();
       fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   };

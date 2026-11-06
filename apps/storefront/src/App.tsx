@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, ApiError } from "./api";
 import type {
+  CartItem,
   Category,
   DeliveryZone,
   Language,
+  ModifierOption,
   OrderResponse,
   Product,
+  ProductDetails,
+  ProductVariant,
   StoreSettings,
   TrackedOrderResponse
 } from "./types";
@@ -340,9 +344,15 @@ export default function App() {
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [cart, setCart] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [productDetails, setProductDetails] = useState<ProductDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>("");
+  const [selectedModifierOptions, setSelectedModifierOptions] = useState<Record<string, string[]>>({});
+  const [modalQuantity, setModalQuantity] = useState(1);
+
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -415,7 +425,37 @@ export default function App() {
   }, [refreshCount]);
 
   useEffect(() => {
-    if (!selectedProduct) return;
+    if (!selectedProduct) {
+      setProductDetails(null);
+      setSelectedVariantId("");
+      setSelectedModifierOptions({});
+      setModalQuantity(1);
+      return;
+    }
+
+    let active = true;
+    setLoadingDetails(true);
+    setProductDetails(null);
+    setSelectedVariantId("");
+    setSelectedModifierOptions({});
+    setModalQuantity(1);
+
+    api.productDetails(selectedProduct.id)
+      .then((res) => {
+        if (!active) return;
+        setProductDetails(res.product);
+        if (res.product.variants && res.product.variants.length > 0) {
+          const firstAvail = res.product.variants.find((v) => v.is_available) ?? res.product.variants[0];
+          setSelectedVariantId(firstAvail.id);
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setProductDetails(selectedProduct);
+      })
+      .finally(() => {
+        if (active) setLoadingDetails(false);
+      });
 
     const previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -465,6 +505,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleDialogKeyDown);
     return () => {
+      active = false;
       window.removeEventListener("keydown", handleDialogKeyDown);
       previouslyFocused?.focus();
     };
@@ -488,25 +529,112 @@ export default function App() {
     });
   }, [products, search, selectedCategory]);
 
-  const cartItems = useMemo(() => {
-    return Object.entries(cart)
-      .map(([productId, quantity]) => {
-        const product = products.find((item) => item.id === productId);
-        return product ? { product, quantity } : null;
-      })
-      .filter((item): item is { product: Product; quantity: number } => item !== null);
-  }, [cart, products]);
-
-  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = cartItems.reduce(
-    (sum, item) => sum + item.product.price_paisa * item.quantity,
-    0
-  );
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const subtotal = cart.reduce((sum, item) => sum + item.unit_price_paisa * item.quantity, 0);
   const discountPaisa = appliedCoupon?.discount_paisa ?? 0;
   const deliveryFee = selectedZone?.delivery_fee_paisa ?? 0;
   const total = Math.max(0, subtotal - discountPaisa) + deliveryFee;
   const minimumOrder = selectedZone?.minimum_order_paisa ?? 0;
   const minimumMet = subtotal >= minimumOrder;
+
+  function toggleModifierOption(groupId: string, optionId: string, maxSelection: number) {
+    setSelectedModifierOptions((current) => {
+      const existing = current[groupId] ?? [];
+      if (maxSelection === 1) {
+        return { ...current, [groupId]: existing.includes(optionId) ? [] : [optionId] };
+      }
+      if (existing.includes(optionId)) {
+        return { ...current, [groupId]: existing.filter((id) => id !== optionId) };
+      }
+      if (existing.length >= maxSelection) {
+        return current;
+      }
+      return { ...current, [groupId]: [...existing, optionId] };
+    });
+  }
+
+  const modifierGroups = productDetails?.modifier_groups ?? [];
+  const selectedVariant = productDetails?.variants?.find((v) => v.id === selectedVariantId) ?? null;
+
+  const isModalValid = useMemo(() => {
+    for (const group of modifierGroups) {
+      const selectedCount = (selectedModifierOptions[group.id] ?? []).length;
+      if (group.is_required && selectedCount < Math.max(1, group.min_selection)) {
+        return false;
+      }
+      if (group.min_selection > 0 && selectedCount < group.min_selection) {
+        return false;
+      }
+    }
+    return true;
+  }, [modifierGroups, selectedModifierOptions]);
+
+  const modalUnitPrice = useMemo(() => {
+    let base = selectedVariant ? selectedVariant.price_paisa : (selectedProduct?.price_paisa ?? 0);
+    let modTotal = 0;
+    for (const group of modifierGroups) {
+      const selectedIds = selectedModifierOptions[group.id] ?? [];
+      for (const opt of group.options || []) {
+        if (selectedIds.includes(opt.id)) {
+          modTotal += opt.price_paisa;
+        }
+      }
+    }
+    return base + modTotal;
+  }, [selectedVariant, selectedProduct, modifierGroups, selectedModifierOptions]);
+
+  function handleAddModalToBasket() {
+    if (!selectedProduct || !isModalValid) return;
+
+    const selectedMods: ModifierOption[] = [];
+    for (const group of modifierGroups) {
+      const selectedIds = selectedModifierOptions[group.id] ?? [];
+      for (const opt of group.options || []) {
+        if (selectedIds.includes(opt.id)) {
+          selectedMods.push(opt);
+        }
+      }
+    }
+
+    const modIds = selectedMods.map((m) => m.id).sort().join(",");
+    const itemId = selectedProduct.id + (selectedVariant ? ":" + selectedVariant.id : "") + ":" + modIds;
+
+    setCart((current) => {
+      const idx = current.findIndex((item) => item.id === itemId);
+      if (idx >= 0) {
+        const copy = [...current];
+        copy[idx] = { ...copy[idx], quantity: Math.min(20, copy[idx].quantity + modalQuantity) };
+        return copy;
+      }
+      return [
+        ...current,
+        {
+          id: itemId,
+          product: selectedProduct,
+          variant: selectedVariant ?? undefined,
+          selected_modifiers: selectedMods,
+          quantity: modalQuantity,
+          unit_price_paisa: modalUnitPrice
+        }
+      ];
+    });
+
+    setSelectedProduct(null);
+  }
+
+  function changeCartQuantity(itemId: string, delta: number) {
+    setCart((current) => {
+      return current
+        .map((item) => {
+          if (item.id === itemId) {
+            const nextQty = item.quantity + delta;
+            return nextQty > 0 ? { ...item, quantity: Math.min(20, nextQty) } : null;
+          }
+          return item;
+        })
+        .filter((item): item is CartItem => item !== null);
+    });
+  }
 
   async function handleApplyCoupon() {
     const code = couponInput.trim();
@@ -528,16 +656,6 @@ export default function App() {
     }
   }
 
-  function changeQuantity(productId: string, delta: number) {
-    setCart((current) => {
-      const next = { ...current };
-      const quantity = (next[productId] ?? 0) + delta;
-      if (quantity <= 0) delete next[productId];
-      else next[productId] = Math.min(quantity, 20);
-      return next;
-    });
-  }
-
   function openCheckout() {
     setCheckoutError("");
     setCheckoutOpen(true);
@@ -546,7 +664,7 @@ export default function App() {
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!storeOpen || !selectedZone || cartItems.length === 0 || !minimumMet) return;
+    if (!storeOpen || !selectedZone || cart.length === 0 || !minimumMet) return;
 
     const form = new FormData(event.currentTarget);
     const payload = {
@@ -558,8 +676,10 @@ export default function App() {
       payment_method: "cod" as const,
       coupon_code: appliedCoupon?.code,
       notes: String(form.get("notes") ?? ""),
-      items: cartItems.map((item) => ({
+      items: cart.map((item) => ({
         product_id: item.product.id,
+        variant_id: item.variant?.id,
+        selected_modifier_option_ids: item.selected_modifiers?.map((m) => m.id),
         quantity: item.quantity
       }))
     };
@@ -570,7 +690,7 @@ export default function App() {
     try {
       const result = await api.createOrder(payload, idempotencyKey);
       setOrderComplete(result);
-      setCart({});
+      setCart([]);
       setCheckoutOpen(false);
       setCartOpen(false);
       setIdempotencyKey(crypto.randomUUID());
@@ -856,7 +976,7 @@ export default function App() {
                     <p>{productDescription(product, language)}</p>
                     <div className="product-footer">
                       <strong>{money(product.price_paisa, language)}</strong>
-                      <button type="button" disabled={!storeOpen} onClick={() => changeQuantity(product.id, 1)} aria-label={t.add}><Icon name="plus" />{t.add}</button>
+                      <button type="button" disabled={!storeOpen} onClick={() => setSelectedProduct(product)} aria-label={t.add}><Icon name="plus" />{t.add}</button>
                     </div>
                   </div>
                 </article>
@@ -1020,8 +1140,101 @@ export default function App() {
             <small className="product-detail-category">{language === "ur" ? selectedProduct.category_name_ur : selectedProduct.category_name_en}</small>
             <h3>{productName(selectedProduct, language)}</h3>
             <p>{productDescription(selectedProduct, language)}</p>
-            <strong className="product-detail-price">{money(selectedProduct.price_paisa, language)}</strong>
-            <button className="primary-button full-width" type="button" disabled={!storeOpen || !selectedProduct.is_available} onClick={() => { changeQuantity(selectedProduct.id, 1); setSelectedProduct(null); }}>
+
+            {loadingDetails ? (
+              <div style={{ margin: "1rem 0", color: "#6b7280" }}>{isUrdu ? "تفصیلات حاصل کی جا رہی ہیں…" : "Loading options…"}</div>
+            ) : (
+              <>
+                {productDetails?.variants && productDetails.variants.length > 0 ? (
+                  <div className="variant-section" style={{ margin: "1rem 0" }}>
+                    <label style={{ fontWeight: 600, display: "block", marginBottom: "0.5rem" }}>
+                      {isUrdu ? "سائز / قسم" : "Select Option / Size"}
+                    </label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {productDetails.variants.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          className={selectedVariantId === v.id ? "primary-button" : "outline-button"}
+                          disabled={!v.is_available}
+                          onClick={() => setSelectedVariantId(v.id)}
+                          style={{ padding: "0.4rem 0.8rem", fontSize: "0.875rem" }}
+                        >
+                          {language === "ur" ? v.name_ur : v.name_en} · {money(v.price_paisa, language)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {modifierGroups.length > 0 ? (
+                  <div className="modifiers-section" style={{ margin: "1rem 0" }}>
+                    {modifierGroups.map((group) => {
+                      const selectedIds = selectedModifierOptions[group.id] ?? [];
+                      return (
+                        <div key={group.id} style={{ marginBottom: "1rem" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <strong>{language === "ur" ? group.name_ur : group.name_en}</strong>
+                            {group.is_required || group.min_selection > 0 ? (
+                              <small style={{ color: "#dc2626", fontWeight: 600 }}>{isUrdu ? "* لازمی" : "* Required"}</small>
+                            ) : (
+                              <small style={{ color: "#6b7280" }}>{isUrdu ? "(اختیاری)" : "(Optional)"}</small>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginTop: "0.5rem" }}>
+                            {(group.options || []).map((opt) => {
+                              const checked = selectedIds.includes(opt.id);
+                              return (
+                                <label
+                                  key={opt.id}
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    padding: "0.5rem 0.75rem",
+                                    borderRadius: "8px",
+                                    border: checked ? "1px solid #2563eb" : "1px solid #e5e7eb",
+                                    cursor: opt.is_available ? "pointer" : "not-allowed",
+                                    opacity: opt.is_available ? 1 : 0.5
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <input
+                                      type={group.max_selection === 1 ? "radio" : "checkbox"}
+                                      checked={checked}
+                                      disabled={!opt.is_available}
+                                      onChange={() => toggleModifierOption(group.id, opt.id, group.max_selection)}
+                                    />
+                                    <span>{language === "ur" ? opt.name_ur : opt.name_en}</span>
+                                  </div>
+                                  <small>+{money(opt.price_paisa, language)}</small>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "1rem 0" }}>
+              <div className="quantity-control">
+                <button type="button" onClick={() => setModalQuantity((q) => Math.max(1, q - 1))} aria-label={t.remove}><Icon name="minus" /></button>
+                <span>{modalQuantity}</span>
+                <button type="button" onClick={() => setModalQuantity((q) => Math.min(20, q + 1))} aria-label={t.add}><Icon name="plus" /></button>
+              </div>
+              <strong className="product-detail-price">{money(modalUnitPrice * modalQuantity, language)}</strong>
+            </div>
+
+            <button
+              className="primary-button full-width"
+              type="button"
+              disabled={!storeOpen || !selectedProduct.is_available || !isModalValid || loadingDetails}
+              onClick={handleAddModalToBasket}
+            >
               <Icon name="plus" />{t.add}
             </button>
           </section>
@@ -1035,7 +1248,7 @@ export default function App() {
               <div><small>FRYZAR</small><h2 id="basket-title">{t.basket}</h2></div>
               <button className="icon-button" type="button" onClick={() => setCartOpen(false)} aria-label={t.close}><Icon name="close" /></button>
             </div>
-            {cartItems.length === 0 ? (
+            {cart.length === 0 ? (
               <div className="drawer-empty">
                 <div className="drawer-bag"><Icon name="bag" /></div>
                 <h3>{t.emptyBasket}</h3>
@@ -1045,19 +1258,29 @@ export default function App() {
             ) : (
               <>
                 <div className="drawer-items">
-                  {cartItems.map(({ product, quantity }) => (
-                    <div className="drawer-item" key={product.id}>
+                  {cart.map((item) => (
+                    <div className="drawer-item" key={item.id}>
                       <div className="drawer-item-art">F.</div>
                       <div className="drawer-item-copy">
-                        <strong>{productName(product, language)}</strong>
-                        <small>{money(product.price_paisa, language)}</small>
+                        <strong>{productName(item.product, language)}</strong>
+                        {item.variant ? (
+                          <small style={{ display: "block", color: "#4b5563" }}>
+                            {language === "ur" ? item.variant.name_ur : item.variant.name_en}
+                          </small>
+                        ) : null}
+                        {item.selected_modifiers && item.selected_modifiers.length > 0 ? (
+                          <small style={{ display: "block", color: "#6b7280" }}>
+                            {item.selected_modifiers.map((m) => (language === "ur" ? m.name_ur : m.name_en)).join(", ")}
+                          </small>
+                        ) : null}
+                        <small>{money(item.unit_price_paisa, language)}</small>
                         <div className="quantity-control">
-                          <button type="button" onClick={() => changeQuantity(product.id, -1)} aria-label={t.remove}><Icon name="minus" /></button>
-                          <span>{quantity}</span>
-                          <button type="button" onClick={() => changeQuantity(product.id, 1)} aria-label={t.add}><Icon name="plus" /></button>
+                          <button type="button" onClick={() => changeCartQuantity(item.id, -1)} aria-label={t.remove}><Icon name="minus" /></button>
+                          <span>{item.quantity}</span>
+                          <button type="button" onClick={() => changeCartQuantity(item.id, 1)} aria-label={t.add}><Icon name="plus" /></button>
                         </div>
                       </div>
-                      <strong className="drawer-line-total">{money(product.price_paisa * quantity, language)}</strong>
+                      <strong className="drawer-line-total">{money(item.unit_price_paisa * item.quantity, language)}</strong>
                     </div>
                   ))}
                 </div>

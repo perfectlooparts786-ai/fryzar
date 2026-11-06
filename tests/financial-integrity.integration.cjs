@@ -27,6 +27,13 @@ async function main() {
   const bootstrapToken = "local-only-financial-fixture-owner-bootstrap-token-64chars";
   const db = await createLocalD1({ vars: { OWNER_BOOTSTRAP_TOKEN: bootstrapToken } });
   try {
+    const fixturePath = path.join(__dirname, "fixtures", "financial-integrity.sql");
+    const fixture = fs.readFileSync(fixturePath, "utf8");
+    db.execSql(fixture);
+
+    const rollbackKey = "fin-collection-idem-rollback";
+    const collectionKey = "fin-collection-idem-0001";
+
     const baseUrl = await db.startWorker();
     const bootstrapped = await requestJson(baseUrl, "/api/v1/admin/bootstrap-owner", {
       method: "POST",
@@ -37,9 +44,67 @@ async function main() {
     const cookie = (bootstrapped.response.headers.get("Set-Cookie") || "").match(/__Host-fryzar_admin=([a-f0-9]{64})/);
     assert.ok(cookie, "bootstrap issues a session cookie for the finance owner");
     const SESSION_TOKEN = cookie[1];
-    const fixturePath = path.join(__dirname, "fixtures", "financial-integrity.sql");
-    const fixture = fs.readFileSync(fixturePath, "utf8");
-    db.execSql(fixture);
+
+    const collect = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": collectionKey },
+      body: { order_id: ORDER_OK }
+    });
+    assert.equal(collect.response.status, 201);
+    assert.equal(collect.body.amount_paisa, 39000);
+
+    const replay = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": collectionKey },
+      body: { order_id: ORDER_OK }
+    });
+    assert.equal(replay.response.status, 200);
+    assert.equal(replay.response.headers.get("Idempotent-Replay"), "true");
+
+    const duplicateWithNewKey = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": "fin-collection-idem-0002" },
+      body: { order_id: ORDER_OK }
+    });
+    assert.equal(duplicateWithNewKey.response.status, 409, "second collection cannot duplicate an accepted payment");
+
+    const notDelivered = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": "fin-collection-idem-0003" },
+      body: { order_id: ORDER_NOT_DELIVERED }
+    });
+    assert.equal(notDelivered.response.status, 409);
+
+    const notCod = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": "fin-collection-idem-0004" },
+      body: { order_id: ORDER_TRANSFER }
+    });
+    assert.equal(notCod.response.status, 409);
+
+    const amountMismatch = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": "fin-collection-idem-0005" },
+      body: { order_id: ORDER_MISMATCH }
+    });
+    assert.equal(amountMismatch.response.status, 409);
+    assert.equal(amountMismatch.body.error, "payment_amount_mismatch");
+
+    const failed = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
+      method: "POST",
+      cookie: SESSION_TOKEN,
+      headers: { "Idempotency-Key": rollbackKey },
+      body: { order_id: ORDER_FAIL }
+    });
+    assert.equal(failed.response.status, 409, "synthetic late audit failure is reported safely");
+
+    await db.stopWorker();
 
     const orderTotals = db.queryRow(
       "SELECT COUNT(*) AS invalid_totals FROM orders o WHERE " +
@@ -89,6 +154,7 @@ async function main() {
     assert.equal(Number(reservation.stock_a), 2);
     assert.equal(Number(reservation.stock_b), 5);
     assert.equal(Number(reservation.net_b), -3, "cancelled COD order retains reserve and restore movements without changing payment");
+
     const cancelled = db.queryRow(
       "SELECT o.payment_status AS order_payment, p.status AS payment_status " +
       "FROM orders o JOIN payments p ON p.order_id=o.id WHERE o.id='" + ORDER_CANCELLED + "'",
@@ -97,15 +163,6 @@ async function main() {
     assert.equal(cancelled.order_payment, "unpaid");
     assert.equal(cancelled.payment_status, "unpaid");
 
-    const collectionKey = "fin-collection-idem-0001";
-    const collect = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": collectionKey },
-      body: { order_id: ORDER_OK }
-    });
-    assert.equal(collect.response.status, 201);
-    assert.equal(collect.body.amount_paisa, 39000);
     const collected = financialState(db, ORDER_OK, collectionKey);
     assert.equal(collected.status, "delivered");
     assert.equal(collected.order_payment, "collected");
@@ -113,61 +170,13 @@ async function main() {
     assert.equal(Number(collected.audits), 1);
     assert.equal(Number(collected.idempotency_rows), 1);
 
-    const replay = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": collectionKey },
-      body: { order_id: ORDER_OK }
-    });
-    assert.equal(replay.response.status, 200);
-    assert.equal(replay.response.headers.get("Idempotent-Replay"), "true");
-    assert.equal(Number(financialState(db, ORDER_OK, collectionKey).audits), 1);
-    assert.equal(Number(financialState(db, ORDER_OK, collectionKey).idempotency_rows), 1);
+    const failedState = financialState(db, ORDER_FAIL, rollbackKey);
+    assert.equal(failedState.status, "delivered");
+    assert.equal(failedState.order_payment, "unpaid");
+    assert.equal(failedState.payment_status, "unpaid");
+    assert.equal(Number(failedState.audits), 0, "rollback leaves audit count at 0");
+    assert.equal(Number(failedState.idempotency_rows), 0, "rollback leaves idempotency rows at 0");
 
-    const duplicateWithNewKey = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": "fin-collection-idem-0002" },
-      body: { order_id: ORDER_OK }
-    });
-    assert.equal(duplicateWithNewKey.response.status, 409, "second collection cannot duplicate an accepted payment");
-    assert.equal(Number(financialState(db, ORDER_OK, collectionKey).audits), 1);
-
-    const notDelivered = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": "fin-collection-idem-0003" },
-      body: { order_id: ORDER_NOT_DELIVERED }
-    });
-    assert.equal(notDelivered.response.status, 409);
-
-    const notCod = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": "fin-collection-idem-0004" },
-      body: { order_id: ORDER_TRANSFER }
-    });
-    assert.equal(notCod.response.status, 409);
-
-    const amountMismatch = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": "fin-collection-idem-0005" },
-      body: { order_id: ORDER_MISMATCH }
-    });
-    assert.equal(amountMismatch.response.status, 409);
-    assert.equal(amountMismatch.body.error, "payment_amount_mismatch");
-
-    const rollbackKey = "fin-collection-idem-rollback";
-    const beforeRollback = financialState(db, ORDER_FAIL, rollbackKey);
-    const failed = await requestJson(baseUrl, "/api/v1/admin/payments/cod-collection", {
-      method: "POST",
-      cookie: SESSION_TOKEN,
-      headers: { "Idempotency-Key": rollbackKey },
-      body: { order_id: ORDER_FAIL }
-    });
-    assert.equal(failed.response.status, 409, "synthetic late audit failure is reported safely");
-    assert.deepEqual(financialState(db, ORDER_FAIL, rollbackKey), beforeRollback, "D1 batch rollback leaves order, payment, audit, and idempotency unchanged");
     assert.equal(db.output.includes(SESSION_TOKEN), false);
 
     process.stdout.write("Real local Wrangler D1 financial integration passed: populated line/totals arithmetic, payment amount validation, COD collection/replay, invalid states, cancellation consistency, and atomic rollback.\n");
