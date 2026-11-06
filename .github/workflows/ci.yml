@@ -69,6 +69,9 @@ jobs:
       - name: Verify migration order, schema, indexes and foreign keys against local D1
         run: npm run test:integration:migrations
 
+      - name: Verify legacy production catalogue migration rehearsal against local D1
+        run: npm run test:integration:legacy-migration
+
       - name: Rehearse isolated local D1 backup and restore
         run: npm run test:integration:backup-restore
 

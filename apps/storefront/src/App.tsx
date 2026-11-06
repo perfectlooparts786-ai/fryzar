@@ -1779,7 +1779,33 @@ export default function App() {
                   <div className="drawer-summary">
                     <div><span>{t.subtotal}</span><strong>{money(subtotal, language)}</strong></div>
                     <div><span>{t.delivery}</span><strong>{selectedZone ? money(deliveryFee, language) : "—"}</strong></div>
+                    {appliedCoupon ? (
+                      <div style={{ color: "#059669" }}>
+                        <span>{isUrdu ? "کوپن رعایت" : "Coupon Discount"} ({appliedCoupon.code})</span>
+                        <strong>-{money(appliedCoupon.discount_paisa, language)}</strong>
+                      </div>
+                    ) : null}
                     <div className="summary-total"><span>{t.estimatedTotal}</span><strong>{money(total, language)}</strong></div>
+                    <div style={{ marginTop: "0.5rem", marginBottom: "0.5rem" }}>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <input
+                          type="text"
+                          value={couponInput}
+                          onChange={(e) => { setCouponInput(e.target.value); setCouponError(""); }}
+                          placeholder={isUrdu ? "کوپن درج کریں" : "Enter coupon code"}
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          className="outline-button"
+                          type="button"
+                          onClick={() => void handleApplyCoupon()}
+                          disabled={validatingCoupon || !couponInput.trim()}
+                        >
+                          {validatingCoupon ? "..." : (isUrdu ? "لگائیں" : "Apply")}
+                        </button>
+                      </div>
+                      {couponError ? <small className="form-error">{couponError}</small> : null}
+                    </div>
                     <small>{t.estimateNote}</small>
                     {selectedZone && !minimumMet ? <small className="form-error">{t.minOrder}: {money(minimumOrder, language)}</small> : null}
                     <button

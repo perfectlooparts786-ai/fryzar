@@ -54,7 +54,7 @@ async function main() {
       ["migration_count"],
       restorePath
     );
-    assert.equal(Number(restoredLedger.migration_count), 8);
+    assert.equal(Number(restoredLedger.migration_count), 9);
 
     const restoredIntegrity = db.queryRow(
       "SELECT COUNT(*) AS violations FROM pragma_foreign_key_check",
@@ -65,7 +65,7 @@ async function main() {
 
     console.log(
       "Local D1 snapshot/restore rehearsal passed: " + backupManifest.length +
-      " persisted files copied, SHA-256 manifests match, sentinel data and eight-migration ledger restored, zero FK violations."
+      " persisted files copied, SHA-256 manifests match, sentinel data and nine-migration ledger restored, zero FK violations."
     );
   } finally {
     await db.cleanup();
