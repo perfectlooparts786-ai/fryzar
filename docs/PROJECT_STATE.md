@@ -4,16 +4,16 @@
 **Repository:** `perfectlooparts786-ai/fryzar`  
 **Development branch:** `foundation/fresh-build`  
 **PR #1:** [open, draft, unmerged](https://github.com/perfectlooparts786-ai/fryzar/pull/1)  
-**Latest verified commit:** `9d865c1` (`feat(storefront-admin): add product variants, modifier customization, coupons management, and integration test updates`).
+**Latest verified commit:** `eafcf27` (`test(e2e): add full operational lifecycle and hardening integration test suites`).
 
 This file is the current source-backed status summary. Dated audit documents remain historical evidence and must not override the latest source or CI result.
 
 ## Current verified state
 
-- All unit tests (91/91 passing), worker routing tests (6/6 passing), and local D1 integration suites (migration integrity, financial integrity, backup/restore rehearsal, preview config safety, checkout concurrency, cancellation race, bootstrap, session lifecycle, retention) pass cleanly.
+- All unit tests (91/91 passing), worker routing tests (6/6 passing), and local D1 integration suites (full operational E2E, hardening & edge-cases, migration integrity, financial integrity, backup/restore rehearsal, preview config safety, checkout concurrency, cancellation race, bootstrap, session lifecycle, retention) pass cleanly.
 - CI uses Node 22 and `npm ci --ignore-scripts --no-audit --no-fund` with the committed root lockfile.
 - Storefront and Admin frontend applications build without TypeScript or Vite errors (`build:storefront` and `build:admin` succeed in < 500ms).
-- Isolated local Wrangler D1 suites cover checkout transactions, cancellation races, owner bootstrap, staff sessions/authorization, populated financial integrity, bounded retention, 8 ordered D1 migrations, backup/restore rehearsal, and preview config safety.
+- Isolated local Wrangler D1 suites cover full operational lifecycle (owner setup -> catalogue -> variants -> modifiers -> coupons -> customer guest checkout -> tracking -> kitchen prep -> rider dispatch -> delivery -> COD collection -> finance ledger -> support -> audit logs), hardening & edge cases, checkout transactions, cancellation races, owner bootstrap, staff sessions/authorization, populated financial integrity, bounded retention, 8 ordered D1 migrations, backup/restore rehearsal, and preview config safety.
 - The latest source includes a bilingual (Urdu + English, LTR + RTL) customer storefront with product customization (variants, modifier groups with option pricing and min/max selection bounds, special instructions), multi-customized-item cart, server-authoritative pricing and coupon discounts, guest COD checkout, private 64-character token tracking, customer support request, and an authenticated admin workspace with Overview, Orders, Kitchen, Catalogue (Products, Categories, Variants, Modifiers), Inventory & BOM, Procurement & Wastage, Payments, Coupons & Discounts, Financial Ledger, Delivery Zones, Riders & Dispatch, Support Ticket Inbox & Threading, Team Access, Store Settings, and Audit Logs.
 
 ## Architecture and environment boundaries
