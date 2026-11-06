@@ -406,7 +406,9 @@ test("successful COD checkout uses server prices and creates an atomic batch", a
   assert.ok(stockReservation);
   assert.ok(stockReservation.sql.includes("stock_qty IS NULL OR stock_qty >= ?1"));
   assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO idempotency_keys")));
-  assert.equal(state.batchStatements.length, 9);
+  assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO financial_ledger")));
+  assert.ok(state.batchStatements.some((item) => item.sql.includes("INSERT INTO notifications")));
+  assert.equal(state.batchStatements.length, 11);
 });
 
 test("checkout replays the original order for the same idempotency key and payload", async () => {

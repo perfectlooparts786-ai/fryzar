@@ -1,9 +1,20 @@
+import {
+  handleAdminPlatformRoutes,
+  handlePublicPlatformRoutes,
+  recordSystemEvent
+} from "./platform-modules";
+
 interface Env {
   DB: D1Database;
   APP_ENV?: string;
   ALLOWED_ORIGINS?: string;
   TRACKING_SECRET?: string;
   OWNER_BOOTSTRAP_TOKEN?: string;
+  ADSTERRA_SITE_ID?: string;
+  ADSTERRA_BANNER_ZONE_ID?: string;
+  ADSTERRA_NATIVE_ZONE_ID?: string;
+  ADSTERRA_SOCIAL_BAR_ZONE_ID?: string;
+  ADSTERRA_INPAGE_PUSH_ZONE_ID?: string;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -255,7 +266,7 @@ async function health(env: Env): Promise<Response> {
 
 async function listCategories(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
-    "SELECT id, slug, name_ur, name_en, description_ur, description_en, sort_order " +
+    "SELECT id, slug, name_ur, name_en, description_ur, description_en, image_url, sort_order " +
     "FROM categories WHERE is_active = 1 ORDER BY sort_order ASC, name_en ASC"
   ).all<{
     id: string;
@@ -264,6 +275,7 @@ async function listCategories(env: Env): Promise<Response> {
     name_en: string;
     description_ur: string;
     description_en: string;
+    image_url: string | null;
     sort_order: number;
   }>();
 
@@ -274,26 +286,39 @@ async function listProducts(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const requestedCategory = url.searchParams.get("category");
   const category = requestedCategory?.trim() || null;
+  const search = url.searchParams.get("search")?.trim() || null;
 
   if (category && (category.length > 80 || !/^[a-z0-9-]+$/i.test(category))) {
     return json({ error: "invalid_category" }, 400);
+  }
+  if (search && search.length > 100) {
+    return json({ error: "invalid_search" }, 400);
   }
 
   const rawLimit = Number(url.searchParams.get("limit") ?? "24");
   const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 24;
 
-  const result = await env.DB.prepare(
+  const baseSelect =
     "SELECT p.id, p.slug, p.sku, p.category_id, " +
     "p.name_ur, p.name_en, p.description_ur, p.description_en, " +
     "p.price_paisa, p.compare_at_paisa, p.image_url, p.is_available, " +
     "p.is_featured, c.slug AS category_slug, " +
     "c.name_ur AS category_name_ur, c.name_en AS category_name_en " +
     "FROM products p LEFT JOIN categories c ON c.id = p.category_id " +
-    "WHERE p.is_available = 1 " +
+    "WHERE p.is_available = 1 AND p.is_archived = 0 " +
     "AND (p.category_id IS NULL OR c.is_active = 1) " +
-    "AND (?1 IS NULL OR c.slug = ?1) " +
-    "ORDER BY p.is_featured DESC, p.sort_order ASC, p.name_en ASC LIMIT ?2"
-  ).bind(category, limit).all<JsonRecord>();
+    "AND (?1 IS NULL OR c.slug = ?1) ";
+
+  const result = search
+    ? await env.DB.prepare(
+        baseSelect +
+        "AND (LOWER(p.name_en) LIKE ?3 OR p.name_ur LIKE ?3 OR LOWER(COALESCE(p.description_en, '')) LIKE ?3 OR COALESCE(p.description_ur, '') LIKE ?3) " +
+        "ORDER BY p.is_featured DESC, p.sort_order ASC, p.name_en ASC LIMIT ?2"
+      ).bind(category, limit, `%${search.toLowerCase()}%`).all<JsonRecord>()
+    : await env.DB.prepare(
+        baseSelect +
+        "ORDER BY p.is_featured DESC, p.sort_order ASC, p.name_en ASC LIMIT ?2"
+      ).bind(category, limit).all<JsonRecord>();
 
   return json({ products: result.results, limit });
 }
@@ -315,7 +340,7 @@ async function storefrontConfig(env: Env): Promise<Response> {
 async function listDeliveryZones(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
     "SELECT id, code, name_ur, name_en, city, region, " +
-    "delivery_fee_paisa, minimum_order_paisa " +
+    "delivery_fee_paisa, minimum_order_paisa, estimated_mins_min, estimated_mins_max " +
     "FROM delivery_zones WHERE is_active = 1 " +
     "ORDER BY city ASC, name_en ASC"
   ).all<JsonRecord>();
@@ -551,7 +576,7 @@ async function checkout(request: Request, env: Env): Promise<Response> {
   const productResult = await env.DB.prepare(
     "SELECT p.id, p.sku, p.name_ur, p.name_en, p.price_paisa, p.stock_qty, p.is_available " +
     "FROM products p LEFT JOIN categories c ON c.id = p.category_id " +
-    "WHERE p.id IN (" + productPlaceholders + ") AND p.is_available = 1 " +
+    "WHERE p.id IN (" + productPlaceholders + ") AND p.is_available = 1 AND p.is_archived = 0 " +
     "AND (p.category_id IS NULL OR c.is_active = 1)"
   ).bind(...uniqueProductIds).all<ProductRow>();
 
@@ -585,6 +610,25 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     for (const o of optResult.results) {
       optionsMap.set(String(o.id), o);
     }
+  }
+
+  // Enforce server-side product modifier group min/max/required constraints
+  const linkedGroupsResult = await env.DB.prepare(
+    "SELECT pmg.product_id, mg.id AS group_id, mg.min_selection, mg.max_selection, mg.is_required " +
+    "FROM product_modifier_groups pmg JOIN modifier_groups mg ON mg.id = pmg.group_id " +
+    "WHERE pmg.product_id IN (" + productPlaceholders + ")"
+  ).bind(...uniqueProductIds).all<{
+    product_id: string;
+    group_id: string;
+    min_selection: number;
+    max_selection: number;
+    is_required: number;
+  }>();
+  const productModifierRules = new Map<string, Array<{ group_id: string; min_selection: number; max_selection: number; is_required: number }>>();
+  for (const row of linkedGroupsResult.results) {
+    const list = productModifierRules.get(row.product_id) ?? [];
+    list.push(row);
+    productModifierRules.set(row.product_id, list);
   }
 
   let subtotal = 0;
@@ -642,6 +686,24 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       const modUr = selectedOptions.map((o) => String(o.name_ur)).join(", ");
       nameEn += " [" + modEn + "]";
       nameUr += " [" + modUr + "]";
+    }
+
+    const rules = productModifierRules.get(product.id) ?? [];
+    if (rules.length > 0) {
+      const allowedGroupIds = new Set(rules.map((r) => r.group_id));
+      for (const opt of selectedOptions) {
+        if (!allowedGroupIds.has(String(opt.group_id))) {
+          return json({ error: "modifier_not_linked_to_product" }, 422);
+        }
+      }
+      for (const rule of rules) {
+        const countInGroup = selectedOptions.filter((opt) => String(opt.group_id) === rule.group_id).length;
+        const minRequired = Math.max(Number(rule.min_selection || 0), rule.is_required === 1 ? 1 : 0);
+        const maxAllowed = Number(rule.max_selection || 0);
+        if (countInGroup < minRequired || (maxAllowed > 0 && countInGroup > maxAllowed)) {
+          return json({ error: "modifier_selection_invalid", group_id: rule.group_id }, 422);
+        }
+      }
     }
 
     const unitPrice = baseUnitPrice + modifierTotal;
@@ -801,13 +863,28 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       payment_method: input.payment_method,
       total_paisa: total,
       item_count: input.items.length
-    }))
+    })),
+    env.DB.prepare(
+      "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, note, created_at) " +
+      "VALUES (?1, 'order_charge', ?2, 0, ?3, ?4, ?5)"
+    ).bind(crypto.randomUUID(), orderId, total, "Order charge " + orderNumber, createdAt),
+    env.DB.prepare(
+      "INSERT INTO notifications (id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, created_at) " +
+      "VALUES (?1, 'staff', 'نیا آرڈر موصول ہوا', 'New Order Received', ?2, ?3, 'order_created', ?4, ?5)"
+    ).bind(
+      crypto.randomUUID(),
+      `آرڈر ${orderNumber} موصول ہوا`,
+      `Order ${orderNumber} placed`,
+      orderId,
+      createdAt
+    )
   ];
 
   if (validatedCoupon) {
     statements.push(
       env.DB.prepare(
-        "UPDATE coupons SET used_count = used_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?1"
+        "UPDATE coupons SET used_count = used_count + 1, updated_at = CURRENT_TIMESTAMP " +
+        "WHERE id = ?1 AND is_active = 1 AND (usage_limit IS NULL OR used_count < usage_limit)"
       ).bind(validatedCoupon.id),
       env.DB.prepare(
         "INSERT INTO coupon_redemptions (id, coupon_id, order_id, customer_phone, discount_applied_paisa) " +
@@ -820,13 +897,14 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     statements.push(
       env.DB.prepare(
         "INSERT INTO order_items (" +
-        "id, order_id, product_id, product_name_ur_snapshot, product_name_en_snapshot, " +
+        "id, order_id, product_id, variant_id, product_name_ur_snapshot, product_name_en_snapshot, " +
         "sku_snapshot, unit_price_paisa, quantity, line_total_paisa" +
-        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
+        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
       ).bind(
         crypto.randomUUID(),
         orderId,
         item.product.id,
+        item.variant ? String(item.variant.id) : null,
         item.name_ur_snapshot,
         item.name_en_snapshot,
         item.sku_snapshot,
@@ -1613,6 +1691,18 @@ async function changeAdminOrderStatus(
   if (nextStatusText === "cancelled") {
     statements.push(
       env.DB.prepare(
+        "UPDATE product_variants SET stock_qty = stock_qty + (" +
+        "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi " +
+        "WHERE oi.order_id = ?1 AND oi.variant_id = product_variants.id" +
+        "), updated_at = CURRENT_TIMESTAMP " +
+        "WHERE stock_qty IS NOT NULL " +
+        "AND EXISTS (SELECT 1 FROM orders WHERE id = ?1 AND status = 'cancelled' AND updated_at = ?2) " +
+        "AND EXISTS (SELECT 1 FROM order_items WHERE order_id = ?1 AND variant_id = product_variants.id) " +
+        "AND NOT EXISTS (SELECT 1 FROM inventory_movements im " +
+        "WHERE im.reference_type = 'order' AND im.reference_id = ?1 " +
+        "AND im.reason = 'order_cancelled')"
+      ).bind(orderId, timestamp),
+      env.DB.prepare(
         "UPDATE products SET stock_qty = stock_qty + (" +
         "SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi " +
         "WHERE oi.order_id = ?1 AND oi.product_id = products.id" +
@@ -1640,7 +1730,41 @@ async function changeAdminOrderStatus(
     );
   }
 
+  if (nextStatusText === "delivered") {
+    statements.push(
+      env.DB.prepare(
+        "INSERT INTO recipe_consumptions (id, order_id, ingredient_id, quantity_consumed, created_at) " +
+        "SELECT lower(hex(randomblob(16))), ?1, ri.ingredient_id, SUM(oi.quantity * ri.quantity_required), ?2 " +
+        "FROM order_items oi " +
+        "JOIN recipes r ON r.product_id = oi.product_id AND (r.variant_id IS NULL OR r.variant_id = oi.variant_id) " +
+        "JOIN recipe_ingredients ri ON ri.recipe_id = r.id " +
+        "WHERE oi.order_id = ?1 " +
+        "AND EXISTS (SELECT 1 FROM orders WHERE id = ?1 AND status = 'delivered' AND updated_at = ?2) " +
+        "AND NOT EXISTS (SELECT 1 FROM recipe_consumptions rc WHERE rc.order_id = ?1 AND rc.ingredient_id = ri.ingredient_id) " +
+        "GROUP BY ri.ingredient_id"
+      ).bind(orderId, timestamp),
+      env.DB.prepare(
+        "UPDATE ingredients SET stock_qty = MAX(0, stock_qty - COALESCE((" +
+        "SELECT rc.quantity_consumed FROM recipe_consumptions rc " +
+        "WHERE rc.order_id = ?1 AND rc.ingredient_id = ingredients.id AND rc.created_at = ?2" +
+        "), 0)), updated_at = ?2 " +
+        "WHERE EXISTS (SELECT 1 FROM recipe_consumptions rc WHERE rc.order_id = ?1 AND rc.ingredient_id = ingredients.id AND rc.created_at = ?2)"
+      ).bind(orderId, timestamp)
+    );
+  }
+
   statements.push(
+    env.DB.prepare(
+      "INSERT INTO notifications (id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, created_at) " +
+      "SELECT lower(hex(randomblob(16))), 'staff', 'آرڈر کی حالت تبدیل', 'Order Status Updated', ?1, ?2, 'order_status_changed', id, ?3 " +
+      "FROM orders WHERE id = ?4 AND status = ?5 AND updated_at = ?3"
+    ).bind(
+      `آرڈر کی نئی حالت: ${nextStatusText}`,
+      `Order transitioned from ${order.status} to ${nextStatusText}`,
+      timestamp,
+      orderId,
+      nextStatusText
+    ),
     env.DB.prepare(
       "INSERT INTO order_status_events " +
       "(id, order_id, old_status, new_status, actor_id, actor_type, note) " +
@@ -2309,12 +2433,12 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
   if (request.method === "GET" && collection) {
     if (isCategory) {
       const result = await env.DB.prepare(
-        "SELECT id, slug, name_en, name_ur, description_en, description_ur, sort_order, is_active, created_at, updated_at FROM categories ORDER BY sort_order, name_en LIMIT 500"
+        "SELECT id, slug, name_en, name_ur, description_en, description_ur, image_url, sort_order, is_active, created_at, updated_at FROM categories ORDER BY sort_order, name_en LIMIT 500"
       ).all<JsonRecord>();
       return json({ categories: result.results });
     }
     const result = await env.DB.prepare(
-      "SELECT id, category_id, sku, slug, name_en, name_ur, description_en, description_ur, price_paisa, compare_at_paisa, image_url, stock_qty, is_available, is_featured, sort_order, created_at, updated_at FROM products ORDER BY sort_order, name_en LIMIT 500"
+      "SELECT id, category_id, sku, slug, name_en, name_ur, description_en, description_ur, price_paisa, compare_at_paisa, image_url, stock_qty, is_available, is_archived, is_featured, sort_order, created_at, updated_at FROM products ORDER BY is_archived ASC, sort_order, name_en LIMIT 500"
     ).all<JsonRecord>();
     return json({ products: result.results });
   }
@@ -2342,11 +2466,15 @@ async function adminCatalogueApi(request: Request, env: Env, url: URL, user: Ses
 
   try {
     if (isCategory) {
+      const categoryImageUrl = safeString(body.image_url) || null;
+      if (categoryImageUrl !== null && (categoryImageUrl.length > 2000 || !/^https:\/\//i.test(categoryImageUrl))) {
+        return json({ error: "validation_failed" }, 400);
+      }
       const write = request.method === "POST"
-        ? env.DB.prepare("INSERT INTO categories (id, slug, name_en, name_ur, description_en, description_ur, sort_order, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)")
-            .bind(id, slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now)
-        : env.DB.prepare("UPDATE categories SET slug=?1, name_en=?2, name_ur=?3, description_en=?4, description_ur=?5, sort_order=?6, is_active=?7, updated_at=?8 WHERE id=?9")
-            .bind(slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now, id);
+        ? env.DB.prepare("INSERT INTO categories (id, slug, name_en, name_ur, description_en, description_ur, sort_order, is_active, created_at, updated_at, image_url) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10)")
+            .bind(id, slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now, categoryImageUrl)
+        : env.DB.prepare("UPDATE categories SET slug=?1, name_en=?2, name_ur=?3, description_en=?4, description_ur=?5, sort_order=?6, is_active=?7, updated_at=?8, image_url=?10 WHERE id=?9")
+            .bind(slug, nameEn, nameUr, descriptionEn, descriptionUr, sortOrder, active ? 1 : 0, now, id, categoryImageUrl);
       const statements: D1PreparedStatement[] = [
         write,
         env.DB.prepare(
@@ -2731,7 +2859,7 @@ async function adminDeliveryApi(request: Request, env: Env, url: URL, user: Sess
     if (!hasRole(user, DELIVERY_READ_ROLES)) return roleDenied();
     const result = await env.DB.prepare(
       "SELECT id, code, name_en, name_ur, country_code, region, city, " +
-      "delivery_fee_paisa, minimum_order_paisa, is_active, created_at, updated_at " +
+      "delivery_fee_paisa, minimum_order_paisa, estimated_mins_min, estimated_mins_max, is_active, created_at, updated_at " +
       "FROM delivery_zones ORDER BY country_code, city, name_en LIMIT 500"
     ).all<JsonRecord>();
     return json({ delivery_zones: result.results });
@@ -2758,6 +2886,8 @@ async function adminDeliveryApi(request: Request, env: Env, url: URL, user: Sess
   const deliveryFee = Number(body.delivery_fee_paisa);
   const minimumOrder = Number(body.minimum_order_paisa);
   const isActive = body.is_active === undefined ? true : body.is_active === true;
+  const estMin = body.estimated_mins_min === undefined ? 30 : Number(body.estimated_mins_min);
+  const estMax = body.estimated_mins_max === undefined ? 55 : Number(body.estimated_mins_max);
 
   if (!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(code) ||
       !nameEn || nameEn.length > 140 ||
@@ -2766,7 +2896,9 @@ async function adminDeliveryApi(request: Request, env: Env, url: URL, user: Sess
       !city || city.length > 120 ||
       region.length > 120 ||
       !Number.isSafeInteger(deliveryFee) || deliveryFee < 0 || deliveryFee > 100000000000 ||
-      !Number.isSafeInteger(minimumOrder) || minimumOrder < 0 || minimumOrder > 100000000000) {
+      !Number.isSafeInteger(minimumOrder) || minimumOrder < 0 || minimumOrder > 100000000000 ||
+      !Number.isSafeInteger(estMin) || estMin < 5 || estMin > 480 ||
+      !Number.isSafeInteger(estMax) || estMax < estMin || estMax > 480) {
     return json({ error: "validation_failed" }, 400);
   }
 
@@ -2775,13 +2907,13 @@ async function adminDeliveryApi(request: Request, env: Env, url: URL, user: Sess
   const statement = request.method === "POST"
     ? env.DB.prepare(
         "INSERT INTO delivery_zones " +
-        "(id, code, name_en, name_ur, country_code, region, city, delivery_fee_paisa, minimum_order_paisa, is_active, created_at, updated_at) " +
-        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)"
-      ).bind(id, code, nameEn, nameUr, countryCode, region, city, deliveryFee, minimumOrder, isActive ? 1 : 0, timestamp)
+        "(id, code, name_en, name_ur, country_code, region, city, delivery_fee_paisa, minimum_order_paisa, is_active, created_at, updated_at, estimated_mins_min, estimated_mins_max) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12, ?13)"
+      ).bind(id, code, nameEn, nameUr, countryCode, region, city, deliveryFee, minimumOrder, isActive ? 1 : 0, timestamp, estMin, estMax)
     : env.DB.prepare(
         "UPDATE delivery_zones SET code=?1, name_en=?2, name_ur=?3, country_code=?4, region=?5, city=?6, " +
-        "delivery_fee_paisa=?7, minimum_order_paisa=?8, is_active=?9, updated_at=?10 WHERE id=?11"
-      ).bind(code, nameEn, nameUr, countryCode, region, city, deliveryFee, minimumOrder, isActive ? 1 : 0, timestamp, id);
+        "delivery_fee_paisa=?7, minimum_order_paisa=?8, is_active=?9, updated_at=?10, estimated_mins_min=?12, estimated_mins_max=?13 WHERE id=?11"
+      ).bind(code, nameEn, nameUr, countryCode, region, city, deliveryFee, minimumOrder, isActive ? 1 : 0, timestamp, id, estMin, estMax);
 
   try {
     const results = await env.DB.batch([
@@ -2983,7 +3115,7 @@ async function getProductDetails(env: Env, idOrSlug: string): Promise<Response> 
     "SELECT p.id, p.slug, p.sku, p.category_id, " +
     "p.name_ur, p.name_en, p.description_ur, p.description_en, " +
     "p.price_paisa, p.compare_at_paisa, p.image_url, p.is_available, p.is_featured " +
-    "FROM products p WHERE (p.id = ?1 OR p.slug = ?1) AND p.is_available = 1 LIMIT 1"
+    "FROM products p WHERE (p.id = ?1 OR p.slug = ?1) AND p.is_available = 1 AND p.is_archived = 0 LIMIT 1"
   ).bind(idOrSlug).first<JsonRecord>();
 
   if (!product) {
@@ -3017,6 +3149,12 @@ async function getProductDetails(env: Env, idOrSlug: string): Promise<Response> 
     options = optionsResult.results;
   }
 
+  const images = await env.DB.prepare(
+    "SELECT id, object_key, alt_ur, alt_en, is_primary, sort_order " +
+    "FROM product_images WHERE product_id = ?1 AND visibility = 'public' " +
+    "ORDER BY is_primary DESC, sort_order ASC"
+  ).bind(productId).all<JsonRecord>();
+
   const groupList = groups.results.map((group) => {
     const groupOptions = options.filter((opt) => String(opt.group_id) === String(group.id));
     return {
@@ -3028,6 +3166,7 @@ async function getProductDetails(env: Env, idOrSlug: string): Promise<Response> 
   return json({
     product: {
       ...product,
+      images: images.results,
       variants: variants.results,
       modifier_groups: groupList
     }
@@ -3629,7 +3768,28 @@ async function adminRidersAndDispatchApi(
         env.DB.prepare(
           "INSERT INTO order_status_events (id, order_id, old_status, new_status, actor_type, actor_id, note) " +
           "VALUES (?1, ?2, 'out_for_delivery', 'delivered', 'staff', ?3, 'Delivered by rider')"
-        ).bind(crypto.randomUUID(), assignment.order_id, user.id)
+        ).bind(crypto.randomUUID(), assignment.order_id, user.id),
+        env.DB.prepare(
+          "INSERT INTO recipe_consumptions (id, order_id, ingredient_id, quantity_consumed, created_at) " +
+          "SELECT lower(hex(randomblob(16))), ?1, ri.ingredient_id, SUM(oi.quantity * ri.quantity_required), ?2 " +
+          "FROM order_items oi " +
+          "JOIN recipes r ON r.product_id = oi.product_id AND (r.variant_id IS NULL OR r.variant_id = oi.variant_id) " +
+          "JOIN recipe_ingredients ri ON ri.recipe_id = r.id " +
+          "WHERE oi.order_id = ?1 " +
+          "AND NOT EXISTS (SELECT 1 FROM recipe_consumptions rc WHERE rc.order_id = ?1 AND rc.ingredient_id = ri.ingredient_id) " +
+          "GROUP BY ri.ingredient_id"
+        ).bind(assignment.order_id, now),
+        env.DB.prepare(
+          "UPDATE ingredients SET stock_qty = MAX(0, stock_qty - COALESCE((" +
+          "SELECT rc.quantity_consumed FROM recipe_consumptions rc " +
+          "WHERE rc.order_id = ?1 AND rc.ingredient_id = ingredients.id AND rc.created_at = ?2" +
+          "), 0)), updated_at = ?2 " +
+          "WHERE EXISTS (SELECT 1 FROM recipe_consumptions rc WHERE rc.order_id = ?1 AND rc.ingredient_id = ingredients.id AND rc.created_at = ?2)"
+        ).bind(assignment.order_id, now),
+        env.DB.prepare(
+          "INSERT INTO notifications (id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, created_at) " +
+          "VALUES (?1, 'staff', 'آرڈر ڈیلیور ہو گیا', 'Order Delivered', 'رائیڈر نے آرڈر پہنچا دیا', 'Order delivered by rider', 'order_delivered', ?2, ?3)"
+        ).bind(crypto.randomUUID(), assignment.order_id, now)
       );
     } else if (status === "failed") {
       statements.push(
@@ -3726,7 +3886,7 @@ async function adminSupportApi(
     if (!ticket) return json({ error: "ticket_not_found" }, 404);
 
     const messages = await env.DB.prepare(
-      "SELECT id, case_id, sender_type, sender_staff_id, message, created_at " +
+      "SELECT id, case_id, sender_type, sender_staff_id, message, is_internal, created_at " +
       "FROM support_messages WHERE case_id = ?1 ORDER BY created_at ASC"
     ).bind(caseId).all<JsonRecord>();
 
@@ -3741,16 +3901,26 @@ async function adminSupportApi(
 
     const message = safeString(body.message);
     const newStatus = safeString(body.status);
+    const isInternal = body.is_internal === true ? 1 : 0;
 
     if (!message) return json({ error: "validation_failed" }, 400);
 
     const msgId = crypto.randomUUID();
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(
-        "INSERT INTO support_messages (id, case_id, sender_type, sender_staff_id, message, created_at) " +
-        "VALUES (?1, ?2, 'staff', ?3, ?4, ?5)"
-      ).bind(msgId, caseId, user.id, message, now)
+        "INSERT INTO support_messages (id, case_id, sender_type, sender_staff_id, message, is_internal, created_at) " +
+        "VALUES (?1, ?2, 'staff', ?3, ?4, ?5, ?6)"
+      ).bind(msgId, caseId, user.id, message, isInternal, now)
     ];
+
+    if (!isInternal) {
+      statements.push(
+        env.DB.prepare(
+          "INSERT INTO notifications (id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, created_at) " +
+          "VALUES (?1, 'staff', 'سپورٹ جواب بھیجا گیا', 'Support Reply Sent', 'ٹکٹ پر جواب درج ہو گیا', 'Staff replied to support ticket', 'support_reply', ?2, ?3)"
+        ).bind(crypto.randomUUID(), caseId, now)
+      );
+    }
 
     if (newStatus && ["open", "in_progress", "waiting_customer", "resolved", "closed"].includes(newStatus)) {
       statements.push(
@@ -3968,6 +4138,9 @@ async function adminApi(request: Request, env: Env, url: URL): Promise<Response>
   const auditLogsResponse = await adminAuditLogsApi(request, env, url, user);
   if (auditLogsResponse) return auditLogsResponse;
 
+  const platformAdminResponse = await handleAdminPlatformRoutes(request, env, url, user);
+  if (platformAdminResponse) return platformAdminResponse;
+
   const catalogueResponse = await adminCatalogueApi(request, env, url, user);
   if (catalogueResponse) return catalogueResponse;
 
@@ -3998,6 +4171,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname.startsWith("/api/v1/admin/")) {
     return adminApi(request, env, url);
   }
+
+  const publicPlatformResponse = await handlePublicPlatformRoutes(request, env, url);
+  if (publicPlatformResponse) return publicPlatformResponse;
 
   if (request.method === "GET" && url.pathname === "/api/v1/health") {
     return health(env);
@@ -4055,6 +4231,8 @@ async function cleanupOperationalRecords(env: Env): Promise<{
   idempotency_keys_deleted: number;
   rate_limit_buckets_deleted: number;
   login_attempts_deleted: number;
+  ad_events_deleted: number;
+  system_events_deleted: number;
 }> {
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
@@ -4076,13 +4254,23 @@ async function cleanupOperationalRecords(env: Env): Promise<{
     env.DB.prepare(
       "DELETE FROM auth_login_attempts WHERE id IN (" +
       "SELECT id FROM auth_login_attempts WHERE attempted_at < ?1 ORDER BY attempted_at, id LIMIT ?2)"
+    ).bind(loginAttemptCutoff, OPERATIONAL_CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(
+      "DELETE FROM ad_events WHERE id IN (" +
+      "SELECT id FROM ad_events WHERE created_at < ?1 ORDER BY created_at, id LIMIT ?2)"
+    ).bind(loginAttemptCutoff, OPERATIONAL_CLEANUP_BATCH_LIMIT),
+    env.DB.prepare(
+      "DELETE FROM system_events WHERE id IN (" +
+      "SELECT id FROM system_events WHERE created_at < ?1 ORDER BY created_at, id LIMIT ?2)"
     ).bind(loginAttemptCutoff, OPERATIONAL_CLEANUP_BATCH_LIMIT)
   ]);
 
   return {
     idempotency_keys_deleted: results[0]?.meta?.changes ?? 0,
     rate_limit_buckets_deleted: results[1]?.meta?.changes ?? 0,
-    login_attempts_deleted: results[2]?.meta?.changes ?? 0
+    login_attempts_deleted: results[2]?.meta?.changes ?? 0,
+    ad_events_deleted: results[3]?.meta?.changes ?? 0,
+    system_events_deleted: results[4]?.meta?.changes ?? 0
   };
 }
 
@@ -4103,10 +4291,13 @@ export default {
       return applySecurityHeaders(response, request, env);
     } catch (error) {
       const requestId = crypto.randomUUID();
+      const pathname = new URL(request.url).pathname;
+      const errorType = error instanceof Error ? error.name : "unknown";
+      await recordSystemEvent(env, "api_error", "error", errorType, pathname, "Unhandled API error");
       console.error("fryzar_api_error", {
         requestId,
-        path: new URL(request.url).pathname,
-        errorType: error instanceof Error ? error.name : "unknown"
+        path: pathname,
+        errorType
       });
       return applySecurityHeaders(json({
         error: "internal_error",

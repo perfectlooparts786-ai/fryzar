@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
     "test:build": "tsc --project apps/api/tsconfig.test.json",
-    "test:api": "npm run test:build && node --test tests/api.test.cjs tests/variants.test.cjs tests/delivery.test.cjs tests/finance.test.cjs",
+    "test:api": "npm run test:build && node --test tests/api.test.cjs tests/variants.test.cjs tests/delivery.test.cjs tests/finance.test.cjs tests/platform-completion.test.cjs",
     "test": "npm run typecheck && npm run test:api && npm run test:workers",
     "dev:storefront": "vite --config apps/storefront/vite.config.ts",
     "build:storefront": "tsc --project apps/storefront/tsconfig.json && vite build --config apps/storefront/vite.config.ts",
@@ -29,6 +29,7 @@
     "test:integration:financial": "node tests/financial-integrity.integration.cjs",
     "test:integration:retention": "node tests/retention.integration.cjs",
     "test:integration:migrations": "node tests/migrations.integration.cjs",
+    "test:integration:legacy-migration": "node tests/production-catalogue-migration.integration.cjs",
     "test:config-safety": "node tests/preview-config-safety.test.cjs",
     "test:integration:backup-restore": "node tests/backup-restore.integration.cjs",
     "test:integration:full-e2e": "node tests/full-lifecycle-e2e.integration.cjs",

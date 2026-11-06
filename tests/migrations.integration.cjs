@@ -11,7 +11,8 @@ const EXPECTED_MIGRATIONS = [
   "0005_operational_retention.sql",
   "0006_product_variants_modifiers.sql",
   "0007_delivery_and_support.sql",
-  "0008_inventory_bom_and_finance.sql"
+  "0008_inventory_bom_and_finance.sql",
+  "0009_platform_completion.sql"
 ];
 
 const EXPECTED_TABLES = [
@@ -23,7 +24,9 @@ const EXPECTED_TABLES = [
   "product_variants", "modifier_groups", "modifier_options", "product_modifier_groups",
   "coupons", "coupon_redemptions", "riders", "delivery_assignments", "support_messages",
   "ingredients", "recipes", "recipe_ingredients", "suppliers", "purchase_orders",
-  "purchase_order_items", "wastage_records", "refunds", "financial_ledger"
+  "purchase_order_items", "wastage_records", "refunds", "financial_ledger",
+  "recipe_consumptions", "editorial_posts", "monetization_settings",
+  "ad_zones", "ad_performance_reports", "ad_events", "system_events"
 ];
 
 const EXPECTED_INDEXES = [
@@ -41,7 +44,10 @@ const EXPECTED_INDEXES = [
   "idx_coupons_code_active", "idx_redemptions_coupon", "idx_redemptions_phone",
   "idx_riders_status", "idx_delivery_assignments_order",
   "idx_delivery_assignments_rider_status", "idx_support_messages_case",
-  "idx_ingredients_active_stock", "idx_po_supplier_status", "idx_ledger_entry_created"
+  "idx_ingredients_active_stock", "idx_po_supplier_status", "idx_ledger_entry_created",
+  "idx_recipe_consumptions_order", "idx_editorial_published_slug",
+  "idx_ad_zones_slot_enabled", "idx_ad_reports_date_source",
+  "idx_ad_events_created_type", "idx_system_events_created_cat"
 ];
 
 async function main() {
