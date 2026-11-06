@@ -1,0 +1,100 @@
+name: FRYZAR CI
+
+on:
+  push:
+    branches:
+      - main
+      - "foundation/**"
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+      - "foundation/**"
+
+permissions:
+  contents: read
+
+# Avoid wasting runners on superseded commits from the same PR/branch.
+# This workflow has no deployment or secret-bearing steps.
+concurrency:
+  group: fryzar-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate API, Worker routing, and web builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install development dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Validate API and Worker routing tests
+        run: npm test
+
+      - name: Install pinned browser E2E runner
+        run: npm install --no-save --package-lock=false @playwright/test@1.56.1
+
+      - name: Install Chromium for browser E2E
+        run: npx playwright install --with-deps chromium
+
+      - name: Run isolated customer and admin browser E2E tests
+        run: npm run test:e2e
+
+      - name: Validate checkout transactions against local D1
+        run: npm run test:integration:local
+      - name: Validate cancellation transitions against local D1
+        run: npm run test:integration:cancellation
+
+      - name: Validate owner bootstrap against local D1
+        run: npm run test:integration:bootstrap
+
+      - name: Validate staff session lifecycle against local D1
+        run: npm run test:integration:session
+
+      - name: Validate populated financial integrity against local D1
+        run: npm run test:integration:financial
+
+      - name: Validate bounded retention cleanup against local D1
+        run: npm run test:integration:retention
+
+      - name: Verify migration order, schema, indexes and foreign keys against local D1
+        run: npm run test:integration:migrations
+
+      - name: Rehearse isolated local D1 backup and restore
+        run: npm run test:integration:backup-restore
+
+      - name: Validate full operational end-to-end lifecycle against local D1
+        run: npm run test:integration:full-e2e
+
+      - name: Validate hardening and edge-case resilience against local D1
+        run: npm run test:integration:hardening
+
+      - name: Verify Worker and D1 configs are preview-only
+        run: npm run test:config-safety
+
+      - name: Build customer storefront
+        run: npm run build:storefront
+
+      - name: Build admin portal
+        run: npm run build:admin
+
+      - name: Validate API preview Worker bundle
+        run: npx wrangler deploy --dry-run --config apps/api/wrangler.toml
+
+      - name: Validate customer preview Worker and static assets
+        run: npx wrangler deploy --dry-run --config apps/customer-worker/wrangler.toml
+
+      - name: Validate admin preview Worker and static assets
+        run: npx wrangler deploy --dry-run --config apps/admin-worker/wrangler.toml

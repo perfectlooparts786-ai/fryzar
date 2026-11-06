@@ -1,0 +1,20 @@
+# Default deployment target is the isolated preview Worker.
+# Do not change this name to fryzar-api without an approved production cutover.
+name = "fryzar-api-preview"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+APP_ENV = "preview"
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,https://fryzar-app-preview.perfectlooparts786.workers.dev,https://fryzar-admin-preview.perfectlooparts786.workers.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fryzar-preview"
+database_id = "a6f528a3-4b36-43a9-8e77-31f7105a4aeb"
+migrations_dir = "migrations"
+
+[triggers]
+# Daily bounded cleanup of expired operational rows. Preview-only config; no production deployment is part of this change.
+crons = ["17 2 * * *"]

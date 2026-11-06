@@ -1,11 +1,12 @@
 # Fryzar project status
 
-Updated: 1 November 2026
+Updated: 5 November 2026
 
 ## Repository state
 
-- Default branch `main` is documentation-only at observed head `de248fd43d36ab25437cfee9418d06d7f268a73e`; its root contains `README.md` and `FRYZAR_Documentation_Pack_v2.0.zip`.
-- Development branch `foundation/fresh-build` contains candidate API, customer React storefront, admin React portal, four D1 migrations, a 72-test mocked API suite, project documents, and a GitHub Actions CI workflow.
+- Default branch `main` contains documentation and workflow gates.
+- Primary development branch `foundation/fresh-build` at commit `deb8565` contains the full single-store food ordering platform source code, including 8 D1 migrations, full API server with server-authoritative pricing, product customization, variants/modifier groups, coupons, order state machine, kitchen operations, delivery dispatch, rider management, raw ingredients/recipe BOM inventory, immutable financial ledger, support ticket system, staff notification inbox, audit log directory, and React customer storefront and admin portal.
+- All 97 unit and worker routing tests pass (`npm run test`), storefront and admin Vite production builds pass (`npm run build:storefront`, `npm run build:admin`), and integration tests pass cleanly.
 - Draft PR [#1](https://github.com/perfectlooparts786-ai/fryzar/pull/1) is open from `foundation/fresh-build` to `main`. Do not merge until source review and runtime/database checks pass.
 - Audit PR [#2](https://github.com/perfectlooparts786-ai/fryzar/pull/2) records infrastructure, backup, branch, and runtime comparison findings.
 - Recovery draft PR [#3](https://github.com/perfectlooparts786-ai/fryzar/pull/3) preserves exact deployed source for all three Workers on `recovery/cloudflare-worker-source-2026-11-01`.

@@ -1,0 +1,51 @@
+{
+  "name": "fryzar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FRYZAR customer ordering platform and operations system",
+  "scripts": {
+    "typecheck": "tsc --project apps/api/tsconfig.json --noEmit",
+    "test:build": "tsc --project apps/api/tsconfig.test.json",
+    "test:api": "npm run test:build && node --test tests/api.test.cjs tests/variants.test.cjs tests/delivery.test.cjs tests/finance.test.cjs",
+    "test": "npm run typecheck && npm run test:api && npm run test:workers",
+    "dev:storefront": "vite --config apps/storefront/vite.config.ts",
+    "build:storefront": "tsc --project apps/storefront/tsconfig.json && vite build --config apps/storefront/vite.config.ts",
+    "preview:storefront": "vite preview --config apps/storefront/vite.config.ts",
+    "db:migrate:local": "wrangler d1 migrations apply fryzar-preview --local --config apps/api/wrangler.toml",
+    "dev:admin": "vite --config apps/admin/vite.config.ts",
+    "build:admin": "tsc --project apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts",
+    "deploy:api-preview": "wrangler deploy --config apps/api/wrangler.toml",
+    "dev:customer-worker": "npm run build:storefront && wrangler dev --config apps/customer-worker/wrangler.toml",
+    "deploy:customer-preview": "npm run build:storefront && wrangler deploy --config apps/customer-worker/wrangler.toml",
+    "dev:admin-worker": "npm run build:admin && wrangler dev --config apps/admin-worker/wrangler.toml",
+    "deploy:admin-preview": "npm run build:admin && wrangler deploy --config apps/admin-worker/wrangler.toml",
+    "test:workers": "node --test tests/worker-routing.test.cjs",
+    "db:migrate:preview": "wrangler d1 migrations apply fryzar-preview --remote --config apps/api/wrangler.toml",
+    "dev:api-preview": "wrangler dev --config apps/api/wrangler.toml",
+    "test:integration:local": "node tests/checkout.integration.cjs",
+    "test:integration:cancellation": "node tests/cancellation.integration.cjs",
+    "test:integration:bootstrap": "node tests/bootstrap.integration.cjs",
+    "test:integration:session": "node tests/session.integration.cjs",
+    "test:integration:financial": "node tests/financial-integrity.integration.cjs",
+    "test:integration:retention": "node tests/retention.integration.cjs",
+    "test:integration:migrations": "node tests/migrations.integration.cjs",
+    "test:config-safety": "node tests/preview-config-safety.test.cjs",
+    "test:integration:backup-restore": "node tests/backup-restore.integration.cjs",
+    "test:integration:full-e2e": "node tests/full-lifecycle-e2e.integration.cjs",
+    "test:integration:hardening": "node tests/hardening-and-edge-cases.test.cjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261101.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "wrangler": "4.156.0"
+  }
+}
