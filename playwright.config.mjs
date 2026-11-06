@@ -14,13 +14,16 @@ export default defineConfig({
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: isCI ? "retain-on-failure" : "off",
     ...devices["Desktop Chrome"]
   },
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] }
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(isCI ? {} : { channel: "chrome" })
+      }
     }
   ],
   webServer: [

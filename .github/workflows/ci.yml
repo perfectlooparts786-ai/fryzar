@@ -43,9 +43,6 @@ jobs:
       - name: Validate API and Worker routing tests
         run: npm test
 
-      - name: Install pinned browser E2E runner
-        run: npm install --no-save --package-lock=false @playwright/test@1.56.1
-
       - name: Install Chromium for browser E2E
         run: npx playwright install --with-deps chromium
 

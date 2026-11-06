@@ -106,6 +106,12 @@ test("customer can discover products, manage the basket and complete a mocked gu
       "/api/v1/health": { ok: true, service: "fryzar-api", database: "local-test", schema: "0005" },
       "/api/v1/categories": { categories: categoryFixtures },
       "/api/v1/products?limit=50": { products: productFixtures, limit: 50 },
+      "/api/v1/products/product-apple": {
+        product: productFixtures[0],
+        images: [],
+        variants: [],
+        modifier_groups: []
+      },
       "/api/v1/storefront-config": {
         settings: {
           store_status: "open",
@@ -138,9 +144,15 @@ test("customer can discover products, manage the basket and complete a mocked gu
   await expect(page.getByRole("heading", { name: "Whole wheat bread" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Fresh apples" })).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Search" }).fill("");
+  await expect(page.getByRole("heading", { name: "Fresh apples" })).toBeVisible();
 
   const appleCard = page.locator(".product-card").filter({ has: page.getByRole("heading", { name: "Fresh apples" }) });
   await appleCard.getByRole("button", { name: "Add to basket" }).click();
+
+  const productDialog = page.getByRole("dialog", { name: "Product details" });
+  await expect(productDialog.getByRole("heading", { name: "Fresh apples" })).toBeVisible();
+  await productDialog.getByRole("button", { name: "Add to basket" }).click();
+
   await page.getByRole("button", { name: "Basket (1)" }).click();
 
   const basket = page.getByRole("dialog", { name: "Basket" });

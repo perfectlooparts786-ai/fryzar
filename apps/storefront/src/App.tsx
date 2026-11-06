@@ -132,7 +132,9 @@ const COPY = {
     supportMessage: "How can we help you?",
     supportOrderId: "Order ID (optional)",
     submitTicket: "Submit support request",
-    ticketSubmitted: "Support request received! Our team will review your message shortly."
+    ticketSubmitted: "Support request received! Our team will review your message shortly.",
+    decreaseQty: "Decrease quantity",
+    increaseQty: "Increase quantity"
   },
   ur: {
     announcement: "اپنے علاقے کی خریداری، اب زیادہ آسان",
@@ -249,7 +251,9 @@ const COPY = {
     supportMessage: "ہم آپ کی کیا مدد کر سکتے ہیں؟",
     supportOrderId: "آرڈر آئی ڈی (اختیاری)",
     submitTicket: "مدد کی درخواست بھیجیں",
-    ticketSubmitted: "آپ کی درخواست موصول ہو گئی ہے! عملہ جلد جائزہ لے گا۔"
+    ticketSubmitted: "آپ کی درخواست موصول ہو گئی ہے! عملہ جلد جائزہ لے گا۔",
+    decreaseQty: "مقدار کم کریں",
+    increaseQty: "مقدار بڑھائیں"
   }
 } as const;
 
@@ -1222,9 +1226,9 @@ export default function App() {
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "1rem 0" }}>
               <div className="quantity-control">
-                <button type="button" onClick={() => setModalQuantity((q) => Math.max(1, q - 1))} aria-label={t.remove}><Icon name="minus" /></button>
+                <button type="button" onClick={() => setModalQuantity((q) => Math.max(1, q - 1))} aria-label={t.decreaseQty}><Icon name="minus" /></button>
                 <span>{modalQuantity}</span>
-                <button type="button" onClick={() => setModalQuantity((q) => Math.min(20, q + 1))} aria-label={t.add}><Icon name="plus" /></button>
+                <button type="button" onClick={() => setModalQuantity((q) => Math.min(20, q + 1))} aria-label={t.increaseQty}><Icon name="plus" /></button>
               </div>
               <strong className="product-detail-price">{money(modalUnitPrice * modalQuantity, language)}</strong>
             </div>
