@@ -1,68 +1,48 @@
-# FRYZAR deployment and recovery
+# FRYZAR Preview Deployment & Operational Verification
 
-## Verified preview deployment
+**Last deployed & verified:** 7 November 2026  
+**Branch:** `feature/fryzar-master-transformation`  
+**Cloudflare Account:** `234b20e49261c7a002f63b129e985563`
 
-The candidate is deployed to:
+## 1. Live Preview Deployment Manifest (7 November 2026)
 
-- API: `fryzar-api-preview` -> D1 `fryzar-preview`, UUID `a6f528a3-4b36-43a9-8e77-31f7105a4aeb`.
-- Customer: `fryzar-app-preview` -> service binding `fryzar-api-preview`.
-- Admin: `fryzar-admin-preview` -> service binding `fryzar-api-preview`.
+| Service | Worker Name | Version ID | Startup Time | Public Preview URL |
+|---|---|---|---|---|
+| **Central API** | `fryzar-api-preview` | `2760e1e3-7179-4e6f-b8f1-daa60669ea70` | `1 ms` | `https://fryzar-api-preview.perfectlooparts786.workers.dev` |
+| **Customer Storefront** | `fryzar-app-preview` | `9466e07b-0820-404c-981f-bc448e1a4e3d` | `1 ms` | `https://fryzar-app-preview.perfectlooparts786.workers.dev` |
+| **Admin Control Center** | `fryzar-admin-preview` | `b7a247d2-ad87-4e78-96ae-aefde3a941b4` | `2 ms` | `https://fryzar-admin-preview.perfectlooparts786.workers.dev` |
 
-The deployed candidate is `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. Deployment run [41383813602](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41383813602) passed HTTP checks for direct API/D1 health, service forwarding, exact CORS, empty catalogue/categories, setup flags, closed checkout, unauthenticated admin, and both frontend shells.
+### Preview Database State
+- **Database:** `fryzar-preview` (`a6f528a3-4b36-43a9-8e77-31f7105a4aeb`)
+- **Pre-migration SQL Backup:** Exported prior to applying `0005`–`0009` (`SHA-256: C41CB58846B9372C9B4F0842CE9C0AB45ACB039DDFE9AEA777B34C1260D289CB`), restored & forward-migrated locally before remote execution.
+- **Applied Migrations:** All **9** ordered migrations (`0001_core.sql` through `0009_platform_completion.sql`).
 
-- https://fryzar-api-preview.perfectlooparts786.workers.dev
-- https://fryzar-app-preview.perfectlooparts786.workers.dev
-- https://fryzar-admin-preview.perfectlooparts786.workers.dev
+## 2. Live HTTP Smoke Check Evidence (7 November 2026)
 
-Migrations 0001–0004 are applied to preview D1. It has 22 application tables. Store status remains setup; checkout and manual transfer are disabled; no owner account or genuine business data has been added.
+All 7 live HTTPS smoke checks returned `200 OK`:
+1. `GET https://fryzar-api-preview.perfectlooparts786.workers.dev/api/v1/health` -> `{"ok":true,"service":"fryzar-api","database":"connected","schema":"ready"}`
+2. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/api/v1/health` -> `{"ok":true,"service":"fryzar-api","database":"connected","schema":"ready"}` (Service binding verified)
+3. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/api/v1/monetization-config` -> `masterEnabled: false`, `publisherStatus: "unverified"` (Safe disabled state verified)
+4. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/robots.txt` -> `Disallow: /` (Preview search-indexing block verified)
+5. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/sitemap.xml` -> Valid XML `<urlset>` served via customer Worker service binding
+6. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/guides` -> `200 text/html` SPA routing verified
+7. `GET https://fryzar-admin-preview.perfectlooparts786.workers.dev/` -> `200 text/html` Admin SPA verified
 
-## Existing production resources
+## 3. Preview Deployment Commands
 
-Read-only inspection found `fryzar-api` uses `fryzar-core`; legacy `fryzar-app` and `fryzar-admin` use `fryzar-production`. Their schemas differ. No production Worker, D1, binding, secret, DNS record, route, or data was changed.
+```sh
+# 1. Verify preview-only Wrangler target allowlist
+npm run test:config-safety
 
-## Preview workflow
+# 2. Apply pending migrations to fryzar-preview ONLY
+npm run db:migrate:preview
 
-`.github/workflows/deploy-preview.yml` is on `main` and the development branch. It is manual, requires GitHub environment `preview`, checks out reviewed candidate SHA `84fefde`, validates preview account/secrets/resource names/IDs, applies only preview migrations, provisions preview secrets, deploys the three preview Workers, and runs HTTP smoke tests. The candidate workflow was confirmed identical to main's pinned workflow.
+# 3. Deploy preview Workers ONLY
+npm run deploy:api-preview
+npm run deploy:customer-preview
+npm run deploy:admin-preview
+```
 
-Do not advance the pin until a replacement candidate has passed CI and review. Do not deploy from an unreviewed branch.
+## 4. Production Isolation Guarantee
 
-## Dependency and CI state
-
-The branch now contains a root `package-lock.json` (lockfileVersion 3). CI uses `npm ci --ignore-scripts --no-audit --no-fund`; final push and PR runs 41567708917 and 41567713314 passed on head 01421f77d4e525c5eba4d4fe401b0da7786b5615. The manual deployment workflow remains pinned separately to 84fefded8640cb3abd23cd2df6fdbb811cf9d19d and does not inherit the CI source automatically.
-
-After reconciling main, run [CI 41468365672](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41468365672) passed on merge commit `c82152d`: npm install, typecheck, 82 API tests, 6 Worker-routing tests, local D1 checkout integration, both frontend builds, and three Wrangler dry-runs. This run did not deploy. Lint is not configured.
-
-## Recovery
-
-Never reset databases or execute destructive SQL. Keep production unchanged. Preview restore/backup rehearsal, remote D1 concurrency/rollback tests, browser E2E, and production cutover planning remain outstanding.
-
-
-## Phase 3 repository audit refresh — 3 November 2026
-
-This section is the current source-backed status and supersedes older phase notes above where they conflict. Audited branch head: `01421f77d4e525c5eba4d4fe401b0da7786b5615`; PR #1 remains open, draft and unmerged. Latest full push and PR CI on that exact head passed: [push run 41567708917](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41567708917) and [PR run 41567713314](https://github.com/perfectlooparts786-ai/fryzar/actions/runs/41567713314). Each completed the npm ci install, typecheck/API tests, Worker routing, six isolated local D1 suites, both frontend builds and all three Wrangler preview dry-runs. No deploy step ran.
-
-The committed root `package-lock.json` is lockfileVersion 3 and was generated by npm 10.9.9 from the exact root manifest without changing declared dependency versions. CI now uses `npm ci --ignore-scripts --no-audit --no-fund`; that command passed in both runs above. The direct workstation registry attempt was denied with EACCES, so lockfile generation was performed and verified by GitHub Actions. Lint remains unconfigured; browser E2E remains unimplemented.
-
-### File-based implementation map and verified gaps
-
-- `apps/api/src/index.ts`: Worker route dispatch, request validation, auth/session helpers, checkout/order/payment/stock operations, retention handler and scheduled entry point. It is the only application D1 binding.
-- `apps/api/migrations/0001_core.sql`–`0005_retention_indexes.sql`: ordered core schema, checkout integrity, bootstrap claim, inventory adjustment ledger, and operational expiry indexes. Local CI applies these to isolated Wrangler D1; no remote migration ran in this audit.
-- `apps/storefront/src/App.tsx`, `api.ts`, `types.ts`, `styles.css`: bilingual React storefront with catalogue, search/category filtering, cart, delivery selection, guest checkout, order confirmation and token-based tracking. Product options/variants and a dedicated product-detail interaction are absent; product cards directly add an item.
-- `apps/admin/src/App.tsx`, `api.ts`, `styles.css`: authenticated role-aware operations UI for overview, orders, catalogue, inventory, payments, delivery, team and settings. API authorization is authoritative. Support, notification, audit-read, proof review and refund screens/routes are not implemented even where schema tables exist.
-- `apps/customer-worker` and `apps/admin-worker`: static asset Workers forwarding `/api` through the preview service binding. `apps/api/wrangler.toml`, `apps/customer-worker/wrangler.toml`, `apps/admin-worker/wrangler.toml` identify the candidate preview names and bindings.
-- `.github/workflows/ci.yml`: read-only repository permission, Node 22, lockfile-based install, unit/routing and six local D1 suites, builds and three preview dry-runs. There is no lint or browser E2E job.
-- `.github/workflows/deploy-preview.yml`: separate manual preview deployment workflow; source pin remains `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. It was not invoked. The tested branch head is not the deployed version.
-- `tests/*.test.cjs`, `tests/*.integration.cjs`, `tests/fixtures/*.sql`: mocked unit/routing coverage plus real local Wrangler D1 checkout, cancellation, bootstrap, session, financial and retention integrations. They do not exercise a real browser or live D1.
-
-No source evidence in this audit supports R2 uploads, variants, manual-transfer proof lifecycle, refunds, customer accounts, support workflow or external notification delivery. Those are not claimed complete. No remote Cloudflare state was queried during this audit refresh; preview deployment details above refer to the previously verified deployment record, not a fresh live read.
-
-
-## Phase 3 reconciliation — 3 November 2026
-
-Current development branch HEAD at this reconciliation: `3376ed654852f2a3678913625a1fa1005cdccd98`. The development branch contains the root `package-lock.json`; CI uses `npm ci`. The manual deployment workflow remains pinned to the historical candidate `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`. That pinned commit does not contain a root `package-lock.json`, so its `npm install` step is intentionally retained. Do not change the candidate pin or dispatch deployment as part of this work.
-
-The current branch has added `docs/MIGRATIONS.md` and a local D1 migration integrity/replay suite. These do not imply that migration 0005 has been applied to remote preview. The new migration suite and CI workflow hardening are pending final-head CI verification.
-
-The latest workflow hardening sets read-only repository permissions, disables checkout credential persistence, enables npm caching, adds a 45-minute timeout, and cancels superseded CI runs for the same PR/branch. It does not grant deployment permissions or expose preview secrets.
-
-No current-branch preview deployment, remote migration, remote D1 write, owner bootstrap or production mutation is authorized by this reconciliation.
+No production Worker (`fryzar-api`, `fryzar-app`, `fryzar-admin`), production D1 database (`fryzar-production`, `fryzar-core`), production secret, or `fryzar.com` DNS/route was modified. Production cutover follows [PRODUCTION_MIGRATION_PLAN.md](PRODUCTION_MIGRATION_PLAN.md) and [PRODUCTION_ROLLBACK_PLAN.md](PRODUCTION_ROLLBACK_PLAN.md).

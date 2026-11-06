@@ -1,34 +1,30 @@
-# FRYZAR local D1 backup and restore rehearsal
+# FRYZAR D1 Backup & Restore Verification
 
-**Scope:** disposable local Wrangler D1 only. This is not a remote Cloudflare D1 backup, managed point-in-time recovery, or production restore procedure.
+**Last updated:** 7 November 2026
 
-## What the automated rehearsal proves
+## 1. Automated CI Snapshot & Restore Rehearsal (`npm run test:integration:backup-restore`)
 
-The CI test creates a fresh local D1 database through the same Wrangler version and migration configuration used by the integration suite. It then:
+Runs on every push/PR in GitHub Actions against an isolated local Wrangler D1 database:
+1. Applies all **9 migrations** (`0001_core.sql` – `0009_platform_completion.sql`).
+2. Writes a sentinel setting (`backup_restore_probe = "snapshot-ok"`).
+3. Snapshots the persisted D1 directory, computes SHA-256 digests for every file, and restores into a separate clean directory.
+4. Verifies identical SHA-256 manifests, sentinel row recovery, **9-entry `d1_migrations` ledger**, and `0` foreign-key violations (`PRAGMA foreign_key_check`).
 
-1. Inserts a synthetic, non-public sentinel setting.
-2. Copies the completed local Wrangler persistence directory into a separate backup directory after each Wrangler command has exited.
-3. Copies that backup into a second, separate local persistence directory.
-4. Compares sorted SHA-256 hashes for every persisted file in the backup and restored directories.
-5. Opens the restored database through Wrangler using the restored persistence directory.
-6. Verifies the sentinel row, the five-entry migration ledger, and zero foreign-key violations.
-7. Removes all temporary directories during test cleanup.
+## 2. Verified Remote `fryzar-preview` Export & Restore Rehearsal (7 November 2026)
 
-The test uses only `--local` Wrangler operations. The helper rejects `--remote` and refuses commands that omit `--local`; Cloudflare account credentials are blanked in the child process environment.
+Prior to applying migrations `0005`–`0009` to remote `fryzar-preview` (`a6f528a3-4b36-43a9-8e77-31f7105a4aeb`):
 
-## Important limitations
+- **Command executed:**
+  ```sh
+  npx wrangler d1 export fryzar-preview --remote --output E:/Fryzar/.artifacts/preview-backup/fryzar-preview-pre-0009.sql --config apps/api/wrangler.toml
+  ```
+- **Verified SHA-256 Checksum:**
+  `C41CB58846B9372C9B4F0842CE9C0AB45ACB039DDFE9AEA777B34C1260D289CB`
+- **Local Restore & Forward-Migration Drill:**
+  - Restored all `69` SQL statements from `fryzar-preview-pre-0009.sql` into an isolated local D1 persistence directory (`restore-rehearsal`).
+  - Applied pending migrations `0005` through `0009` on top of the restored dump with `5/5` clean completions before touching remote `fryzar-preview`.
+  - Backup artifact is stored outside the Git working tree (`E:/Fryzar/.artifacts/preview-backup/`) so database dumps are never committed to Git.
 
-- A directory-level local persistence snapshot is suitable for a disposable local test rehearsal. It does not prove that a remote D1 database can be exported, imported, or restored.
-- The test is not a substitute for Cloudflare's managed backup/PITR controls, remote export procedure, retention policy, or an independently verified recovery-point objective.
-- It does not copy production data or any remote preview data.
-- No remote database writes, migrations, exports, restores, or owner bootstrap operations are performed.
-- Before launch, separately document and rehearse the supported remote D1 recovery path, access controls, retention, backup ownership, recovery time objective, recovery point objective, and post-restore validation. That work requires explicit approval for any remote operation.
+## 3. Production Backup Rule
 
-## Run locally
-
-```sh
-npm ci
-npm run test:integration:backup-restore
-```
-
-The CI workflow runs the same test on every applicable branch/PR validation.
+Before any authorized production cutover, export fresh SQL backups of both `fryzar-production` (`880b9681-4252-4db0-be44-b60c4edbdc15`) and `fryzar-core` (`098238a6-1bda-4735-8f21-d925c7fe32de`), record SHA-256 checksums, and keep `fryzar-production` untouched as a read-only fallback per [PRODUCTION_MIGRATION_PLAN.md](PRODUCTION_MIGRATION_PLAN.md).

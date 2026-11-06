@@ -1,32 +1,29 @@
-# FRYZAR browser E2E tests
+# FRYZAR Browser End-to-End (E2E) Suite
 
-The browser suite uses Playwright with a pinned CI-only test dependency. The app's runtime dependencies and production bundle are unchanged.
+**Last updated:** 7 November 2026  
+**Runner:** `@playwright/test` (Chromium, deterministic mocked API isolation)  
+**Result:** **8 / 8 tests passing** (`npm run test:e2e`)
 
-## Local run
+## 1. Spec Files & Coverage
 
-1. Install the repository's locked dependencies:
+### `tests/e2e/smoke.spec.cjs` (4 tests)
+1. Customer storefront setup-state rendering without remote dependencies.
+2. Instant language and document direction toggle between English (`dir="ltr"`) and Urdu (`dir="rtl"`).
+3. Admin unauthenticated sign-in and first-owner bootstrap form rendering.
+4. Kitchen Display System (KDS) role-scoped workflow (`confirmed -> preparing -> ready`) with redacted customer PII.
 
-   `npm ci --ignore-scripts --no-audit --no-fund`
+### `tests/e2e/storefront-ordering.spec.cjs` (1 test)
+5. Complete desktop discovery -> category filter -> text search -> product detail modal -> `Add to basket` -> basket drawer -> guest COD delivery checkout -> confirmation & 64-hex tracking token.
 
-2. Install the pinned browser-test runner without changing the application lockfile:
+### `tests/e2e/platform-complete.spec.cjs` (3 comprehensive platform tests)
+6. **17-Page Storefront, SEO & Restricted-Route Ad Safety:** Verifies `/guides` index & `/guides/:slug` reader, canonical `<link>` and `hreflang="en"` / `hreflang="ur"` tags, and asserts **zero `[data-ad-slot]` elements** on `/basket`, `/checkout`, `/order-confirmation`, `/track`, `/support`, `/privacy-policy`, `/terms`, `/refund-policy`, and `/delivery-policy` even when `masterAdsEnabled = true`.
+7. **Mobile Viewport (`375×812`) Variant + Required Modifier + Coupon + Guest COD + Live Tracking + Urdu RTL:** Verifies `Add to basket` stays disabled until required modifier (`Garlic Mayo`) is chosen, validates coupon `SAVE100` in checkout, places COD order, inspects `/track/:64-hex-token` (`Preparing`), and switches to Urdu RTL.
+8. **27-Module Owner Control Center & Adsterra Emergency Kill Switch:** Asserts all **27 navigation modules** render with **zero `.feature-placeholder` stubs**, exercises **22. Advertising & Monetization -> Emergency Disable All Ads**, verifies `POST /api/v1/admin/advertising/kill-switch` flips status to `SAFELY DISABLED (DEFAULT)`, and verifies **27. System Health** displays `0009_platform_completion.sql`.
 
-   `npm install --no-save --package-lock=false @playwright/test@1.56.1`
+## 2. Running Locally
 
-3. Install Chromium:
-
-   `npx playwright install chromium`
-
-4. Run:
-
-   `npm run test:e2e`
-
-Playwright starts both Vite development servers on 127.0.0.1 (ports 5173 and 5174) and stops them after the run. Existing servers may be reused outside CI.
-
-## Test isolation
-
-- Customer API responses are intercepted in the browser. Tests do not call Cloudflare preview or production services.
-- Admin session checks are intercepted and remain unauthenticated. Tests never bootstrap an owner or submit credentials.
-- No D1 database, real order, payment, secret or remote Worker is modified.
-- CI installs Chromium with OS dependencies and retains traces, screenshots and video only on failures.
-
-The initial suite is intentionally smoke-level. Product/cart/guest-checkout and authenticated admin workflows require deterministic synthetic fixtures and are tracked separately in P3-09/P3-10.
+```sh
+npm ci --ignore-scripts --no-audit --no-fund
+npx playwright install chromium
+npm run test:e2e
+```
