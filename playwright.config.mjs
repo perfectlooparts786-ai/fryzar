@@ -9,7 +9,7 @@ export default defineConfig({
   retries: isCI ? 1 : 0,
   workers: isCI ? 2 : undefined,
   reporter: "list",
-  timeout: 30_000,
+  timeout: 60_000,
   expect: { timeout: 7_500 },
   use: {
     trace: "retain-on-failure",

@@ -58,6 +58,7 @@ interface StoredOrderResponse {
     currency: string;
     subtotal_paisa: number;
     delivery_fee_paisa: number;
+    discount_paisa?: number;
     total_paisa: number;
     created_at: string;
   };
@@ -526,8 +527,13 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     delivery_zone_id: input.delivery_zone_id,
     customer_language: input.customer_language,
     payment_method: input.payment_method,
+    ...(input.coupon_code ? { coupon_code: input.coupon_code.toUpperCase() } : {}),
     notes: input.notes,
-    items: [...input.items].sort((a, b) => a.product_id.localeCompare(b.product_id))
+    items: [...input.items].sort((a, b) => {
+      const aKey = a.product_id + ":" + (a.variant_id ?? "") + ":" + (a.selected_modifier_option_ids?.join(",") ?? "");
+      const bKey = b.product_id + ":" + (b.variant_id ?? "") + ":" + (b.selected_modifier_option_ids?.join(",") ?? "");
+      return aKey.localeCompare(bKey);
+    })
   };
   const requestHash = await sha256Hex(JSON.stringify(canonicalPayload));
   const existing = await loadIdempotency(env, idempotencyKey);
@@ -804,6 +810,7 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       currency: "PKR",
       subtotal_paisa: subtotal,
       delivery_fee_paisa: deliveryFee,
+      discount_paisa: discountPaisa,
       total_paisa: total,
       created_at: createdAt
     }
@@ -981,13 +988,25 @@ async function trackOrder(request: Request, env: Env, token: string): Promise<Re
     return json({ error: "order_not_found" }, 404);
   }
 
-  const items = await env.DB.prepare(
-    "SELECT product_name_ur_snapshot, product_name_en_snapshot, " +
-    "unit_price_paisa, quantity, line_total_paisa " +
-    "FROM order_items WHERE order_id = ?1 ORDER BY rowid ASC"
-  ).bind(order.id).all<JsonRecord>();
+  const [items, events] = await Promise.all([
+    env.DB.prepare(
+      "SELECT product_name_ur_snapshot, product_name_en_snapshot, " +
+      "unit_price_paisa, quantity, line_total_paisa " +
+      "FROM order_items WHERE order_id = ?1 ORDER BY rowid ASC"
+    ).bind(order.id).all<JsonRecord>(),
+    env.DB.prepare(
+      "SELECT new_status, created_at FROM order_status_events WHERE order_id = ?1 ORDER BY created_at ASC, rowid ASC"
+    ).bind(order.id).all<JsonRecord>()
+  ]);
 
-  return json({ order, items: items.results });
+  const timeline = (events.results ?? [])
+    .filter((row) => typeof row.new_status === "string" && typeof row.created_at === "string")
+    .map((row) => ({
+      status: String(row.new_status),
+      created_at: String(row.created_at)
+    }));
+
+  return json({ order, items: items.results, timeline });
 }
 
 
@@ -1235,6 +1254,13 @@ function roleDenied(): Response {
 async function ownerBootstrap(request: Request, env: Env): Promise<Response> {
   if (!browserOriginAllowed(request, env)) {
     return json({ error: "origin_not_allowed" }, 403);
+  }
+
+  const rateAllowed = await consumeRateLimit(request, env, "owner-bootstrap", 10, 15 * 60 * 1000);
+  if (!rateAllowed) {
+    return json({ error: "rate_limit_exceeded", retry_after_seconds: 900 }, 429, {
+      "Retry-After": "900"
+    });
   }
 
   const configuredToken = env.OWNER_BOOTSTRAP_TOKEN ?? "";
@@ -2266,6 +2292,16 @@ async function adminFinanceAndLedgerApi(
       refunded_paisa?: number;
     }>();
     if (!order) return json({ error: "order_not_found" }, 404);
+
+    if (!["collected", "verified", "refunded"].includes(String(order.payment_status ?? ""))) {
+      return json(
+        {
+          error: "order_payment_not_collected",
+          message: "Refunds can only be issued after payment has been collected or verified."
+        },
+        409
+      );
+    }
 
     const alreadyRefundedPaisa = Number(order.refunded_paisa ?? 0);
     const remainingRefundablePaisa = Math.max(0, order.total_paisa - alreadyRefundedPaisa);
@@ -3316,6 +3352,13 @@ async function getProductDetails(env: Env, idOrSlug: string): Promise<Response> 
 }
 
 async function validateCouponPublic(request: Request, env: Env): Promise<Response> {
+  const rateAllowed = await consumeRateLimit(request, env, "coupon-validate", 20, 5 * 60 * 1000);
+  if (!rateAllowed) {
+    return json({ error: "rate_limit_exceeded", retry_after_seconds: 300 }, 429, {
+      "Retry-After": "300"
+    });
+  }
+
   const body = await parseJsonBody(request, 4096);
   if (!body) return json({ error: "invalid_request" }, 400);
 
@@ -3960,6 +4003,13 @@ async function adminRidersAndDispatchApi(
 }
 
 async function createCustomerSupportTicket(request: Request, env: Env): Promise<Response> {
+  const rateAllowed = await consumeRateLimit(request, env, "support-ticket", 5, 10 * 60 * 1000);
+  if (!rateAllowed) {
+    return json({ error: "rate_limit_exceeded", retry_after_seconds: 600 }, 429, {
+      "Retry-After": "600"
+    });
+  }
+
   const body = await parseJsonBody(request, 8192);
   if (!body) return json({ error: "invalid_request" }, 400);
 

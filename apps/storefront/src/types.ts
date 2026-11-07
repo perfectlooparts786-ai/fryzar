@@ -182,6 +182,11 @@ export interface TrackedOrderItem {
   line_total_paisa: number;
 }
 
+export interface TrackedOrderTimelineEvent {
+  status: string;
+  created_at: string;
+}
+
 export interface TrackedOrderResponse {
   order: {
     id: string;
@@ -198,4 +203,5 @@ export interface TrackedOrderResponse {
     updated_at: string;
   };
   items: TrackedOrderItem[];
+  timeline?: TrackedOrderTimelineEvent[];
 }

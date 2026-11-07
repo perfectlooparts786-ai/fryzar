@@ -279,6 +279,46 @@ function parseSettingJson(raw: string): unknown {
   }
 }
 
+async function sha256HexPlatform(value: string): Promise<string> {
+  const data = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function consumePlatformRateLimit(
+  request: Request,
+  env: PlatformEnv,
+  scope: string,
+  maximum: number,
+  windowMs: number
+): Promise<boolean> {
+  if (env.APP_ENV === "development" || env.APP_ENV === "test") {
+    return true;
+  }
+  const clientIp = request.headers.get("CF-Connecting-IP");
+  if (!clientIp) return false;
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const cutoffIso = new Date(now - windowMs).toISOString();
+  const ipHash = await sha256HexPlatform(clientIp);
+  const bucketKey = scope + ":" + ipHash;
+  try {
+    const result = await env.DB.prepare(
+      "INSERT INTO api_rate_limits (bucket_key, window_started_at, request_count) " +
+      "VALUES (?1, ?2, 1) " +
+      "ON CONFLICT(bucket_key) DO UPDATE SET " +
+      "request_count = CASE WHEN api_rate_limits.window_started_at <= ?3 " +
+      "THEN 1 ELSE api_rate_limits.request_count + 1 END, " +
+      "window_started_at = CASE WHEN api_rate_limits.window_started_at <= ?3 " +
+      "THEN ?2 ELSE api_rate_limits.window_started_at END, " +
+      "updated_at = CURRENT_TIMESTAMP RETURNING request_count"
+    ).bind(bucketKey, nowIso, cutoffIso).first<{ request_count: number }>();
+    return Boolean(result && result.request_count <= maximum);
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeMonetizationConfig(raw: unknown): MonetizationConfig {
   const obj = isRecord(raw) ? raw : {};
   const formats = isRecord(obj.formats) ? obj.formats : {};
@@ -611,6 +651,13 @@ export async function handlePublicPlatformRoutes(
 
   // 6. Zero-PII Ad Performance & Error Telemetry
   if (request.method === "POST" && url.pathname === "/api/v1/ad-events") {
+    const rateAllowed = await consumePlatformRateLimit(request, env, "ad-events", 60, 60 * 1000);
+    if (!rateAllowed) {
+      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429, {
+        "Retry-After": "60"
+      });
+    }
+
     const body = await parseJsonBody(request, 2048);
     if (!body) return json({ error: "invalid_request" }, 400);
 
@@ -1077,7 +1124,24 @@ export async function handleAdminPlatformRoutes(
     if (!["approved", "rejected", "completed"].includes(status)) {
       return json({ error: "validation_failed" }, 400);
     }
-    await env.DB.batch([
+
+    const existingRefund = await env.DB.prepare(
+      "SELECT r.id, r.order_id, r.amount_paisa, r.status, o.payment_method, o.payment_status " +
+      "FROM refunds r JOIN orders o ON o.id = r.order_id WHERE r.id = ?1 LIMIT 1"
+    ).bind(refundId).first<{
+      id: string;
+      order_id: string;
+      amount_paisa: number;
+      status: string;
+      payment_method: string;
+      payment_status: string;
+    }>();
+    if (!existingRefund) return json({ error: "refund_not_found" }, 404);
+    if (existingRefund.status === "completed" || existingRefund.status === "rejected") {
+      return json({ error: "refund_already_finalized" }, 409);
+    }
+
+    const stmts: D1PreparedStatement[] = [
       env.DB.prepare("UPDATE refunds SET status = ?1, reviewer_staff_id = ?2, updated_at = ?3 WHERE id = ?4")
         .bind(status, user.id, now, refundId),
       env.DB.prepare(
@@ -1087,8 +1151,26 @@ export async function handleAdminPlatformRoutes(
       env.DB.prepare(
         "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
         "VALUES (?1, ?2, ?3, 'refund.updated', 'refund', ?4, ?5, ?6)"
-      ).bind(crypto.randomUUID(), user.id, user.role, refundId, JSON.stringify({ status }), now)
-    ]);
+      ).bind(crypto.randomUUID(), user.id, user.role, refundId, JSON.stringify({ previous_status: existingRefund.status, status }), now)
+    ];
+
+    if (status === "rejected") {
+      stmts.push(
+        env.DB.prepare(
+          "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
+          "VALUES (?1, 'refund', ?2, 0, ?3, ?4, 'Refund reversal (rejected)', ?5)"
+        ).bind(crypto.randomUUID(), refundId, existingRefund.amount_paisa, user.id, now)
+      );
+      if (existingRefund.payment_status === "refunded") {
+        const restoredStatus = existingRefund.payment_method === "manual_transfer" ? "verified" : "collected";
+        stmts.push(
+          env.DB.prepare("UPDATE orders SET payment_status = ?1, updated_at = ?2 WHERE id = ?3").bind(restoredStatus, now, existingRefund.order_id),
+          env.DB.prepare("UPDATE payments SET status = ?1, updated_at = ?2 WHERE order_id = ?3").bind(restoredStatus, now, existingRefund.order_id)
+        );
+      }
+    }
+
+    await env.DB.batch(stmts);
     return json({ updated: true, id: refundId, status });
   }
 
@@ -1104,7 +1186,7 @@ export async function handleAdminPlatformRoutes(
         "SELECT substr(created_at, 1, 10) AS period_day, " +
         "SUM(CASE WHEN entry_type = 'order_charge' THEN credit_paisa ELSE 0 END) AS order_charges_paisa, " +
         "SUM(CASE WHEN entry_type IN ('cod_collection', 'manual_payment') THEN debit_paisa ELSE 0 END) AS collections_paisa, " +
-        "SUM(CASE WHEN entry_type = 'refund' THEN debit_paisa ELSE 0 END) AS refunds_paisa, " +
+        "SUM(CASE WHEN entry_type = 'refund' THEN (debit_paisa - credit_paisa) ELSE 0 END) AS refunds_paisa, " +
         "SUM(CASE WHEN entry_type IN ('purchase_expense', 'wastage_expense') THEN debit_paisa ELSE 0 END) AS expenses_paisa " +
         "FROM financial_ledger GROUP BY substr(created_at, 1, 10) ORDER BY period_day DESC LIMIT 31"
       ).all<JsonRecord>(),
@@ -1112,7 +1194,7 @@ export async function handleAdminPlatformRoutes(
         "SELECT substr(created_at, 1, 7) AS period_month, " +
         "SUM(CASE WHEN entry_type = 'order_charge' THEN credit_paisa ELSE 0 END) AS order_charges_paisa, " +
         "SUM(CASE WHEN entry_type IN ('cod_collection', 'manual_payment') THEN debit_paisa ELSE 0 END) AS collections_paisa, " +
-        "SUM(CASE WHEN entry_type = 'refund' THEN debit_paisa ELSE 0 END) AS refunds_paisa, " +
+        "SUM(CASE WHEN entry_type = 'refund' THEN (debit_paisa - credit_paisa) ELSE 0 END) AS refunds_paisa, " +
         "SUM(CASE WHEN entry_type IN ('purchase_expense', 'wastage_expense') THEN debit_paisa ELSE 0 END) AS expenses_paisa " +
         "FROM financial_ledger GROUP BY substr(created_at, 1, 7) ORDER BY period_month DESC LIMIT 12"
       ).all<JsonRecord>(),
@@ -1334,7 +1416,7 @@ export async function handleAdminPlatformRoutes(
     }
 
     if (request.method === "PATCH") {
-      if (user.role !== "owner" && user.role !== "manager") return json({ error: "insufficient_permissions" }, 403);
+      if (user.role !== "owner") return json({ error: "owner_permission_required" }, 403);
       if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
       const body = await parseJsonBody(request, 8192);
       if (!body) return json({ error: "invalid_request" }, 400);
@@ -1382,6 +1464,87 @@ export async function handleAdminPlatformRoutes(
       await env.DB.batch(stmts);
       return json({ saved: true, updated_keys: updatedKeys });
     }
+  }
+
+  // 10b. Owner-Only Store Release Gate Control (Section 5.10 & Section 6.2)
+  if (request.method === "POST" && url.pathname === "/api/v1/admin/store/launch-gate") {
+    if (user.role !== "owner") {
+      return json({ error: "owner_permission_required" }, 403);
+    }
+    if (!browserOriginAllowed(request, env)) {
+      return json({ error: "origin_not_allowed" }, 403);
+    }
+    const body = await parseJsonBody(request, 2048);
+    if (!body) return json({ error: "invalid_request" }, 400);
+    const action = safeString(body.action);
+    if (!["open", "pause", "setup"].includes(action)) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    if (action === "open") {
+      const readiness = await env.DB.prepare(
+        "SELECT " +
+        "(SELECT COUNT(*) FROM categories WHERE is_active = 1) AS active_categories, " +
+        "(SELECT COUNT(*) FROM products WHERE is_available = 1 AND is_archived = 0) AS active_products, " +
+        "(SELECT COUNT(*) FROM delivery_zones WHERE is_active = 1) AS active_delivery_zones, " +
+        "(SELECT value_json FROM store_settings WHERE setting_key = 'cod_enabled' LIMIT 1) AS cod_enabled_json"
+      ).first<{
+        active_categories: number;
+        active_products: number;
+        active_delivery_zones: number;
+        cod_enabled_json: string | null;
+      }>();
+
+      const codOn = readiness?.cod_enabled_json ? parseSettingJson(readiness.cod_enabled_json) === true : false;
+      const missing: string[] = [];
+      if (Number(readiness?.active_categories ?? 0) < 1) missing.push("active_categories");
+      if (Number(readiness?.active_products ?? 0) < 1) missing.push("active_products");
+      if (Number(readiness?.active_delivery_zones ?? 0) < 1) missing.push("active_delivery_zones");
+      if (!codOn) missing.push("cod_enabled");
+
+      if (missing.length > 0) {
+        return json({
+          error: "store_launch_prerequisites_incomplete",
+          missing_prerequisites: missing,
+          message: "Store cannot open until at least 1 active category, 1 active product, 1 active delivery zone, and Cash on Delivery are enabled."
+        }, 422);
+      }
+
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO store_settings (setting_key, value_json, is_public, updated_at) VALUES ('store_status', '\"open\"', 1, ?1) " +
+          "ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at"
+        ).bind(now),
+        env.DB.prepare(
+          "INSERT INTO store_settings (setting_key, value_json, is_public, updated_at) VALUES ('launch_ready', 'true', 1, ?1) " +
+          "ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at"
+        ).bind(now),
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "VALUES (?1, ?2, 'owner', 'store.launch_gate_opened', 'store_settings', 'store_status', '{\"store_status\":\"open\",\"launch_ready\":true}', ?3)"
+        ).bind(crypto.randomUUID(), user.id, now)
+      ]);
+
+      return json({ updated: true, store_status: "open", launch_ready: true });
+    }
+
+    const nextStatus = action === "pause" ? "paused" : "setup";
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO store_settings (setting_key, value_json, is_public, updated_at) VALUES ('store_status', ?1, 1, ?2) " +
+        "ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at"
+      ).bind(JSON.stringify(nextStatus), now),
+      env.DB.prepare(
+        "INSERT INTO store_settings (setting_key, value_json, is_public, updated_at) VALUES ('launch_ready', 'false', 1, ?1) " +
+        "ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at"
+      ).bind(now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, 'owner', 'store.launch_gate_closed', 'store_settings', 'store_status', ?3, ?4)"
+      ).bind(crypto.randomUUID(), user.id, JSON.stringify({ store_status: nextStatus, launch_ready: false }), now)
+    ]);
+
+    return json({ updated: true, store_status: nextStatus, launch_ready: false });
   }
 
   // 11. Adsterra Advertising & Monetization Control Center (Section 7.11 & Section 13 #22)

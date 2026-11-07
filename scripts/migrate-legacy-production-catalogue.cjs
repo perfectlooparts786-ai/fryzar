@@ -63,7 +63,8 @@ function generateCatalogueMigrationSql(snapshot) {
     const descEn = String(cat.description_en || "").trim();
     const descUr = String(cat.description_ur || "").trim();
     const sortOrder = Number.isSafeInteger(Number(cat.sort_order)) ? Number(cat.sort_order) : 0;
-    const isActive = cat.is_active === 0 || cat.is_active === false ? 0 : 1;
+    const rawActive = cat.is_active !== undefined ? cat.is_active : cat.active;
+    const isActive = rawActive === 0 || rawActive === false ? 0 : 1;
 
     lines.push(
       `INSERT INTO categories (id, slug, name_ur, name_en, description_ur, description_en, sort_order, is_active)` +
@@ -91,6 +92,12 @@ function generateCatalogueMigrationSql(snapshot) {
     if (!Number.isSafeInteger(pricePaisa) || pricePaisa < 0) {
       throw new Error(`Invalid price_paisa for product ${legacyId}: ${prod.price_paisa}`);
     }
+    const compareAtPaisa = prod.compare_at_paisa === null || prod.compare_at_paisa === undefined
+      ? null
+      : Number(prod.compare_at_paisa);
+    if (compareAtPaisa !== null && (!Number.isSafeInteger(compareAtPaisa) || compareAtPaisa < 0)) {
+      throw new Error(`Invalid compare_at_paisa for product ${legacyId}: ${prod.compare_at_paisa}`);
+    }
     const stockQty = prod.stock_qty === null || prod.stock_qty === undefined ? null : Number(prod.stock_qty);
     if (stockQty !== null) {
       if (!Number.isSafeInteger(stockQty) || stockQty < 0) {
@@ -99,7 +106,7 @@ function generateCatalogueMigrationSql(snapshot) {
       totalStockUnits += stockQty;
     }
     const isAvailable = prod.is_available === 0 || prod.is_available === false ? 0 : 1;
-    const isFeatured = prod.is_featured === 1 || prod.is_featured === true ? 1 : 0;
+    const isFeatured = prod.is_featured === 1 || prod.is_featured === true || prod.featured === 1 || prod.featured === true ? 1 : 0;
     const sortOrder = Number.isSafeInteger(Number(prod.sort_order)) ? Number(prod.sort_order) : 0;
     const imageUrl = prod.image_url && /^https:\/\//i.test(String(prod.image_url)) ? String(prod.image_url) : null;
 
@@ -109,13 +116,14 @@ function generateCatalogueMigrationSql(snapshot) {
       legacy_id: legacyId,
       legacy_category_id: prod.category_id || null,
       migrated_price_paisa: pricePaisa,
-      migrated_stock_qty: stockQty
+      migrated_stock_qty: stockQty,
+      migrated_is_featured: Boolean(isFeatured)
     });
 
     lines.push(
-      `INSERT INTO products (id, category_id, sku, slug, name_ur, name_en, description_ur, description_en, price_paisa, image_url, stock_qty, is_available, is_archived, is_featured, sort_order)` +
-      ` VALUES (${sqlLiteral(newId)}, ${sqlLiteral(mappedCatId)}, ${sqlLiteral(sku)}, ${sqlLiteral(slug)}, ${sqlLiteral(nameUr)}, ${sqlLiteral(nameEn)}, ${sqlLiteral(descUr)}, ${sqlLiteral(descEn)}, ${sqlLiteral(pricePaisa)}, ${sqlLiteral(imageUrl)}, ${sqlLiteral(stockQty)}, ${sqlLiteral(isAvailable)}, 0, ${sqlLiteral(isFeatured)}, ${sqlLiteral(sortOrder)})` +
-      ` ON CONFLICT(slug) DO UPDATE SET category_id=excluded.category_id, name_ur=excluded.name_ur, name_en=excluded.name_en, description_ur=excluded.description_ur, description_en=excluded.description_en, price_paisa=excluded.price_paisa, is_available=excluded.is_available, sort_order=excluded.sort_order, updated_at=CURRENT_TIMESTAMP;`
+      `INSERT INTO products (id, category_id, sku, slug, name_ur, name_en, description_ur, description_en, price_paisa, compare_at_paisa, image_url, stock_qty, is_available, is_archived, is_featured, sort_order)` +
+      ` VALUES (${sqlLiteral(newId)}, ${sqlLiteral(mappedCatId)}, ${sqlLiteral(sku)}, ${sqlLiteral(slug)}, ${sqlLiteral(nameUr)}, ${sqlLiteral(nameEn)}, ${sqlLiteral(descUr)}, ${sqlLiteral(descEn)}, ${sqlLiteral(pricePaisa)}, ${sqlLiteral(compareAtPaisa)}, ${sqlLiteral(imageUrl)}, ${sqlLiteral(stockQty)}, ${sqlLiteral(isAvailable)}, 0, ${sqlLiteral(isFeatured)}, ${sqlLiteral(sortOrder)})` +
+      ` ON CONFLICT(slug) DO UPDATE SET category_id=excluded.category_id, name_ur=excluded.name_ur, name_en=excluded.name_en, description_ur=excluded.description_ur, description_en=excluded.description_en, price_paisa=excluded.price_paisa, compare_at_paisa=excluded.compare_at_paisa, is_available=excluded.is_available, is_featured=excluded.is_featured, sort_order=excluded.sort_order, updated_at=CURRENT_TIMESTAMP;`
     );
 
     if (stockQty !== null && stockQty > 0) {

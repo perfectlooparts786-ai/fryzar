@@ -2435,6 +2435,7 @@ function StoreSettingsModule({ user }: { user: StaffUser }) {
     store_status: "setup"
   });
   const canEdit = user.role === "owner" || user.role === "manager";
+  const isOwner = user.role === "owner";
 
   async function load() {
     setLoading(true); setError("");
@@ -2458,17 +2459,31 @@ function StoreSettingsModule({ user }: { user: StaffUser }) {
 
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
 
+  async function changeLaunchGate(action: "open" | "pause" | "setup") {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await adminApi.setStoreLaunchGate(action);
+      setNotice(`Store release gate updated: status="${result.store_status}", launch_ready=${String(result.launch_ready)}.`);
+      await load();
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally { setBusy(false); }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
-      const result = await adminApi.saveStoreSettings({
+      const payload: Record<string, unknown> = {
         store_name_en: form.store_name_en.trim(),
         store_name_ur: form.store_name_ur.trim(),
         default_language: form.default_language,
         cod_enabled: form.cod_enabled === "1",
-        whatsapp_number: form.whatsapp_number.trim(),
-        store_status: form.store_status
-      });
+        whatsapp_number: form.whatsapp_number.trim()
+      };
+      if (settings.store_status !== "open") {
+        payload.store_status = form.store_status;
+      }
+      const result = await adminApi.saveStoreSettings(payload);
       setNotice("Store settings saved: " + result.updated_keys.join(", ") + ".");
       await load();
     } catch (cause) {
@@ -2479,16 +2494,35 @@ function StoreSettingsModule({ user }: { user: StaffUser }) {
   return (
     <section className="settings-module">
       <div className="module-heading">
-        <div><span className="kicker">STORE CONFIGURATION</span><h1>Store Settings</h1><p>Manage customer-facing store details and operating preferences. Release-gated controls stay locked.</p></div>
+        <div><span className="kicker">STORE CONFIGURATION</span><h1>Store Settings</h1><p>Manage customer-facing store details and operating preferences. Release-gated controls stay locked to the Owner.</p></div>
         <button className="refresh-button" type="button" disabled={loading} onClick={() => void load()}>↻ Refresh</button>
       </div>
       {error ? <div className="orders-alert" role="alert">{error}</div> : null}
       {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
       <section className="settings-status-grid">
-        <div className="settings-status-card"><span>Store mode</span><strong>{settings.store_status ?? "setup"}</strong><small>Setup or paused only</small></div>
-        <div className="settings-status-card"><span>Launch readiness</span><strong>{isEnabled(settings.launch_ready) ? "Ready" : "Not ready"}</strong><small>Release-gated, read-only</small></div>
-        <div className="settings-status-card"><span>Manual transfer</span><strong>{isEnabled(settings.manual_transfer_enabled) ? "Enabled" : "Disabled"}</strong><small>Payment-proof flow not released</small></div>
+        <div className="settings-status-card"><span>Store mode</span><strong>{settings.store_status ?? "setup"}</strong><small>{settings.store_status === "open" ? "Accepting customer orders" : "Ordering closed"}</small></div>
+        <div className="settings-status-card"><span>Launch readiness</span><strong>{isEnabled(settings.launch_ready) ? "Ready" : "Not ready"}</strong><small>Owner release gate</small></div>
+        <div className="settings-status-card"><span>Manual transfer</span><strong>{isEnabled(settings.manual_transfer_enabled) ? "Enabled" : "Disabled"}</strong><small>Payment-proof flow gated</small></div>
       </section>
+      {isOwner ? (
+        <div className="catalogue-editor" style={{ marginBottom: "16px" }}>
+          <h2>Owner Launch &amp; Ordering Gate</h2>
+          <p style={{ margin: "0 0 12px", fontSize: "13px" }}>
+            Opening the store enforces active categories, active products, active delivery zones, and Cash on Delivery before enabling customer checkout.
+          </p>
+          <div className="ops-inline-actions">
+            <button type="button" disabled={busy || loading || settings.store_status === "open"} onClick={() => void changeLaunchGate("open")}>
+              Open Store for Orders
+            </button>
+            <button type="button" className="secondary-button" disabled={busy || loading || settings.store_status === "paused"} onClick={() => void changeLaunchGate("pause")}>
+              Pause Ordering
+            </button>
+            <button type="button" className="secondary-button" disabled={busy || loading || settings.store_status === "setup"} onClick={() => void changeLaunchGate("setup")}>
+              Return to Setup Mode
+            </button>
+          </div>
+        </div>
+      ) : null}
       {canEdit ? (
         <form className="catalogue-editor" onSubmit={submit}>
           <h2>Customer-facing details</h2>

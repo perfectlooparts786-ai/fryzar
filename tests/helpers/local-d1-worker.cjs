@@ -21,25 +21,35 @@ function runWrangler(args, persistTo) {
   if (!fs.existsSync(WRANGLER) || !fs.existsSync(CONFIG)) {
     throw new Error("Local Wrangler/config missing; refusing to use remote D1.");
   }
-  try {
-    return execFileSync(process.execPath, [WRANGLER, ...args], {
-      cwd: ROOT,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: WORKERD_BIN + ";" + (process.env.PATH || ""),
-        CI: "true",
-        CLOUDFLARE_API_TOKEN: "",
-        CLOUDFLARE_API_KEY: "",
-        CLOUDFLARE_ACCOUNT_ID: ""
-      },
-      maxBuffer: 10 * 1024 * 1024
-    });
-  } catch (error) {
-    const stdout = typeof error.stdout === "string" ? error.stdout : "";
-    const stderr = typeof error.stderr === "string" ? error.stderr : "";
-    throw new Error("Wrangler local command failed: " + args.join(" ") + "\n" + stdout + "\n" + stderr);
+  let lastError;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return execFileSync(process.execPath, [WRANGLER, ...args], {
+        cwd: ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: WORKERD_BIN + ";" + (process.env.PATH || ""),
+          CI: "true",
+          CLOUDFLARE_API_TOKEN: "",
+          CLOUDFLARE_API_KEY: "",
+          CLOUDFLARE_ACCOUNT_ID: ""
+        },
+        maxBuffer: 10 * 1024 * 1024
+      });
+    } catch (error) {
+      const stdout = typeof error.stdout === "string" ? error.stdout : "";
+      const stderr = typeof error.stderr === "string" ? error.stderr : "";
+      lastError = new Error("Wrangler local command failed: " + args.join(" ") + "\n" + stdout + "\n" + stderr);
+      const combined = stdout + "\n" + stderr;
+      const isTransientLock = /internal error|SQLITE_BUSY|database is locked/i.test(combined);
+      if (!isTransientLock || attempt === 3) {
+        throw lastError;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 350 * (attempt + 1));
+    }
   }
+  throw lastError;
 }
 
 function findRow(value, keys) {
@@ -150,7 +160,14 @@ async function createLocalD1(options = {}) {
     },
     async stopWorker() {
       if (this.server && this.server.exitCode === null) {
-        this.server.kill("SIGTERM");
+        const pid = this.server.pid;
+        if (process.platform === "win32" && pid) {
+          try {
+            execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+          } catch { /* Process may have already exited. */ }
+        } else {
+          this.server.kill("SIGTERM");
+        }
         await Promise.race([
           new Promise((resolve) => this.server.once("exit", resolve)),
           new Promise((resolve) => setTimeout(resolve, 5000))

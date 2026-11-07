@@ -15,7 +15,7 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Signature freshly prepared items",
       description_ur: "تازہ تیار شدہ خصوصی اشیاء",
       sort_order: 1,
-      is_active: 1
+      active: 1
     },
     {
       id: "cat-meals",
@@ -25,7 +25,7 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Hearty grilled wraps and combo meals",
       description_ur: "مزیدار گرلڈ ریپس اور کھانے",
       sort_order: 2,
-      is_active: 1
+      active: 1
     },
     {
       id: "cat-drinks",
@@ -35,7 +35,7 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Chilled beverages",
       description_ur: "ٹھنڈے مشروبات",
       sort_order: 3,
-      is_active: 1
+      active: 1
     }
   ],
   products: [
@@ -48,8 +48,10 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Crispy house burger with signature sauce",
       description_ur: "کرسپی ہاؤس برگر خصوصی سوس کے ساتھ",
       price_paisa: 65000,
+      compare_at_paisa: null,
       stock_qty: 40,
       is_available: 1,
+      featured: 1,
       sort_order: 1
     },
     {
@@ -61,8 +63,10 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Seasoned golden potato fries",
       description_ur: "مسالہ دار گولڈن فرائز",
       price_paisa: 25000,
+      compare_at_paisa: null,
       stock_qty: 60,
       is_available: 1,
+      featured: 1,
       sort_order: 2
     },
     {
@@ -74,8 +78,10 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Char-grilled tortilla wrap",
       description_ur: "گرلڈ چکن ریپ",
       price_paisa: 52000,
+      compare_at_paisa: null,
       stock_qty: 35,
       is_available: 1,
+      featured: 1,
       sort_order: 3
     },
     {
@@ -87,8 +93,10 @@ const LEGACY_PRODUCTION_SNAPSHOT = {
       description_en: "Refreshing chilled beverage",
       description_ur: "تازہ ٹھنڈا مشروب",
       price_paisa: 15000,
+      compare_at_paisa: null,
       stock_qty: 80,
       is_available: 1,
+      featured: 0,
       sort_order: 4
     }
   ]
@@ -110,15 +118,17 @@ async function main() {
       "SELECT " +
       "(SELECT COUNT(*) FROM categories) AS category_count, " +
       "(SELECT COUNT(*) FROM products) AS product_count, " +
+      "(SELECT COUNT(*) FROM products WHERE is_featured = 1) AS featured_count, " +
       "(SELECT SUM(stock_qty) FROM products) AS total_stock, " +
       "(SELECT SUM(delta_qty) FROM inventory_movements WHERE reason = 'stock_received') AS movement_stock, " +
       "(SELECT COUNT(*) FROM pragma_foreign_key_check) AS fk_violations",
-      ["category_count", "product_count", "total_stock", "movement_stock", "fk_violations"]
+      ["category_count", "product_count", "featured_count", "total_stock", "movement_stock", "fk_violations"]
     );
 
     assert.deepEqual(counts, {
       category_count: 3,
       product_count: 4,
+      featured_count: 3,
       total_stock: 215,
       movement_stock: 215,
       fk_violations: 0

@@ -969,8 +969,8 @@ export default function App() {
   }
 
   function changeCartQuantity(itemId: string, delta: number) {
-    setCart((current) =>
-      current
+    setCart((current) => {
+      const updated = current
         .map((item) => {
           if (item.id === itemId) {
             const nextQty = item.quantity + delta;
@@ -978,8 +978,12 @@ export default function App() {
           }
           return item;
         })
-        .filter((item): item is CartItem => item !== null)
-    );
+        .filter((item): item is CartItem => item !== null);
+      if (updated.length === 0) {
+        setAppliedCoupon(null);
+      }
+      return updated;
+    });
   }
 
   async function handleApplyCoupon(codeOverride?: string) {
@@ -1288,10 +1292,18 @@ export default function App() {
                   const currentIndex = all.indexOf(trackingResult.order.status as typeof all[number]);
                   const isCurrent = status === trackingResult.order.status;
                   const isComplete = currentIndex >= 0 && index <= currentIndex;
+                  const eventItem = (trackingResult.timeline ?? []).find((ev) => ev.status === status);
                   return (
                     <li key={status} className={(isComplete ? "complete" : "") + (isCurrent ? " current" : "")}>
                       <span className="timeline-dot">{isComplete ? <Icon name="check" /> : null}</span>
-                      <span>{trackingStatusLabel(status)}</span>
+                      <span>
+                        {trackingStatusLabel(status)}
+                        {eventItem ? (
+                          <small style={{ display: "block", fontSize: "11px", opacity: 0.78 }}>
+                            {new Date(eventItem.created_at).toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", { hour: "2-digit", minute: "2-digit" })}
+                          </small>
+                        ) : null}
+                      </span>
                     </li>
                   );
                 })}
@@ -1825,6 +1837,18 @@ export default function App() {
                         </button>
                       </div>
                       {couponError ? <small className="form-error">{couponError}</small> : null}
+                      {appliedCoupon ? (
+                        <small style={{ color: "#059669", display: "block", marginTop: "0.25rem" }}>
+                          ✓ {isUrdu ? "کوپن لگ گیا:" : "Coupon applied:"} {appliedCoupon.code}
+                          <button
+                            type="button"
+                            onClick={() => setAppliedCoupon(null)}
+                            style={{ background: "none", border: "none", color: "#dc2626", marginLeft: "0.5rem", cursor: "pointer", textDecoration: "underline" }}
+                          >
+                            {isUrdu ? "ہٹائیں" : "Remove"}
+                          </button>
+                        </small>
+                      ) : null}
                     </div>
                     <small>{t.estimateNote}</small>
                     {selectedZone && !minimumMet ? <small className="form-error">{t.minOrder}: {money(minimumOrder, language)}</small> : null}

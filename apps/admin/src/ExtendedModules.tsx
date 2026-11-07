@@ -1160,8 +1160,11 @@ export function RefundsModule({ user }: { user: StaffUser }) {
                     <td>{r.reviewer_name || "—"}</td>
                     <td><small>{new Date(r.created_at).toLocaleString()}</small></td>
                     <td>
-                      {canManage && r.status !== "completed" ? (
-                        <button type="button" className="refresh-button" onClick={() => void adminApi.updateRefundStatus(r.id, "completed").then(() => load())}>Mark Completed</button>
+                      {canManage && r.status !== "completed" && r.status !== "rejected" ? (
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button type="button" className="refresh-button" onClick={() => void adminApi.updateRefundStatus(r.id, "completed").then(() => load())}>Mark Completed</button>
+                          <button type="button" className="refresh-button" onClick={() => void adminApi.updateRefundStatus(r.id, "rejected").then(() => load())}>Reject &amp; Reverse</button>
+                        </div>
                       ) : <small className="restricted-action">{r.status}</small>}
                     </td>
                   </tr>
@@ -2086,7 +2089,7 @@ export function AdvertisingModule({ user }: { user: StaffUser }) {
 
 /* 23. SEO Settings Module */
 export function SeoSettingsModule({ user }: { user: StaffUser }) {
-  const canEdit = user.role === "owner" || user.role === "manager";
+  const canEdit = user.role === "owner";
   const [data, setData] = useState<SeoSettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);

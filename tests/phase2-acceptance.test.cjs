@@ -311,3 +311,141 @@ test("advertising overview returns complete MonetizationConfig contract and supp
   }), validSlotEnv.env);
   assert.equal(okSlotRes.status, 200);
 });
+
+test("refund creation blocks unpaid orders (409) and refund rejection posts offsetting ledger reversal", async () => {
+  const orderId = "66666666-6666-4666-8666-666666666666";
+  const refundId = "77777777-7777-4777-8777-777777777777";
+  const financeUser = staffByRole("finance", "2");
+
+  // 1. Unpaid order cannot be refunded
+  const unpaidEnv = createEnv({
+    firstResults: [
+      financeUser,
+      {
+        id: orderId,
+        total_paisa: 50000,
+        payment_method: "cod",
+        payment_status: "unpaid",
+        payment_id: "pay-unpaid",
+        refunded_paisa: 0
+      }
+    ]
+  });
+  const unpaidRes = await worker.fetch(req(`/api/v1/admin/orders/${orderId}/refund`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ amount_paisa: 10000, reason: "Premature refund attempt" })
+  }), unpaidEnv.env);
+  assert.equal(unpaidRes.status, 409);
+  assert.equal((await unpaidRes.json()).error, "order_payment_not_collected");
+
+  // 2. Rejecting an approved full refund reverses the ledger debit and restores collected payment status
+  const rejectEnv = createEnv({
+    firstResults: [
+      financeUser,
+      {
+        id: refundId,
+        order_id: orderId,
+        amount_paisa: 50000,
+        status: "approved",
+        payment_method: "cod",
+        payment_status: "refunded"
+      }
+    ]
+  });
+  const rejectRes = await worker.fetch(req(`/api/v1/admin/refunds/${refundId}`, {
+    method: "PATCH",
+    headers: authHeaders,
+    body: JSON.stringify({ status: "rejected" })
+  }), rejectEnv.env);
+  assert.equal(rejectRes.status, 200);
+  const sqlList = rejectEnv.state.batchStatements.map((s) => s.sql);
+  assert.ok(sqlList.some((s) => s.includes("INSERT INTO financial_ledger") && s.includes("Refund reversal (rejected)")));
+  assert.ok(sqlList.some((s) => s.includes("UPDATE orders SET payment_status")));
+  assert.ok(sqlList.some((s) => s.includes("UPDATE payments SET status")));
+});
+
+test("SEO PATCH and store launch-gate POST strictly enforce owner-only RBAC and launch prerequisites", async () => {
+  const managerUser = staffByRole("manager", "3");
+  const ownerUser = staffByRole("owner", "1");
+
+  // Manager denied on PATCH /api/v1/admin/seo
+  const mgrSeoEnv = createEnv({ firstResult: managerUser });
+  const mgrSeoRes = await worker.fetch(req("/api/v1/admin/seo", {
+    method: "PATCH",
+    headers: authHeaders,
+    body: JSON.stringify({ canonical_domain: "https://fryzar.com" })
+  }), mgrSeoEnv.env);
+  assert.equal(mgrSeoRes.status, 403);
+  assert.equal((await mgrSeoRes.json()).error, "owner_permission_required");
+
+  // Manager denied on POST /api/v1/admin/store/launch-gate
+  const mgrGateEnv = createEnv({ firstResult: managerUser });
+  const mgrGateRes = await worker.fetch(req("/api/v1/admin/store/launch-gate", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ action: "open" })
+  }), mgrGateEnv.env);
+  assert.equal(mgrGateRes.status, 403);
+
+  // Owner blocked with 422 when prerequisites are missing
+  const incompleteGateEnv = createEnv({
+    firstResults: [
+      ownerUser,
+      { active_categories: 1, active_products: 0, active_delivery_zones: 0, cod_enabled_json: "true" }
+    ]
+  });
+  const incompleteRes = await worker.fetch(req("/api/v1/admin/store/launch-gate", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ action: "open" })
+  }), incompleteGateEnv.env);
+  assert.equal(incompleteRes.status, 422);
+  const incBody = await incompleteRes.json();
+  assert.equal(incBody.error, "store_launch_prerequisites_incomplete");
+  assert.deepEqual(incBody.missing_prerequisites, ["active_products", "active_delivery_zones"]);
+
+  // Owner succeeds when all prerequisites are satisfied
+  const readyGateEnv = createEnv({
+    firstResults: [
+      ownerUser,
+      { active_categories: 3, active_products: 4, active_delivery_zones: 1, cod_enabled_json: "true" }
+    ]
+  });
+  const openRes = await worker.fetch(req("/api/v1/admin/store/launch-gate", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ action: "open" })
+  }), readyGateEnv.env);
+  assert.equal(openRes.status, 200);
+  const openBody = await openRes.json();
+  assert.equal(openBody.store_status, "open");
+  assert.equal(openBody.launch_ready, true);
+});
+
+test("public endpoints enforce fail-closed rate limiting in preview/production when CF-Connecting-IP is missing or exceeded", async () => {
+  const previewEnv = createEnv({ appEnv: "preview", firstResult: { request_count: 999 } });
+  const ipHeaders = { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.50" };
+
+  const couponRateRes = await worker.fetch(req("/api/v1/coupons/validate", {
+    method: "POST",
+    headers: ipHeaders,
+    body: JSON.stringify({ code: "SAVE10", subtotal_paisa: 50000 })
+  }), previewEnv.env);
+  assert.equal(couponRateRes.status, 429);
+
+  const supportRateRes = await worker.fetch(req("/api/v1/support/tickets", {
+    method: "POST",
+    headers: ipHeaders,
+    body: JSON.stringify({ customer_name: "Ali", customer_phone: "03001234567", subject: "Help", message: "Checking order" })
+  }), previewEnv.env);
+  assert.equal(supportRateRes.status, 429);
+
+  const adRateRes = await worker.fetch(req("/api/v1/ad-events", {
+    method: "POST",
+    headers: ipHeaders,
+    body: JSON.stringify({ slot_id: "home_mid_feed", format: "banner", page_type: "home", event_type: "slot_rendered" })
+  }), previewEnv.env);
+  assert.equal(adRateRes.status, 429);
+});
+

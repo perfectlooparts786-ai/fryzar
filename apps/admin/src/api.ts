@@ -1032,6 +1032,12 @@ export const adminApi = {
       body: JSON.stringify(data)
     }),
 
+  setStoreLaunchGate: (action: "open" | "pause" | "setup") =>
+    apiRequest<{ updated: boolean; store_status: string; launch_ready: boolean }>("/admin/store/launch-gate", {
+      method: "POST",
+      body: JSON.stringify({ action })
+    }),
+
   adminDeliveryZones: () =>
     apiRequest<{ delivery_zones: DeliveryZone[] }>("/admin/delivery-zones"),
 
