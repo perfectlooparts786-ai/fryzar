@@ -6,10 +6,12 @@ on:
       - main
       - "foundation/**"
       - "feature/**"
+      - "release/**"
   pull_request:
     branches:
       - main
       - "foundation/**"
+      - "release/**"
 
 permissions:
   contents: read
@@ -98,3 +100,12 @@ jobs:
 
       - name: Validate admin preview Worker and static assets
         run: npx wrangler deploy --dry-run --config apps/admin-worker/wrangler.toml
+
+      - name: Validate API production Worker bundle (dry-run only)
+        run: npx wrangler deploy --dry-run --config apps/api/wrangler.production.toml
+
+      - name: Validate customer production Worker bundle (dry-run only)
+        run: npx wrangler deploy --dry-run --config apps/customer-worker/wrangler.production.toml
+
+      - name: Validate admin production Worker bundle (dry-run only)
+        run: npx wrangler deploy --dry-run --config apps/admin-worker/wrangler.production.toml

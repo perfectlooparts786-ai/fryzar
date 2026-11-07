@@ -1,0 +1,16 @@
+# Explicit PRODUCTION configuration for fryzar-app (customer storefront).
+# PROTECTED: Do NOT deploy without explicit owner cutover authorization.
+name = "fryzar-app"
+main = "src/index.mjs"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[assets]
+directory = "../../dist/storefront"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api", "/api/*", "/sitemap.xml", "/robots.txt"]
+
+[[services]]
+binding = "API"
+service = "fryzar-api"

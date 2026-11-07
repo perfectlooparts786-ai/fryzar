@@ -1,0 +1,21 @@
+# Explicit PRODUCTION configuration for fryzar-api.
+# PROTECTED: Do NOT deploy without explicit owner cutover authorization,
+# verified D1 backups of fryzar-production & fryzar-core, and release sign-off.
+name = "fryzar-api"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+APP_ENV = "production"
+ALLOWED_ORIGINS = "https://fryzar.com,https://www.fryzar.com,https://admin.fryzar.com,https://fryzar-app.perfectlooparts786.workers.dev,https://fryzar-admin.perfectlooparts786.workers.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fryzar-core"
+database_id = "098238a6-1bda-4735-8f21-d925c7fe32de"
+migrations_dir = "migrations"
+
+[triggers]
+# Daily bounded cleanup of expired operational rows (idempotency keys, rate limits, telemetry).
+crons = ["17 2 * * *"]

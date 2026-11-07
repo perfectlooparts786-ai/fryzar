@@ -42,4 +42,20 @@ for (const line of forbidden) {
   assert.ok(!hasExactLine(allConfigs, line), "Production target is forbidden in development configs: " + line);
 }
 
-console.log("Preview configuration safety passed: API, customer and admin targets match the preview allowlist; no production target found.");
+// Verify explicit gated production configs stay isolated in *.production.toml and bind to fryzar-core (v9 target)
+const prodApi = read("apps/api/wrangler.production.toml");
+const prodCustomer = read("apps/customer-worker/wrangler.production.toml");
+const prodAdmin = read("apps/admin-worker/wrangler.production.toml");
+
+assert.ok(hasExactLine(prodApi, 'name = "fryzar-api"'), "Production API config must target fryzar-api");
+assert.ok(hasExactLine(prodApi, 'APP_ENV = "production"'), "Production API config must set APP_ENV = production");
+assert.ok(hasExactLine(prodApi, 'database_name = "fryzar-core"'), "Production API config must bind fryzar-core");
+assert.ok(hasExactLine(prodApi, 'database_id = "098238a6-1bda-4735-8f21-d925c7fe32de"'), "Production API config must match fryzar-core UUID");
+assert.ok(!hasExactLine(prodApi, 'database_id = "880b9681-4252-4db0-be44-b60c4edbdc15"'), "Legacy fryzar-production must remain untouched as read-only source");
+
+assert.ok(hasExactLine(prodCustomer, 'name = "fryzar-app"'), "Production customer Worker must target fryzar-app");
+assert.ok(hasExactLine(prodCustomer, 'service = "fryzar-api"'), "Production customer Worker must bind fryzar-api");
+assert.ok(hasExactLine(prodAdmin, 'name = "fryzar-admin"'), "Production admin Worker must target fryzar-admin");
+assert.ok(hasExactLine(prodAdmin, 'service = "fryzar-api"'), "Production admin Worker must bind fryzar-api");
+
+console.log("Preview & production configuration safety passed: default wrangler.toml targets preview only, and isolated *.production.toml targets fryzar-core cleanly.");

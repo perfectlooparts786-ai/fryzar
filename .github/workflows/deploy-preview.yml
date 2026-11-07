@@ -8,7 +8,7 @@ on:
       candidate_ref:
         description: "Reviewed branch or commit SHA to deploy to isolated preview"
         required: false
-        default: "feature/fryzar-preview-acceptance"
+        default: "release/fryzar-production-ready"
         type: string
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
       - name: Check out candidate source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_ref || 'feature/fryzar-preview-acceptance' }}
+          ref: ${{ inputs.candidate_ref || 'release/fryzar-production-ready' }}
           path: candidate
 
       - name: Set up Node.js
