@@ -1,15 +1,15 @@
 # FRYZAR Testing & Verification Matrix
 
 **Last verified:** 7 November 2026  
-**Branch:** `feature/fryzar-master-transformation`
+**Branch:** `feature/fryzar-preview-acceptance`
 
 ## 1. Automated Verification Summary (100% Passing)
 
 | Suite | Command | Scope & Assertions | Verified Result |
 |---|---|---|---|
 | **TypeScript Typecheck** | `npm run typecheck` | Strict TS check across `apps/api` (`index.ts` + `platform-modules.ts`) | **PASS** |
-| **API Unit Suite** | `npm run test:api` | **101 unit tests** across auth, checkout, inventory, RBAC, variants, delivery, finance, SEO sitemap/robots, PII-free ad telemetry, Adsterra kill switch, and archive guards | **101 / 101 PASS** |
-| **Worker Routing Suite** | `npm run test:workers` | **7 routing tests** verifying `/api/*`, `/sitemap.xml`, `/robots.txt`, SPA fallback, and preview Wrangler configs | **7 / 7 PASS** |
+| **API Unit Suite** | `npm run test:api` | **107 unit tests** across auth, checkout, inventory, RBAC, variants, delivery, payment-proof ownership, cumulative refund caps, kitchen wastage, rider horizontal isolation, reconciled Adsterra contract, SEO sitemap/robots, PII-free telemetry, kill switch, and archive guards | **107 / 107 PASS** |
+| **Worker Routing & Headers Suite** | `npm run test:workers` | **7 routing & security-header tests** verifying `/api/*`, `/sitemap.xml`, `/robots.txt`, SPA fallback, `X-Frame-Options`, `X-Content-Type-Options`, `X-Robots-Tag`, and preview Wrangler configs | **7 / 7 PASS** |
 | **Preview Config Safety** | `npm run test:config-safety` | Asserts all Wrangler configs bind exclusively to `-preview` targets and never reference production IDs | **PASS** |
 | **D1 Migrations Suite** | `npm run test:integration:migrations` | Applies all **9 migrations**, verifies **46 tables**, **39 indexes**, **2 triggers**, `0` FK violations, and idempotent replay | **PASS** |
 | **Legacy Catalogue Migration** | `npm run test:integration:legacy-migration` | Verifies lossless migration of **3 categories, 4 products, and 215 stock units**, replay idempotency, and live checkout | **PASS** |
@@ -22,8 +22,8 @@
 | **Financial Integrity** | `npm run test:integration:financial` | Paisa line/subtotal/discount/delivery arithmetic and mismatched COD amount rejection | **PASS** |
 | **Operational Retention** | `npm run test:integration:retention` | Bounded 100-row expiry cleanup preserving active sessions, orders, payments, and audit logs | **PASS** |
 | **Local Backup & Restore** | `npm run test:integration:backup-restore` | SHA-256 manifest verification across persisted local D1 snapshot & 9-migration ledger restore | **PASS** |
-| **Playwright Browser E2E** | `npm run test:e2e` | **8 browser E2E specs** across desktop & mobile (`375×812`) viewports: 17-page storefront, canonical/`hreflang`, zero ads on restricted pages, variants + required modifiers + coupon + COD + tracking + Urdu RTL, kitchen KDS, and 27-module Owner Control Center + Adsterra kill switch | **8 / 8 PASS** |
-| **Production Web Builds** | `npm run build:storefront` & `npm run build:admin` | TypeScript + Vite production bundles | **PASS** (`< 500ms` each) |
+| **Playwright Browser E2E** | `npm run test:e2e` | **11 browser E2E specs** across `375×812`, `768×1024`, and `1280×800` viewports: 17-page storefront, EN/UR overflow checks, `Escape` accessibility, cart persistence, minimum-order gate, variants/modifiers/coupon/COD/tracking, kitchen KDS, 27-module Owner Control Center, Owner Setup Readiness Checklist, real `MonetizationConfig`, and Rider role scoping | **11 / 11 PASS** |
+| **Production Web Builds** | `npm run build` | TypeScript + Vite production bundles (`< 320ms` each) | **PASS** |
 
 ## 2. Reproducing Full Verification Locally
 

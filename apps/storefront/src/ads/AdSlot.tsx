@@ -123,11 +123,17 @@ export function AdSlot({
     };
 
     if (matchingZone.lazy_load) {
-      return observeNearViewport(el, startLoad);
+      const stopObserving = observeNearViewport(el, startLoad);
+      return () => {
+        cancelled = true;
+        stopObserving();
+        el.replaceChildren();
+      };
     }
     startLoad();
     return () => {
       cancelled = true;
+      el.replaceChildren();
     };
   }, [registered, matchingZone, placementKey, pageCategory]);
 

@@ -2,26 +2,29 @@
 
 Bilingual Urdu and English food-ordering platform for Pakistan, built with Cloudflare Workers and D1.
 
-## Current candidate
+## Current Accepted Release Candidate (7 November 2026)
 
-- Candidate branch: `foundation/fresh-build`, tracked in draft [PR #1](https://github.com/perfectlooparts786-ai/fryzar/pull/1).
-- The candidate API, customer storefront and admin portal are deployed to the isolated preview Workers.
-- Preview deployment candidate: `84fefded8640cb3abd23cd2df6fdbb811cf9d19d`.
-- The preview store remains in setup mode. Checkout is closed, manual transfer is disabled, and no owner account or business catalogue has been created.
-- Production Workers and D1 databases remain on their existing, separate legacy bindings. They have not been cut over to the candidate architecture.
+- **Accepted Release Candidate Branch:** `feature/fryzar-preview-acceptance` (reconciled atop `feature/fryzar-master-transformation` and `foundation/fresh-build`; draft [PR #1](https://github.com/perfectlooparts786-ai/fryzar/pull/1) remains open and unmerged pending Owner cutover approval).
+- **Release Gate Verdict:** **RELEASE CANDIDATE READY / PREVIEW ACCEPTANCE PASSED** ($0.00/month Cloudflare Workers Free + D1 Free).
+- **Live Isolated Preview Workers:**
+  - Customer Storefront: `https://fryzar-app-preview.perfectlooparts786.workers.dev` (`16bc6c30-96ed-42b7-bdfa-26dac85b1791`)
+  - Admin Control Center: `https://fryzar-admin-preview.perfectlooparts786.workers.dev` (`40f93681-a678-4867-a920-92717dd3b560`)
+  - Central API: `https://fryzar-api-preview.perfectlooparts786.workers.dev` (`b811d6af-78ba-4374-93d5-26eba94d7095`)
+- **Preview Safety State:** The preview store remains in safe setup mode (`store_status = "setup"`, `launch_ready = false`), manual transfer is disabled (`manual_transfer_enabled = false`), Adsterra monetization is disabled (`masterEnabled = false`), and `first_owner` bootstrap remains unclaimed for the Owner.
+- **Production Isolation:** Production Workers (`fryzar-api`, `fryzar-app`, `fryzar-admin`), D1 databases (`fryzar-production` with 3 categories, 4 products, and 215 stock units; `fryzar-core`), secrets, and `fryzar.com` DNS remain **100% untouched**.
 
-## Project records
+## Project Records
 
-- [Documentation index](docs/README.md)
+- [Documentation index (24 core docs)](docs/README.md)
+- [Phase 2 Preview Acceptance Report](docs/PREVIEW_ACCEPTANCE_REPORT.md)
+- [27-Module Admin & RBAC Verification](docs/ADMIN_MODULE_VERIFICATION.md)
+- [Customer Storefront Journey QA](docs/CUSTOMER_JOURNEY_QA.md)
+- [Owner Business Inputs Checklist](docs/OWNER_BUSINESS_INPUTS.md)
+- [Performance & Free-Tier Baseline](docs/PERFORMANCE_BASELINE.md)
+- [Production Cutover Readiness](docs/PRODUCTION_CUTOVER_READINESS.md)
+- [Remaining Blockers](docs/REMAINING_BLOCKERS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment and recovery](docs/DEPLOYMENT.md)
-- [Project state](docs/PROJECT_STATE.md)
-- [Release readiness](docs/RELEASE_READINESS.md)
-- [Task backlog](docs/TASK_BACKLOG.md)
 - [Security review](docs/SECURITY_REVIEW.md)
-- [Preview operations](docs/operations/PREVIEW_ENVIRONMENT.md)
-- [Verified Cloudflare baseline](docs/audits/CLOUDFLARE_BASELINE_2026-11-01.md)
-- [D1 schema comparison](docs/audits/D1_SCHEMA_DIFF_2026-11-01.md)
-- [Recovered Worker source snapshots](https://github.com/perfectlooparts786-ai/fryzar/pull/3) — archival only, not candidate code
 
 GitHub is the source of truth for code, migrations, tests, workflows and project records. Cloudflare hosts runtime resources. Do not modify production Workers, databases, DNS, routes or secrets as part of preview work.

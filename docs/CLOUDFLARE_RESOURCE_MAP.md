@@ -9,9 +9,9 @@
 
 | Worker Name | Environment | Role | D1 / Service Bindings | Current Status & Version |
 |---|---|---|---|---|
-| `fryzar-api-preview` | **Preview** | Central TypeScript REST API, SEO sitemap/robots, RBAC, Checkout, Admin & Monetization API | `DB` -> `fryzar-preview` (`a6f528a3-4b36-43a9-8e77-31f7105a4aeb`), Cron `17 2 * * *` | **Deployed & Verified** (`2760e1e3-7179-4e6f-b8f1-daa60669ea70`) |
-| `fryzar-app-preview` | **Preview** | Customer Storefront React 19 SPA + `/api/*`, `/sitemap.xml`, `/robots.txt` proxy | `API` -> `fryzar-api-preview`, `ASSETS` -> `dist/storefront` | **Deployed & Verified** (`9466e07b-0820-404c-981f-bc448e1a4e3d`) |
-| `fryzar-admin-preview` | **Preview** | 27-Module Owner & Staff Control Center React 19 SPA + `/api/*` proxy | `API` -> `fryzar-api-preview`, `ASSETS` -> `dist/admin` | **Deployed & Verified** (`b7a247d2-ad87-4e78-96ae-aefde3a941b4`) |
+| `fryzar-api-preview` | **Preview** | Central TypeScript REST API, SEO sitemap/robots, RBAC, Checkout, Admin & Monetization API | `DB` -> `fryzar-preview` (`a6f528a3-4b36-43a9-8e77-31f7105a4aeb`), Cron `17 2 * * *` | **Deployed & Accepted** (`b811d6af-78ba-4374-93d5-26eba94d7095`) |
+| `fryzar-app-preview` | **Preview** | Customer Storefront React 19 SPA + `/api/*`, `/sitemap.xml`, `/robots.txt` proxy + `_headers` | `API` -> `fryzar-api-preview`, `ASSETS` -> `dist/storefront` | **Deployed & Accepted** (`16bc6c30-96ed-42b7-bdfa-26dac85b1791`) |
+| `fryzar-admin-preview` | **Preview** | 27-Module Owner & Staff Control Center React 19 SPA + `/api/*` proxy + `noindex` `_headers` | `API` -> `fryzar-api-preview`, `ASSETS` -> `dist/admin` | **Deployed & Accepted** (`40f93681-a678-4867-a920-92717dd3b560`) |
 | `fryzar-api` | **Production (Untouched)** | Historical candidate API Worker | `DB` -> `fryzar-core` (`098238a6-1bda-4735-8f21-d925c7fe32de`) | Untouched (`c0f0ecf8-97ef-4768-a947-f3f56be0df8e`) |
 | `fryzar-app` | **Production (Untouched)** | Legacy direct-D1 customer Worker | `DB` -> `fryzar-production` (`880b9681-4252-4db0-be44-b60c4edbdc15`) | Untouched (`91fdf9ab-ae00-4928-b5be-a1a356cc0f19`) |
 | `fryzar-admin` | **Production (Untouched)** | Legacy direct-D1 admin Worker | `DB` -> `fryzar-production` (`880b9681-4252-4db0-be44-b60c4edbdc15`) | Untouched (`80b357d6-e6ea-49a7-a6bb-0802f7b88084`) |

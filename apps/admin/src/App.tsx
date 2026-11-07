@@ -18,6 +18,7 @@ import {
   type Product,
   type ProductImageRecord,
   type Rider,
+  type RiderSelfAssignment,
   type StaffMember,
   type StaffUser,
   type StoreSettings,
@@ -74,35 +75,58 @@ export type Section =
   | "audit"
   | "system_health";
 
-const NAV: Array<{ id: Section; label: string; group: string; icon: string }> = [
-  { id: "overview", label: "1. Overview", group: "Operations", icon: "overview" },
-  { id: "orders", label: "2. Live Orders", group: "Operations", icon: "orders" },
-  { id: "kitchen", label: "3. Kitchen Queue", group: "Operations", icon: "kitchen" },
-  { id: "products", label: "4. Products", group: "Catalogue", icon: "catalogue" },
-  { id: "categories", label: "5. Categories", group: "Catalogue", icon: "catalogue" },
-  { id: "variants_modifiers", label: "6. Variants & Modifiers", group: "Catalogue", icon: "catalogue" },
-  { id: "coupons", label: "7. Promotions & Coupons", group: "Growth & CRM", icon: "coupons" },
-  { id: "customers", label: "8. Customers", group: "Growth & CRM", icon: "team" },
-  { id: "delivery", label: "9. Delivery Zones", group: "Logistics", icon: "delivery" },
-  { id: "riders", label: "10. Riders & Dispatch", group: "Logistics", icon: "delivery" },
-  { id: "inventory", label: "11. Inventory & Stock", group: "Supply Chain", icon: "inventory" },
-  { id: "recipes", label: "12. Ingredients & Recipes", group: "Supply Chain", icon: "inventory" },
-  { id: "suppliers_purchases", label: "13. Suppliers & Purchases", group: "Supply Chain", icon: "inventory" },
-  { id: "wastage", label: "14. Wastage", group: "Supply Chain", icon: "inventory" },
-  { id: "payments", label: "15. Payments", group: "Finance", icon: "payments" },
-  { id: "refunds", label: "16. Refunds", group: "Finance", icon: "payments" },
-  { id: "finance", label: "17. Finance & Ledger", group: "Finance", icon: "payments" },
-  { id: "support", label: "18. Support Tickets", group: "Care & Alerts", icon: "orders" },
-  { id: "notifications", label: "19. Notifications", group: "Care & Alerts", icon: "overview" },
-  { id: "analytics", label: "20. Analytics", group: "Intelligence", icon: "overview" },
-  { id: "editorial", label: "21. Website Content", group: "Growth & Monetization", icon: "orders" },
-  { id: "advertising", label: "22. Advertising & Monetization", group: "Growth & Monetization", icon: "payments" },
-  { id: "seo", label: "23. SEO Settings", group: "Growth & Monetization", icon: "settings" },
-  { id: "team", label: "24. Staff & Roles", group: "Governance", icon: "team" },
-  { id: "settings", label: "25. Store Settings", group: "Governance", icon: "settings" },
-  { id: "audit", label: "26. Audit Logs", group: "Governance", icon: "orders" },
-  { id: "system_health", label: "27. System Health", group: "Governance", icon: "settings" }
+const ALL_STAFF_ROLES: readonly StaffUser["role"][] = [
+  "owner",
+  "manager",
+  "operator",
+  "kitchen",
+  "finance",
+  "rider",
+  "support"
 ];
+
+const NAV: Array<{ id: Section; label: string; group: string; icon: string; roles: readonly StaffUser["role"][] }> = [
+  { id: "overview", label: "1. Overview", group: "Operations", icon: "overview", roles: ["owner", "manager", "operator", "kitchen", "finance", "support"] },
+  { id: "orders", label: "2. Live Orders", group: "Operations", icon: "orders", roles: ["owner", "manager", "operator", "kitchen", "finance", "support"] },
+  { id: "kitchen", label: "3. Kitchen Queue", group: "Operations", icon: "kitchen", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "products", label: "4. Products", group: "Catalogue", icon: "catalogue", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "categories", label: "5. Categories", group: "Catalogue", icon: "catalogue", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "variants_modifiers", label: "6. Variants & Modifiers", group: "Catalogue", icon: "catalogue", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "coupons", label: "7. Promotions & Coupons", group: "Growth & CRM", icon: "coupons", roles: ["owner", "manager", "operator", "finance"] },
+  { id: "customers", label: "8. Customers", group: "Growth & CRM", icon: "team", roles: ["owner", "manager"] },
+  { id: "delivery", label: "9. Delivery Zones", group: "Logistics", icon: "delivery", roles: ["owner", "manager", "operator"] },
+  { id: "riders", label: "10. Riders & Dispatch", group: "Logistics", icon: "delivery", roles: ["owner", "manager", "operator", "rider"] },
+  { id: "inventory", label: "11. Inventory & Stock", group: "Supply Chain", icon: "inventory", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "recipes", label: "12. Ingredients & Recipes", group: "Supply Chain", icon: "inventory", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "suppliers_purchases", label: "13. Suppliers & Purchases", group: "Supply Chain", icon: "inventory", roles: ["owner", "manager", "operator"] },
+  { id: "wastage", label: "14. Wastage", group: "Supply Chain", icon: "inventory", roles: ["owner", "manager", "operator", "kitchen"] },
+  { id: "payments", label: "15. Payments", group: "Finance", icon: "payments", roles: ["owner", "manager", "finance"] },
+  { id: "refunds", label: "16. Refunds", group: "Finance", icon: "payments", roles: ["owner", "manager", "finance"] },
+  { id: "finance", label: "17. Finance & Ledger", group: "Finance", icon: "payments", roles: ["owner", "manager", "finance"] },
+  { id: "support", label: "18. Support Tickets", group: "Care & Alerts", icon: "orders", roles: ["owner", "manager", "operator", "support"] },
+  { id: "notifications", label: "19. Notifications", group: "Care & Alerts", icon: "overview", roles: ALL_STAFF_ROLES },
+  { id: "analytics", label: "20. Analytics", group: "Intelligence", icon: "overview", roles: ["owner", "manager", "finance"] },
+  { id: "editorial", label: "21. Website Content", group: "Growth & Monetization", icon: "orders", roles: ["owner", "manager", "operator"] },
+  { id: "advertising", label: "22. Advertising & Monetization", group: "Growth & Monetization", icon: "payments", roles: ["owner", "manager", "finance"] },
+  { id: "seo", label: "23. SEO Settings", group: "Growth & Monetization", icon: "settings", roles: ["owner", "manager", "operator"] },
+  { id: "team", label: "24. Staff & Roles", group: "Governance", icon: "team", roles: ["owner", "manager"] },
+  { id: "settings", label: "25. Store Settings", group: "Governance", icon: "settings", roles: ["owner", "manager"] },
+  { id: "audit", label: "26. Audit Logs", group: "Governance", icon: "orders", roles: ["owner", "manager"] },
+  { id: "system_health", label: "27. System Health", group: "Governance", icon: "settings", roles: ["owner", "manager"] }
+];
+
+function defaultSectionForRole(role: StaffUser["role"]): Section {
+  switch (role) {
+    case "rider":
+      return "riders";
+    case "kitchen":
+      return "kitchen";
+    case "support":
+      return "support";
+    default:
+      return "overview";
+  }
+}
 
 function isEnabled(value: unknown): boolean {
   return value === true || value === "true" || value === "yes" || value === 1;
@@ -302,6 +326,149 @@ function AuthScreen({
   );
 }
 
+type SetupStatusLabel =
+  | "Complete"
+  | "Incomplete"
+  | "Needs owner review"
+  | "Blocked by credentials"
+  | "Blocked by verification";
+
+function OwnerSetupReadinessCard({
+  settings,
+  categoriesCount,
+  productsCount,
+  zonesCount,
+  onNavigate
+}: {
+  settings: StoreSettings;
+  categoriesCount: number;
+  productsCount: number;
+  zonesCount: number;
+  onNavigate?: (target: Section) => void;
+}) {
+  const storeNameReady = Boolean((settings.store_name_en ?? "").trim() && (settings.store_name_ur ?? "").trim());
+  const whatsappReady = Boolean((settings.whatsapp_number ?? "").trim());
+  const catalogueReady = categoriesCount > 0 && productsCount > 0;
+  const zonesReady = zonesCount > 0;
+  const codEnabled = isEnabled(settings.cod_enabled ?? true);
+  const launchOpen = settings.store_status === "open" && isEnabled(settings.launch_ready);
+
+  const items: Array<{
+    title: string;
+    detail: string;
+    status: SetupStatusLabel;
+    target: Section;
+    actionLabel: string;
+  }> = [
+    {
+      title: "Store Identity & Bilingual Branding",
+      detail: `${settings.store_name_en ?? "FRYZAR"} / ${settings.store_name_ur ?? "فرائیزار"} · ${settings.currency ?? "PKR"}`,
+      status: storeNameReady ? "Complete" : "Incomplete",
+      target: "settings",
+      actionLabel: "Store Settings"
+    },
+    {
+      title: "Customer Support WhatsApp & Contact",
+      detail: whatsappReady ? `Configured (${settings.whatsapp_number})` : "Enter official business WhatsApp number before public launch.",
+      status: whatsappReady ? "Complete" : "Incomplete",
+      target: "settings",
+      actionLabel: "Set WhatsApp"
+    },
+    {
+      title: "Menu Categories & Priced Products",
+      detail: `${categoriesCount} active category(s) · ${productsCount} active product(s) in PKR`,
+      status: catalogueReady ? "Complete" : "Incomplete",
+      target: categoriesCount === 0 ? "categories" : "products",
+      actionLabel: categoriesCount === 0 ? "Add Categories" : "Manage Products"
+    },
+    {
+      title: "Delivery Zones, Fees & Minimum Orders",
+      detail: zonesReady ? `${zonesCount} active delivery zone(s) configured` : "Configure at least one delivery zone with PKR fee and ETA.",
+      status: zonesReady ? "Complete" : "Incomplete",
+      target: "delivery",
+      actionLabel: "Delivery Zones"
+    },
+    {
+      title: "Payment Policy & COD Readiness",
+      detail: `COD: ${codEnabled ? "Enabled" : "Disabled"} · Manual bank transfer safely locked off until private receipt storage.`,
+      status: codEnabled ? "Complete" : "Needs owner review",
+      target: "payments",
+      actionLabel: "Payments"
+    },
+    {
+      title: "SEO Metadata, Address & Operating Hours",
+      detail: "Verify canonical domain (https://fryzar.com), physical kitchen address, and operating hours.",
+      status: "Needs owner review",
+      target: "seo",
+      actionLabel: "SEO Settings"
+    },
+    {
+      title: "Adsterra Publisher & Zone Credentials",
+      detail: "Safely disabled by default. Requires human-provided Adsterra Site ID, publisher domain approval, and real Zone IDs.",
+      status: "Blocked by credentials",
+      target: "advertising",
+      actionLabel: "Advertising"
+    },
+    {
+      title: "Controlled Production Cutover Gate",
+      detail: launchOpen
+        ? "Store is live and accepting public orders."
+        : "Store remains safely closed (launch_ready = false) until owner business sign-off and production cutover verification.",
+      status: launchOpen ? "Complete" : "Blocked by verification",
+      target: "system_health",
+      actionLabel: "System Health"
+    }
+  ];
+
+  const pillClass = (s: SetupStatusLabel) => {
+    if (s === "Complete") return "ops-pill-ok";
+    if (s === "Incomplete" || s === "Needs owner review") return "ops-pill-warn";
+    return "ops-pill-info";
+  };
+
+  return (
+    <section className="content-card data-card" data-testid="owner-setup-readiness" style={{ marginBottom: "18px" }}>
+      <div className="card-heading">
+        <div>
+          <span className="kicker">OWNER BUSINESS INPUTS &amp; LAUNCH CHECKLIST</span>
+          <h2>Store Setup &amp; Cutover Readiness</h2>
+        </div>
+        <span className="data-count">
+          {items.filter((i) => i.status === "Complete").length}/{items.length} complete
+        </span>
+      </div>
+      <div className="table-wrap">
+        <table className="orders-table">
+          <thead>
+            <tr>
+              <th>Readiness Gate</th>
+              <th>Current State</th>
+              <th>Status</th>
+              {onNavigate ? <th>Action</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.title}>
+                <td><strong>{item.title}</strong></td>
+                <td><small>{item.detail}</small></td>
+                <td><span className={pillClass(item.status)}>{item.status}</span></td>
+                {onNavigate ? (
+                  <td>
+                    <button type="button" className="refresh-button" onClick={() => onNavigate(item.target)}>
+                      {item.actionLabel}
+                    </button>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /* 1. Overview Module (22 Operational Metrics + Alerts + Launch Controls) */
 function Overview({
   user,
@@ -312,7 +479,8 @@ function Overview({
   metrics,
   overviewData,
   loading,
-  error
+  error,
+  onNavigate
 }: {
   user: StaffUser;
   settings: StoreSettings;
@@ -323,6 +491,7 @@ function Overview({
   overviewData: OverviewSummaryResponse | null;
   loading: boolean;
   error: string;
+  onNavigate?: (target: Section) => void;
 }) {
   const open = settings.store_status === "open" && isEnabled(settings.launch_ready);
   const ov = overviewData?.overview;
@@ -422,6 +591,16 @@ function Overview({
           ) : null}
         </article>
       </section>
+
+      {user.role === "owner" || user.role === "manager" ? (
+        <OwnerSetupReadinessCard
+          settings={settings}
+          categoriesCount={ov?.active_categories ?? metrics?.active_categories ?? categories.length}
+          productsCount={ov?.active_products ?? metrics?.active_products ?? products.length}
+          zonesCount={ov?.active_delivery_zones ?? metrics?.active_delivery_zones ?? zones.length}
+          onNavigate={onNavigate}
+        />
+      ) : null}
 
       <section className="content-card data-card">
         <div className="card-heading">
@@ -1438,6 +1617,7 @@ function DeliveryModule({ user }: { user: StaffUser }) {
 function RidersModule({ user }: { user: StaffUser }) {
   const [riders, setRiders] = useState<Rider[]>([]);
   const [deliveries, setDeliveries] = useState<DeliveryAssignmentRecord[]>([]);
+  const [selfAssignments, setSelfAssignments] = useState<RiderSelfAssignment[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1448,25 +1628,33 @@ function RidersModule({ user }: { user: StaffUser }) {
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const isRiderRole = user.role === "rider";
   const canManage = user.role === "owner" || user.role === "manager" || user.role === "operator";
 
   async function loadData() {
     setLoading(true); setError("");
     try {
-      const [rRes, dRes, sRes] = await Promise.all([
-        adminApi.riders(),
-        adminApi.deliveries().catch(() => ({ deliveries: [] as DeliveryAssignmentRecord[] })),
-        adminApi.staffDirectory().catch(() => ({ staff: [] as StaffMember[] }))
-      ]);
-      setRiders(rRes.riders);
-      setDeliveries(dRes.deliveries);
-      setStaffList(sRes.staff);
+      if (isRiderRole) {
+        const res = await adminApi.riderAssignments();
+        setSelfAssignments(res.assignments);
+        setRiders([]);
+        setDeliveries([]);
+      } else {
+        const [rRes, dRes, sRes] = await Promise.all([
+          adminApi.riders(),
+          adminApi.deliveries().catch(() => ({ deliveries: [] as DeliveryAssignmentRecord[] })),
+          adminApi.staffDirectory().catch(() => ({ staff: [] as StaffMember[] }))
+        ]);
+        setRiders(rRes.riders);
+        setDeliveries(dRes.deliveries);
+        setStaffList(sRes.staff);
+      }
     } catch (cause) {
       setError(messageFor(cause));
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { void loadData(); }, []);
+  useEffect(() => { void loadData(); }, [isRiderRole]);
 
   async function handleAddRider(e: FormEvent) {
     e.preventDefault();
@@ -1497,9 +1685,13 @@ function RidersModule({ user }: { user: StaffUser }) {
     <section className="inventory-module">
       <div className="module-heading">
         <div>
-          <span className="kicker">DELIVERY FLEET &amp; DISPATCH</span>
-          <h1>Riders &amp; Dispatch</h1>
-          <p>Manage rider profiles, fleet availability, and live delivery assignment progression.</p>
+          <span className="kicker">{isRiderRole ? "RIDER DISPATCH QUEUE" : "DELIVERY FLEET & DISPATCH"}</span>
+          <h1>{isRiderRole ? "My Assigned Deliveries" : "Riders & Dispatch"}</h1>
+          <p>
+            {isRiderRole
+              ? "View your active FRYZAR delivery assignments and update pickup/delivery status."
+              : "Manage rider profiles, fleet availability, and live delivery assignment progression."}
+          </p>
         </div>
         <div className="ops-inline-actions">
           {canManage ? (
@@ -1512,96 +1704,140 @@ function RidersModule({ user }: { user: StaffUser }) {
       {error ? <div className="orders-alert" role="alert">{error}</div> : null}
       {notice ? <div className="orders-notice" role="status">{notice}</div> : null}
 
-      {showAdd ? (
-        <form className="catalogue-editor" onSubmit={handleAddRider}>
-          <h2>Link Staff User as Rider</h2>
-          <div className="catalogue-form-grid">
-            <label className="catalogue-field">
-              <span>Staff Account</span>
-              <select value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} required>
-                <option value="">Choose staff user…</option>
-                {staffList.map((s) => <option key={s.id} value={s.id}>{s.display_name} ({s.email}) · {s.role}</option>)}
-              </select>
-            </label>
-            <label className="catalogue-field">
-              <span>Vehicle Type</span>
-              <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
-                <option value="bike">Bike / Motorcycle</option>
-                <option value="scooter">Scooter</option>
-                <option value="car">Car</option>
-                <option value="van">Van</option>
-                <option value="bicycle">Bicycle</option>
-                <option value="foot">On Foot</option>
-              </select>
-            </label>
-            <label className="catalogue-field"><span>Vehicle Plate</span><input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="RIW-1234" /></label>
-          </div>
-          <div className="catalogue-actions">
-            <button type="submit" disabled={busy}>Save Rider</button>
-            <button type="button" className="refresh-button" onClick={() => setShowAdd(false)}>Cancel</button>
-          </div>
-        </form>
-      ) : null}
+      {isRiderRole ? (
+        <div className="ops-card-padded">
+          <h2>Active Assignments ({selfAssignments.length})</h2>
+          {loading ? (
+            <p className="orders-footnote">Loading your delivery assignments…</p>
+          ) : selfAssignments.length === 0 ? (
+            <p className="orders-footnote">No delivery orders are currently assigned to you.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="orders-table">
+                <thead>
+                  <tr><th>Order</th><th>Customer &amp; Address</th><th>Amount</th><th>Status</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                  {selfAssignments.map((d) => (
+                    <tr key={d.id}>
+                      <td><strong>{d.order_number}</strong><small>{d.payment_method.toUpperCase()} · {d.payment_status}</small></td>
+                      <td><strong>{d.customer_name || "Customer"}</strong><small>{d.customer_phone || ""} · {d.delivery_address || "—"}</small></td>
+                      <td><strong>{money(d.total_paisa)}</strong></td>
+                      <td><span className="environment-pill">{d.status}</span></td>
+                      <td>
+                        <div className="ops-inline-actions">
+                          {d.status === "assigned" ? (
+                            <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "picked_up")}>Picked Up</button>
+                          ) : null}
+                          {d.status === "assigned" || d.status === "picked_up" ? (
+                            <>
+                              <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "delivered")}>Delivered</button>
+                              <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "failed")}>Failed</button>
+                            </>
+                          ) : <small className="restricted-action">{d.status}</small>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {showAdd ? (
+            <form className="catalogue-editor" onSubmit={handleAddRider}>
+              <h2>Link Staff User as Rider</h2>
+              <div className="catalogue-form-grid">
+                <label className="catalogue-field">
+                  <span>Staff Account</span>
+                  <select value={staffUserId} onChange={(e) => setStaffUserId(e.target.value)} required>
+                    <option value="">Choose staff user…</option>
+                    {staffList.map((s) => <option key={s.id} value={s.id}>{s.display_name} ({s.email}) · {s.role}</option>)}
+                  </select>
+                </label>
+                <label className="catalogue-field">
+                  <span>Vehicle Type</span>
+                  <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
+                    <option value="bike">Bike / Motorcycle</option>
+                    <option value="scooter">Scooter</option>
+                    <option value="car">Car</option>
+                    <option value="van">Van</option>
+                    <option value="bicycle">Bicycle</option>
+                    <option value="foot">On Foot</option>
+                  </select>
+                </label>
+                <label className="catalogue-field"><span>Vehicle Plate</span><input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} placeholder="RIW-1234" /></label>
+              </div>
+              <div className="catalogue-actions">
+                <button type="submit" disabled={busy}>Save Rider</button>
+                <button type="button" className="refresh-button" onClick={() => setShowAdd(false)}>Cancel</button>
+              </div>
+            </form>
+          ) : null}
 
-      <div className="ops-card-padded">
-        <h2>Fleet Directory ({riders.length})</h2>
-        {loading ? <p className="orders-footnote">Loading riders…</p> : riders.length === 0 ? (
-          <p className="orders-footnote">No rider profiles configured yet.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="orders-table">
-              <thead><tr><th>Rider</th><th>Email</th><th>Vehicle</th><th>Plate</th><th>Status</th><th>Active</th></tr></thead>
-              <tbody>
-                {riders.map((r) => (
-                  <tr key={r.id}>
-                    <td><strong>{r.display_name}</strong></td>
-                    <td>{r.email}</td>
-                    <td><span className="environment-pill">{r.vehicle_type}</span></td>
-                    <td>{r.vehicle_number || "—"}</td>
-                    <td><span className={"order-status " + (r.current_status === "available" ? "status-confirmed" : "status-preparing")}>{r.current_status}</span></td>
-                    <td>{r.is_active ? "Active" : "Inactive"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="ops-card-padded">
+            <h2>Fleet Directory ({riders.length})</h2>
+            {loading ? <p className="orders-footnote">Loading riders…</p> : riders.length === 0 ? (
+              <p className="orders-footnote">No rider profiles configured yet.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="orders-table">
+                  <thead><tr><th>Rider</th><th>Email</th><th>Vehicle</th><th>Plate</th><th>Status</th><th>Active</th></tr></thead>
+                  <tbody>
+                    {riders.map((r) => (
+                      <tr key={r.id}>
+                        <td><strong>{r.display_name}</strong></td>
+                        <td>{r.email}</td>
+                        <td><span className="environment-pill">{r.vehicle_type}</span></td>
+                        <td>{r.vehicle_number || "—"}</td>
+                        <td><span className={"order-status " + (r.current_status === "available" ? "status-confirmed" : "status-preparing")}>{r.current_status}</span></td>
+                        <td>{r.is_active ? "Active" : "Inactive"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="ops-card-padded">
-        <h2>Dispatch Assignments ({deliveries.length})</h2>
-        {deliveries.length === 0 ? <p className="orders-footnote">No rider assignments yet. Assign orders from Live Orders.</p> : (
-          <div className="table-wrap">
-            <table className="orders-table">
-              <thead><tr><th>Order</th><th>Area</th><th>Rider</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>
-                {deliveries.map((d) => (
-                  <tr key={d.id}>
-                    <td><strong>{d.order_number}</strong><small>{new Date(d.assigned_at).toLocaleString()}</small></td>
-                    <td>{d.delivery_area || "—"}</td>
-                    <td><strong>{d.rider_name}</strong><small>{d.vehicle_type}</small></td>
-                    <td>{money(d.total_paisa)}</td>
-                    <td><span className="environment-pill">{d.status}</span></td>
-                    <td>
-                      <div className="ops-inline-actions">
-                        {d.status === "assigned" ? (
-                          <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "picked_up")}>Picked Up</button>
-                        ) : null}
-                        {d.status === "assigned" || d.status === "picked_up" ? (
-                          <>
-                            <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "delivered")}>Delivered</button>
-                            <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "failed")}>Failed</button>
-                          </>
-                        ) : <small className="restricted-action">{d.status}</small>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="ops-card-padded">
+            <h2>Dispatch Assignments ({deliveries.length})</h2>
+            {deliveries.length === 0 ? <p className="orders-footnote">No rider assignments yet. Assign orders from Live Orders.</p> : (
+              <div className="table-wrap">
+                <table className="orders-table">
+                  <thead><tr><th>Order</th><th>Area</th><th>Rider</th><th>Total</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {deliveries.map((d) => (
+                      <tr key={d.id}>
+                        <td><strong>{d.order_number}</strong><small>{new Date(d.assigned_at).toLocaleString()}</small></td>
+                        <td>{d.delivery_area || "—"}</td>
+                        <td><strong>{d.rider_name}</strong><small>{d.vehicle_type}</small></td>
+                        <td>{money(d.total_paisa)}</td>
+                        <td><span className="environment-pill">{d.status}</span></td>
+                        <td>
+                          <div className="ops-inline-actions">
+                            {d.status === "assigned" ? (
+                              <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "picked_up")}>Picked Up</button>
+                            ) : null}
+                            {d.status === "assigned" || d.status === "picked_up" ? (
+                              <>
+                                <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "delivered")}>Delivered</button>
+                                <button type="button" className="refresh-button" disabled={busy} onClick={() => void handleUpdateDelivery(d.id, "failed")}>Failed</button>
+                              </>
+                            ) : <small className="restricted-action">{d.status}</small>}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </section>
   );
 }
@@ -2370,6 +2606,7 @@ export default function App() {
       .then(result => {
         if (active && result.authenticated && result.user) {
           setUser(result.user);
+          setSection(defaultSectionForRole(result.user.role));
           setAuthState("signed-in");
         } else if (active) {
           setAuthState("signed-out");
@@ -2382,33 +2619,41 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (authState !== "signed-in") return;
+    if (authState !== "signed-in" || !user) return;
     let active = true;
     setDataLoading(true);
     setDataError("");
+
+    const canViewMetrics = ["owner", "manager", "operator", "kitchen", "finance"].includes(user.role);
+    const canViewOverview = ["owner", "manager", "operator", "kitchen", "finance", "support"].includes(user.role);
 
     Promise.allSettled([
       adminApi.settings(),
       adminApi.products(),
       adminApi.categories(),
       adminApi.deliveryZones(),
-      adminApi.dashboardMetrics(),
-      adminApi.overviewSummary()
+      canViewMetrics ? adminApi.dashboardMetrics() : Promise.resolve(null),
+      canViewOverview ? adminApi.overviewSummary() : Promise.resolve(null)
     ]).then(results => {
       if (!active) return;
       if (results[0].status === "fulfilled") setSettings(results[0].value.settings);
       if (results[1].status === "fulfilled") setProducts(results[1].value.products);
       if (results[2].status === "fulfilled") setCategories(results[2].value.categories);
       if (results[3].status === "fulfilled") setZones(results[3].value.delivery_zones);
-      if (results[4].status === "fulfilled") setMetrics(results[4].value.metrics);
-      if (results[5].status === "fulfilled") setOverviewData(results[5].value);
-      const coreFailed = results.slice(0, 5).filter(result => result.status === "rejected").length;
+      if (results[4].status === "fulfilled" && results[4].value) setMetrics(results[4].value.metrics);
+      if (results[5].status === "fulfilled" && results[5].value) setOverviewData(results[5].value);
+      const coreFailed = results.slice(0, 4).filter(result => result.status === "rejected").length;
       if (coreFailed) setDataError("Some public store data could not be loaded. Check API connectivity.");
       setDataLoading(false);
     });
 
     return () => { active = false; };
-  }, [authState]);
+  }, [authState, user]);
+
+  const visibleNav = useMemo(
+    () => (user ? NAV.filter(item => item.roles.includes(user.role)) : []),
+    [user]
+  );
 
   async function logout() {
     setLogoutBusy(true);
@@ -2432,7 +2677,15 @@ export default function App() {
   }
 
   if (authState === "signed-out" || !user) {
-    return <AuthScreen onAuthenticated={(staff) => { setUser(staff); setAuthState("signed-in"); }} />;
+    return (
+      <AuthScreen
+        onAuthenticated={(staff) => {
+          setUser(staff);
+          setSection(defaultSectionForRole(staff.role));
+          setAuthState("signed-in");
+        }}
+      />
+    );
   }
 
   let lastGroup = "";
@@ -2441,9 +2694,9 @@ export default function App() {
     <div className="admin-layout">
       <aside className="sidebar">
         <a className="sidebar-brand" href="#overview"><span className="ops-brand-mark">F.</span><span><strong>FRYZAR</strong><small>OWNER CONTROL CENTER</small></span></a>
-        <div className="workspace-label">27 MODULES</div>
+        <div className="workspace-label">{visibleNav.length} MODULES</div>
         <nav className="side-nav" aria-label="Owner control center modules">
-          {NAV.map(item => {
+          {visibleNav.map(item => {
             const showGroup = item.group !== lastGroup;
             lastGroup = item.group;
             return (
@@ -2487,6 +2740,7 @@ export default function App() {
               overviewData={overviewData}
               loading={dataLoading}
               error={dataError}
+              onNavigate={setSection}
             />
           ) : section === "orders" ? (
             <OrdersModule user={user} storeName={settings.store_name_en ?? "FRYZAR"} />

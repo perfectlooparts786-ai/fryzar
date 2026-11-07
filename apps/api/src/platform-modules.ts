@@ -36,17 +36,36 @@ export interface MonetizationConfig {
   previewEnabled: boolean;
   siteId: string;
   publisherStatus: "unverified" | "pending_review" | "approved" | "suspended";
+  consentRequiredRegions: string[];
+  frequencyCapPerSession: number;
+  loadTimeoutMs: number;
   formats: {
     banner: boolean;
     native: boolean;
+    nativeBanner: boolean;
     socialBar: boolean;
     inPagePush: boolean;
     popunder: boolean;
     interstitial: boolean;
     smartlink: boolean;
   };
+  devices: {
+    mobile: boolean;
+    desktop: boolean;
+  };
+  pages: {
+    home: boolean;
+    categories: boolean;
+    products: boolean;
+    productDetail: boolean;
+    promotions: boolean;
+    editorial: boolean;
+  };
   safety: {
     safeAdsOnly: boolean;
+    soundOffOnly: boolean;
+    blockAutoRedirects: boolean;
+    collapseOnEmpty: boolean;
     restrictedCategoriesBlocked: boolean;
     allowUnknownInventory: boolean;
   };
@@ -66,17 +85,36 @@ export const DEFAULT_MONETIZATION_CONFIG: MonetizationConfig = {
   previewEnabled: false,
   siteId: "",
   publisherStatus: "unverified",
+  consentRequiredRegions: ["EEA", "UK"],
+  frequencyCapPerSession: 4,
+  loadTimeoutMs: 4500,
   formats: {
     banner: false,
     native: false,
+    nativeBanner: false,
     socialBar: false,
     inPagePush: false,
     popunder: false,
     interstitial: false,
     smartlink: false
   },
+  devices: {
+    mobile: true,
+    desktop: true
+  },
+  pages: {
+    home: true,
+    categories: true,
+    products: true,
+    productDetail: true,
+    promotions: true,
+    editorial: true
+  },
   safety: {
     safeAdsOnly: true,
+    soundOffOnly: true,
+    blockAutoRedirects: true,
+    collapseOnEmpty: true,
     restrictedCategoriesBlocked: true,
     allowUnknownInventory: false
   },
@@ -244,6 +282,8 @@ function parseSettingJson(raw: string): unknown {
 export function normalizeMonetizationConfig(raw: unknown): MonetizationConfig {
   const obj = isRecord(raw) ? raw : {};
   const formats = isRecord(obj.formats) ? obj.formats : {};
+  const devices = isRecord(obj.devices) ? obj.devices : {};
+  const pages = isRecord(obj.pages) ? obj.pages : {};
   const safety = isRecord(obj.safety) ? obj.safety : {};
   const placements = isRecord(obj.placements) ? obj.placements : {};
   const statusRaw = safeString(obj.publisherStatus);
@@ -252,6 +292,15 @@ export function normalizeMonetizationConfig(raw: unknown): MonetizationConfig {
       ? statusRaw
       : "unverified";
 
+  const nativeOn = formats.native === true || formats.nativeBanner === true;
+  const freqCapRaw = Number(obj.frequencyCapPerSession);
+  const frequencyCapPerSession = Number.isInteger(freqCapRaw) ? Math.min(Math.max(freqCapRaw, 1), 12) : 4;
+  const timeoutRaw = Number(obj.loadTimeoutMs);
+  const loadTimeoutMs = Number.isInteger(timeoutRaw) ? Math.min(Math.max(timeoutRaw, 1000), 10000) : 4500;
+  const consentRequiredRegions = Array.isArray(obj.consentRequiredRegions)
+    ? obj.consentRequiredRegions.map((r) => safeString(r).toUpperCase()).filter(Boolean).slice(0, 16)
+    : ["EEA", "UK"];
+
   return {
     masterEnabled: obj.masterEnabled === true,
     provider: "adsterra",
@@ -259,9 +308,13 @@ export function normalizeMonetizationConfig(raw: unknown): MonetizationConfig {
     previewEnabled: obj.previewEnabled === true,
     siteId: safeString(obj.siteId).slice(0, 64),
     publisherStatus,
+    consentRequiredRegions,
+    frequencyCapPerSession,
+    loadTimeoutMs,
     formats: {
       banner: formats.banner === true,
-      native: formats.native === true,
+      native: nativeOn,
+      nativeBanner: nativeOn,
       socialBar: formats.socialBar === true,
       inPagePush: formats.inPagePush === true,
       // Intrusive formats are strictly prohibited by FRYZAR safety policy
@@ -269,8 +322,23 @@ export function normalizeMonetizationConfig(raw: unknown): MonetizationConfig {
       interstitial: false,
       smartlink: false
     },
+    devices: {
+      mobile: devices.mobile !== false,
+      desktop: devices.desktop !== false
+    },
+    pages: {
+      home: pages.home !== false,
+      categories: pages.categories !== false,
+      products: pages.products !== false,
+      productDetail: pages.productDetail !== false,
+      promotions: pages.promotions !== false,
+      editorial: pages.editorial !== false
+    },
     safety: {
       safeAdsOnly: safety.safeAdsOnly !== false,
+      soundOffOnly: safety.soundOffOnly !== false,
+      blockAutoRedirects: safety.blockAutoRedirects !== false,
+      collapseOnEmpty: safety.collapseOnEmpty !== false,
       restrictedCategoriesBlocked: safety.restrictedCategoriesBlocked !== false,
       allowUnknownInventory: false
     },
@@ -892,6 +960,7 @@ export async function handleAdminPlatformRoutes(
     if (!["owner", "manager", "operator", "rider"].includes(user.role)) {
       return json({ error: "insufficient_permissions" }, 403);
     }
+    const riderOnlyFilter = user.role === "rider" ? user.id : "";
     const deliveries = await env.DB.prepare(
       "SELECT da.id, da.order_id, o.order_number, o.status AS order_status, o.delivery_area, o.total_paisa, " +
       "da.rider_id, s.display_name AS rider_name, r.vehicle_type, r.vehicle_number, " +
@@ -900,8 +969,9 @@ export async function handleAdminPlatformRoutes(
       "JOIN orders o ON o.id = da.order_id " +
       "JOIN riders r ON r.id = da.rider_id " +
       "JOIN staff_users s ON s.id = r.staff_user_id " +
+      "WHERE (?1 = '' OR r.staff_user_id = ?1) " +
       "ORDER BY da.assigned_at DESC LIMIT 200"
-    ).all<JsonRecord>();
+    ).bind(riderOnlyFilter).all<JsonRecord>();
     return json({ deliveries: deliveries.results });
   }
 
@@ -1450,9 +1520,29 @@ export async function handleAdminPlatformRoutes(
 
       const publisherZoneId = safeString(body.publisher_zone_id);
       const scriptOrigin = safeString(body.script_origin);
+      const placementSlot = safeString(body.placement_slot);
       const isEnabled = body.is_enabled === true;
       const statusNote = safeString(body.status_note).slice(0, 240);
 
+      const allowedPlacementSlots = [
+        "home_mid_feed",
+        "category_footer",
+        "products_footer",
+        "product_below_related",
+        "search_below_results",
+        "promotions_sponsor_card",
+        "editorial_in_article",
+        "editorial_footer",
+        "about_footer",
+        "home_below_hero",
+        "home_editorial_mid",
+        "catalogue_grid_after",
+        "editorial_inline_native",
+        "editorial_footer_banner"
+      ];
+      if (placementSlot && !allowedPlacementSlots.includes(placementSlot)) {
+        return json({ error: "invalid_placement_slot" }, 400);
+      }
       if (publisherZoneId && !/^[A-Za-z0-9_-]{4,64}$/.test(publisherZoneId)) {
         return json({ error: "invalid_publisher_zone_id" }, 400);
       }
@@ -1465,8 +1555,8 @@ export async function handleAdminPlatformRoutes(
 
       await env.DB.batch([
         env.DB.prepare(
-          "UPDATE ad_zones SET publisher_zone_id = ?1, script_origin = ?2, is_enabled = ?3, status_note = ?4, updated_by_staff_id = ?5, updated_at = ?6 WHERE id = ?7"
-        ).bind(publisherZoneId, scriptOrigin, isEnabled ? 1 : 0, statusNote, user.id, now, zoneId),
+          "UPDATE ad_zones SET publisher_zone_id = ?1, script_origin = ?2, placement_slot = COALESCE(NULLIF(?3, ''), placement_slot), is_enabled = ?4, status_note = ?5, updated_by_staff_id = ?6, updated_at = ?7 WHERE id = ?8"
+        ).bind(publisherZoneId, scriptOrigin, placementSlot, isEnabled ? 1 : 0, statusNote, user.id, now, zoneId),
         env.DB.prepare(
           "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
           "VALUES (?1, ?2, 'owner', 'advertising.zone_updated', 'ad_zone', ?3, ?4, ?5)"
@@ -1474,7 +1564,7 @@ export async function handleAdminPlatformRoutes(
           crypto.randomUUID(),
           user.id,
           zoneId,
-          JSON.stringify({ is_enabled: isEnabled, has_zone_id: Boolean(publisherZoneId), script_origin: scriptOrigin }),
+          JSON.stringify({ is_enabled: isEnabled, has_zone_id: Boolean(publisherZoneId), script_origin: scriptOrigin, placement_slot: placementSlot || undefined }),
           now
         )
       ]);

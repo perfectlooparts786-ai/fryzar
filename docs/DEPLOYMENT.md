@@ -1,32 +1,32 @@
 # FRYZAR Preview Deployment & Operational Verification
 
-**Last deployed & verified:** 7 November 2026  
-**Branch:** `feature/fryzar-master-transformation`  
+**Last deployed & verified:** 7 November 2026 (Phase 2 Preview Acceptance)  
+**Branch:** `feature/fryzar-preview-acceptance`  
 **Cloudflare Account:** `234b20e49261c7a002f63b129e985563`
 
 ## 1. Live Preview Deployment Manifest (7 November 2026)
 
-| Service | Worker Name | Version ID | Startup Time | Public Preview URL |
+| Service | Worker Name | Accepted Phase 2 Version ID | Startup Time | Public Preview URL |
 |---|---|---|---|---|
-| **Central API** | `fryzar-api-preview` | `2760e1e3-7179-4e6f-b8f1-daa60669ea70` | `1 ms` | `https://fryzar-api-preview.perfectlooparts786.workers.dev` |
-| **Customer Storefront** | `fryzar-app-preview` | `9466e07b-0820-404c-981f-bc448e1a4e3d` | `1 ms` | `https://fryzar-app-preview.perfectlooparts786.workers.dev` |
-| **Admin Control Center** | `fryzar-admin-preview` | `b7a247d2-ad87-4e78-96ae-aefde3a941b4` | `2 ms` | `https://fryzar-admin-preview.perfectlooparts786.workers.dev` |
+| **Central API** | `fryzar-api-preview` | `b811d6af-78ba-4374-93d5-26eba94d7095` | `2 ms` | `https://fryzar-api-preview.perfectlooparts786.workers.dev` |
+| **Customer Storefront** | `fryzar-app-preview` | `16bc6c30-96ed-42b7-bdfa-26dac85b1791` | `1 ms` | `https://fryzar-app-preview.perfectlooparts786.workers.dev` |
+| **Admin Control Center** | `fryzar-admin-preview` | `40f93681-a678-4867-a920-92717dd3b560` | `1 ms` | `https://fryzar-admin-preview.perfectlooparts786.workers.dev` |
 
 ### Preview Database State
 - **Database:** `fryzar-preview` (`a6f528a3-4b36-43a9-8e77-31f7105a4aeb`)
 - **Pre-migration SQL Backup:** Exported prior to applying `0005`–`0009` (`SHA-256: C41CB58846B9372C9B4F0842CE9C0AB45ACB039DDFE9AEA777B34C1260D289CB`), restored & forward-migrated locally before remote execution.
 - **Applied Migrations:** All **9** ordered migrations (`0001_core.sql` through `0009_platform_completion.sql`).
 
-## 2. Live HTTP Smoke Check Evidence (7 November 2026)
+## 2. Live HTTP & Edge Security Smoke Check Evidence (7 November 2026)
 
-All 7 live HTTPS smoke checks returned `200 OK`:
-1. `GET https://fryzar-api-preview.perfectlooparts786.workers.dev/api/v1/health` -> `{"ok":true,"service":"fryzar-api","database":"connected","schema":"ready"}`
-2. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/api/v1/health` -> `{"ok":true,"service":"fryzar-api","database":"connected","schema":"ready"}` (Service binding verified)
-3. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/api/v1/monetization-config` -> `masterEnabled: false`, `publisherStatus: "unverified"` (Safe disabled state verified)
-4. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/robots.txt` -> `Disallow: /` (Preview search-indexing block verified)
-5. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/sitemap.xml` -> Valid XML `<urlset>` served via customer Worker service binding
-6. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/guides` -> `200 text/html` SPA routing verified
-7. `GET https://fryzar-admin-preview.perfectlooparts786.workers.dev/` -> `200 text/html` Admin SPA verified
+All live HTTPS and edge security-header checks passed:
+1. `GET https://fryzar-api-preview.perfectlooparts786.workers.dev/api/v1/health` -> `200 OK` (`{"ok":true,"service":"fryzar-api","database":"connected","schema":"ready"}`)
+2. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/api/v1/health` -> `200 OK` (Service binding verified)
+3. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/api/v1/monetization-config` -> `200 OK` (`masterEnabled: false`, `effectiveActive: false`, full `devices`/`pages`/`formats`/`safety` contract)
+4. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/robots.txt` -> `200 OK` (`Disallow: /` in preview)
+5. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/sitemap.xml` -> `200 OK` (Valid XML `<urlset>`)
+6. `GET https://fryzar-app-preview.perfectlooparts786.workers.dev/` -> `200 OK` with `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+7. `GET https://fryzar-admin-preview.perfectlooparts786.workers.dev/` -> `200 OK` with `X-Robots-Tag: noindex, nofollow, noarchive` + full security headers; `/api/v1/admin/session` -> `401` unauthenticated guard; `Origin: https://evil.example` -> `403 origin_not_allowed`
 
 ## 3. Preview Deployment Commands
 

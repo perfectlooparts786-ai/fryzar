@@ -154,6 +154,24 @@ export interface DeliveryAssignmentRecord {
   failed_at: string | null;
 }
 
+export interface RiderSelfAssignment {
+  id: string;
+  order_id: string;
+  order_number: string;
+  status: "assigned" | "picked_up" | "delivered" | "failed";
+  failure_reason: string;
+  notes: string;
+  assigned_at: string;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  delivery_address: string | null;
+  total_paisa: number;
+  payment_method: string;
+  payment_status: string;
+}
+
 export interface SupportTicket {
   id: string;
   order_id: string | null;
@@ -1094,7 +1112,7 @@ export const adminApi = {
     ),
 
   riderAssignments: () =>
-    apiRequest<{ assignments: Record<string, unknown>[] }>("/rider/assignments"),
+    apiRequest<{ assignments: RiderSelfAssignment[] }>("/rider/assignments"),
 
   supportTickets: () =>
     apiRequest<{ tickets: SupportTicket[] }>("/admin/support/tickets"),
@@ -1248,7 +1266,10 @@ export const adminApi = {
       body: JSON.stringify(data)
     }),
 
-  updateAdZone: (zoneId: string, data: { publisher_zone_id: string; script_origin: string; is_enabled: boolean; status_note: string }) =>
+  updateAdZone: (
+    zoneId: string,
+    data: { publisher_zone_id: string; script_origin: string; placement_slot?: string; is_enabled: boolean; status_note: string }
+  ) =>
     apiRequest<{ saved: boolean; id: string }>("/admin/advertising/zones/" + encodeURIComponent(zoneId), {
       method: "PUT",
       body: JSON.stringify(data)

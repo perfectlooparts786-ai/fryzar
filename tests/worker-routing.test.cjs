@@ -94,6 +94,10 @@ test("customer Worker serves non-API routes from its static asset binding", asyn
 
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "customer-assets");
+  assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(response.headers.get("Referrer-Policy"), "strict-origin-when-cross-origin");
+  assert.equal(response.headers.get("X-Frame-Options"), "DENY");
+  assert.match(response.headers.get("Permissions-Policy") || "", /camera=\(\)/);
   assert.equal(assets.calls.length, 1);
   assert.equal(assets.calls[0], request);
   assert.equal(api.calls.length, 0);
@@ -124,6 +128,9 @@ test("admin Worker serves its application shell and routes from static assets", 
   const response = await worker.fetch(request, { API: api, ASSETS: assets });
 
   assert.equal(await response.text(), "admin-assets");
+  assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
+  assert.equal(response.headers.get("X-Frame-Options"), "DENY");
+  assert.match(response.headers.get("X-Robots-Tag") || "", /noindex/);
   assert.equal(assets.calls.length, 1);
   assert.equal(assets.calls[0], request);
   assert.equal(api.calls.length, 0);

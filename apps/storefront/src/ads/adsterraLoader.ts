@@ -5,12 +5,12 @@ const LOAD_TIMEOUT_MS = 4500;
 
 export interface AdLoadOutcome {
   ok: boolean;
-  reason?: "invalid_zone" | "invalid_origin" | "timeout" | "blocked_or_error";
+  reason?: "invalid_zone" | "invalid_origin" | "duplicate_zone_active" | "timeout" | "blocked_or_error";
 }
 
 /**
  * Loads an Adsterra publisher zone inside a dedicated DOM container without
- * blocking primary page rendering or injecting arbitrary HTML.
+ * blocking primary page rendering, duplicating active zone scripts, or injecting arbitrary HTML.
  */
 export function loadAdsterraZoneScript(
   container: HTMLElement,
@@ -25,6 +25,11 @@ export function loadAdsterraZoneScript(
 
   const origin = new URL(zone.script_origin!).origin;
   const safeZoneId = encodeURIComponent(zone.publisher_zone_id!.trim());
+
+  const existingScript = document.querySelector(`script[data-fryzar-zone-id="${safeZoneId}"]`);
+  if (existingScript && !container.contains(existingScript)) {
+    return Promise.resolve({ ok: false, reason: "duplicate_zone_active" });
+  }
 
   return new Promise((resolve) => {
     let settled = false;
@@ -45,6 +50,7 @@ export function loadAdsterraZoneScript(
     script.async = true;
     script.defer = true;
     script.dataset.cfasync = "false";
+    script.dataset.fryzarZoneId = safeZoneId;
     script.referrerPolicy = "strict-origin-when-cross-origin";
     script.src = `${origin}/${safeZoneId}/invoke.js`;
 

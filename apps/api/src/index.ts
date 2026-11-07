@@ -1999,7 +1999,8 @@ async function adminProcurementAndWastageApi(
   if (request.method === "GET") {
     if (!hasRole(user, INVENTORY_READ_ROLES)) return roleDenied();
   } else {
-    if (!hasRole(user, INVENTORY_WRITE_ROLES)) return roleDenied();
+    const allowedWriteRoles = wastagePath ? WASTAGE_WRITE_ROLES : INVENTORY_WRITE_ROLES;
+    if (!hasRole(user, allowedWriteRoles)) return roleDenied();
     if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
   }
 
@@ -2128,15 +2129,39 @@ async function adminProcurementAndWastageApi(
     const body = await parseJsonBody(request, 8192);
     if (!body) return json({ error: "invalid_request" }, 400);
 
-    const ingId = safeString(body.ingredient_id) || null;
-    const prodId = safeString(body.product_id) || null;
+    const ingId = safeString(body.ingredient_id).toLowerCase() || null;
+    const prodId = safeString(body.product_id).toLowerCase() || null;
     const qty = Number(body.quantity);
     const reason = safeString(body.reason || "other");
     const costPaisa = Number(body.cost_paisa || 0);
-    const note = safeString(body.note);
+    const note = safeString(body.note).slice(0, 500);
 
-    if (qty <= 0 || !["damaged", "expired", "spilled", "prep_loss", "other"].includes(reason)) {
+    if (
+      (!ingId && !prodId) ||
+      (ingId !== null && !validUuid(ingId)) ||
+      (prodId !== null && !validUuid(prodId)) ||
+      !Number.isFinite(qty) ||
+      qty <= 0 ||
+      !Number.isSafeInteger(costPaisa) ||
+      costPaisa < 0 ||
+      !["damaged", "expired", "spilled", "prep_loss", "other"].includes(reason)
+    ) {
       return json({ error: "validation_failed" }, 400);
+    }
+
+    let trackedProductStock: number | null = null;
+    if (prodId) {
+      if (!Number.isSafeInteger(qty)) {
+        return json({ error: "validation_failed", message: "Product wastage quantity must be a whole number." }, 400);
+      }
+      const product = await env.DB.prepare(
+        "SELECT id, stock_qty FROM products WHERE id = ?1 LIMIT 1"
+      ).bind(prodId).first<{ id: string; stock_qty: number | null }>();
+      if (!product) return json({ error: "product_not_found" }, 404);
+      trackedProductStock = product.stock_qty;
+      if (trackedProductStock !== null && trackedProductStock < qty) {
+        return json({ error: "insufficient_stock" }, 409);
+      }
     }
 
     const wastageId = crypto.randomUUID();
@@ -2148,12 +2173,35 @@ async function adminProcurementAndWastageApi(
       env.DB.prepare(
         "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
         "VALUES (?1, 'wastage_expense', ?2, ?3, 0, ?4, ?5, ?6)"
-      ).bind(crypto.randomUUID(), wastageId, costPaisa, user.id, "Wastage: " + reason, now)
+      ).bind(crypto.randomUUID(), wastageId, costPaisa, user.id, "Wastage: " + reason, now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'wastage.logged', 'wastage_record', ?4, ?5, ?6)"
+      ).bind(
+        crypto.randomUUID(),
+        user.id,
+        user.role,
+        wastageId,
+        JSON.stringify({ ingredient_id: ingId, product_id: prodId, quantity: qty, reason, cost_paisa: costPaisa }),
+        now
+      )
     ];
 
-    if (ingId && validUuid(ingId)) {
+    if (ingId) {
       statements.push(
         env.DB.prepare("UPDATE ingredients SET stock_qty = MAX(0, stock_qty - ?1), updated_at = ?2 WHERE id = ?3").bind(qty, now, ingId)
+      );
+    }
+
+    if (prodId && trackedProductStock !== null) {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE products SET stock_qty = stock_qty - ?1, updated_at = ?2 WHERE id = ?3 AND stock_qty IS NOT NULL AND stock_qty >= ?1"
+        ).bind(qty, now, prodId),
+        env.DB.prepare(
+          "INSERT INTO inventory_movements (id, product_id, delta_qty, reason, reference_type, reference_id, actor_staff_id, note, created_at) " +
+          "VALUES (?1, ?2, ?3, 'stock_adjustment', 'wastage_record', ?4, ?5, ?6, ?7)"
+        ).bind(crypto.randomUUID(), prodId, -qty, wastageId, user.id, note || `Wastage: ${reason}`, now)
       );
     }
 
@@ -2199,52 +2247,145 @@ async function adminFinanceAndLedgerApi(
     if (!body) return json({ error: "invalid_request" }, 400);
 
     const amountPaisa = Number(body.amount_paisa);
-    const reason = safeString(body.reason);
+    const reason = safeString(body.reason).slice(0, 400);
 
     if (!Number.isSafeInteger(amountPaisa) || amountPaisa <= 0 || !reason) {
       return json({ error: "validation_failed" }, 400);
     }
 
-    const order = await env.DB.prepare("SELECT id, total_paisa FROM orders WHERE id = ?1 LIMIT 1").bind(orderId).first<{ id: string; total_paisa: number }>();
+    const order = await env.DB.prepare(
+      "SELECT o.id, o.total_paisa, o.payment_method, o.payment_status, p.id AS payment_id, " +
+      "COALESCE((SELECT SUM(r.amount_paisa) FROM refunds r WHERE r.order_id = o.id AND r.status != 'rejected'), 0) AS refunded_paisa " +
+      "FROM orders o LEFT JOIN payments p ON p.order_id = o.id WHERE o.id = ?1 LIMIT 1"
+    ).bind(orderId).first<{
+      id: string;
+      total_paisa: number;
+      payment_method?: string;
+      payment_status?: string;
+      payment_id?: string | null;
+      refunded_paisa?: number;
+    }>();
     if (!order) return json({ error: "order_not_found" }, 404);
 
+    const alreadyRefundedPaisa = Number(order.refunded_paisa ?? 0);
+    const remainingRefundablePaisa = Math.max(0, order.total_paisa - alreadyRefundedPaisa);
+    if (amountPaisa > remainingRefundablePaisa) {
+      return json(
+        {
+          error: "refund_exceeds_order_total",
+          remaining_refundable_paisa: remainingRefundablePaisa
+        },
+        422
+      );
+    }
+
+    const fullyRefunded = alreadyRefundedPaisa + amountPaisa >= order.total_paisa;
     const refundId = crypto.randomUUID();
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(
-        "INSERT INTO refunds (id, order_id, amount_paisa, reason, status, reviewer_staff_id, created_at, updated_at) " +
-        "VALUES (?1, ?2, ?3, ?4, 'approved', ?5, ?6, ?6)"
-      ).bind(refundId, orderId, amountPaisa, reason, user.id, now),
-      env.DB.prepare(
-        "UPDATE orders SET payment_status = 'refunded', updated_at = ?1 WHERE id = ?2"
-      ).bind(now, orderId),
+        "INSERT INTO refunds (id, order_id, payment_id, amount_paisa, reason, status, reviewer_staff_id, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, 'approved', ?6, ?7, ?7)"
+      ).bind(refundId, orderId, order.payment_id ?? null, amountPaisa, reason, user.id, now),
       env.DB.prepare(
         "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
         "VALUES (?1, 'refund', ?2, ?3, 0, ?4, ?5, ?6)"
-      ).bind(crypto.randomUUID(), refundId, amountPaisa, user.id, "Refund for order: " + reason, now)
+      ).bind(crypto.randomUUID(), refundId, amountPaisa, user.id, "Refund for order: " + reason, now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'refund.created', 'refund', ?4, ?5, ?6)"
+      ).bind(
+        crypto.randomUUID(),
+        user.id,
+        user.role,
+        refundId,
+        JSON.stringify({ order_id: orderId, amount_paisa: amountPaisa, fully_refunded: fullyRefunded }),
+        now
+      )
     ];
 
+    if (fullyRefunded) {
+      statements.push(
+        env.DB.prepare("UPDATE orders SET payment_status = 'refunded', updated_at = ?1 WHERE id = ?2").bind(now, orderId),
+        env.DB.prepare("UPDATE payments SET status = 'refunded', updated_at = ?1 WHERE order_id = ?2").bind(now, orderId)
+      );
+    }
+
     await env.DB.batch(statements);
-    return json({ refunded: true, refund_id: refundId, amount_paisa: amountPaisa }, 201);
+    return json(
+      {
+        refunded: true,
+        refund_id: refundId,
+        amount_paisa: amountPaisa,
+        fully_refunded: fullyRefunded,
+        remaining_refundable_paisa: remainingRefundablePaisa - amountPaisa
+      },
+      201
+    );
   }
 
   return null;
 }
 
 async function submitCustomerPaymentProof(request: Request, env: Env, orderId: string): Promise<Response> {
+  const rateAllowed = await consumeRateLimit(request, env, "payment-proof", 10, 60 * 1000);
+  if (!rateAllowed) {
+    return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429, {
+      "Retry-After": "60"
+    });
+  }
+
   const body = await parseJsonBody(request, 8192);
   if (!body) return json({ error: "invalid_request" }, 400);
 
+  const trackingToken = safeString(body.tracking_token).toLowerCase();
   const objectKey = safeString(body.private_object_key);
-  const filename = safeString(body.original_filename);
-  const mime = safeString(body.detected_mime_type);
+  const filename = safeString(body.original_filename).slice(0, 180);
+  const mime = safeString(body.detected_mime_type).toLowerCase();
   const size = Number(body.file_size_bytes);
 
-  if (!objectKey || !filename || !mime || size <= 0) {
+  const allowedProofMimes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  if (
+    !/^[a-f0-9]{64}$/.test(trackingToken) ||
+    !objectKey ||
+    objectKey.length > 512 ||
+    !filename ||
+    !allowedProofMimes.includes(mime) ||
+    !Number.isSafeInteger(size) ||
+    size < 1 ||
+    size > 5242880
+  ) {
     return json({ error: "validation_failed" }, 400);
   }
 
-  const payment = await env.DB.prepare("SELECT id FROM payments WHERE order_id = ?1 LIMIT 1").bind(orderId).first<{ id: string }>();
-  if (!payment) return json({ error: "payment_not_found" }, 404);
+  const manualSetting = await env.DB.prepare(
+    "SELECT value_json FROM store_settings WHERE setting_key = 'manual_transfer_enabled' LIMIT 1"
+  ).first<{ value_json: string }>();
+  const manualEnabled = manualSetting ? isEnabled(parseSetting(manualSetting.value_json)) : false;
+  if (!manualEnabled) {
+    return json({ error: "manual_transfer_disabled" }, 409);
+  }
+
+  const tokenHash = await sha256Hex(trackingToken);
+  const order = await env.DB.prepare(
+    "SELECT o.id, o.tracking_token_hash, o.payment_method, p.id AS payment_id, p.method, p.status " +
+    "FROM orders o JOIN payments p ON p.order_id = o.id WHERE o.id = ?1 LIMIT 1"
+  ).bind(orderId).first<{
+    id: string;
+    tracking_token_hash: string;
+    payment_method: string;
+    payment_id: string;
+    method: string;
+    status: string;
+  }>();
+
+  if (!order) return json({ error: "payment_not_found" }, 404);
+  if (order.tracking_token_hash !== tokenHash) return json({ error: "invalid_tracking_token" }, 403);
+  if (order.payment_method !== "manual_transfer" || order.method !== "manual_transfer") {
+    return json({ error: "not_manual_transfer" }, 409);
+  }
+  if (order.status !== "awaiting_proof") {
+    return json({ error: "payment_proof_not_accepted" }, 409);
+  }
 
   const proofId = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -2253,8 +2394,8 @@ async function submitCustomerPaymentProof(request: Request, env: Env, orderId: s
     env.DB.prepare(
       "INSERT INTO payment_proofs (id, payment_id, private_object_key, original_filename, detected_mime_type, file_size_bytes, submitted_at) " +
       "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
-    ).bind(proofId, payment.id, objectKey, filename, mime, size, now),
-    env.DB.prepare("UPDATE payments SET status = 'pending_review', updated_at = ?1 WHERE id = ?2").bind(now, payment.id),
+    ).bind(proofId, order.payment_id, objectKey, filename, mime, size, now),
+    env.DB.prepare("UPDATE payments SET status = 'pending_review', updated_at = ?1 WHERE id = ?2").bind(now, order.payment_id),
     env.DB.prepare("UPDATE orders SET payment_status = 'pending_review', updated_at = ?1 WHERE id = ?2").bind(now, orderId)
   ];
 
@@ -2263,6 +2404,7 @@ async function submitCustomerPaymentProof(request: Request, env: Env, orderId: s
 }
 
 const INVENTORY_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
+const WASTAGE_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "kitchen"];
 
 async function adminInventoryApi(request: Request, env: Env, url: URL, user: SessionUser): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/api/v1/admin/inventory/movements") {
@@ -3725,7 +3867,7 @@ async function adminRidersAndDispatchApi(
   }
 
   if (request.method === "PATCH" && deliveryStatusMatch) {
-    if (!hasRole(user, RIDER_READ_ROLES)) return roleDenied();
+    if (!hasRole(user, ["owner", "manager", "operator", "rider"])) return roleDenied();
     if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
 
     const assignmentId = deliveryStatusMatch[1].toLowerCase();
@@ -3741,10 +3883,14 @@ async function adminRidersAndDispatchApi(
     }
 
     const assignment = await env.DB.prepare(
-      "SELECT id, order_id, rider_id, status FROM delivery_assignments WHERE id = ?1 LIMIT 1"
-    ).bind(assignmentId).first<{ id: string; order_id: string; rider_id: string; status: string }>();
+      "SELECT da.id, da.order_id, da.rider_id, da.status, r.staff_user_id " +
+      "FROM delivery_assignments da LEFT JOIN riders r ON r.id = da.rider_id WHERE da.id = ?1 LIMIT 1"
+    ).bind(assignmentId).first<{ id: string; order_id: string; rider_id: string; status: string; staff_user_id?: string | null }>();
 
     if (!assignment) return json({ error: "assignment_not_found" }, 404);
+    if (user.role === "rider" && assignment.staff_user_id !== user.id) {
+      return roleDenied();
+    }
 
     const statements: D1PreparedStatement[] = [];
 

@@ -56,6 +56,10 @@ export function describeAdminError(error: unknown): string {
       case "slug_conflict":
       case "slug_or_sku_conflict": return "That URL slug or SKU is already used by another record.";
       case "invalid_canonical_domain": return "Canonical domain must be an HTTPS root URL (e.g. https://fryzar.com) with no trailing slash.";
+      case "refund_exceeds_order_total": return "Refund amount exceeds the remaining refundable balance on this order.";
+      case "insufficient_stock": return "Insufficient stock quantity available for this deduction.";
+      case "invalid_placement_slot": return "Select a valid storefront placement slot for this ad zone.";
+      case "manual_transfer_disabled": return "Manual bank transfer is currently disabled by release policy.";
       default: return `Request failed (${error.code}, HTTP ${error.status}).`;
     }
   }
@@ -1004,17 +1008,28 @@ export function WastageModule({ user }: { user: StaffUser }) {
                 <option value="">Choose…</option>
                 {form.targetType === "ingredient"
                   ? ingredients.map((i) => <option key={i.id} value={i.id}>{i.name_en} ({i.stock_qty} {i.unit})</option>)
-                  : products.map((p) => <option key={p.id} value={p.id}>{p.name_en}</option>)}
+                  : products.map((p) => <option key={p.id} value={p.id}>{p.name_en}{p.stock_qty != null ? ` (${p.stock_qty} in stock)` : ""}</option>)}
               </select>
             </label>
-            <label className="catalogue-field"><span>Quantity Lost</span><input required type="number" min="0.01" step="0.01" value={form.quantity} onChange={(e) => setForm((c) => ({ ...c, quantity: e.target.value }))} /></label>
+            <label className="catalogue-field">
+              <span>Quantity Lost</span>
+              <input
+                required
+                type="number"
+                min={form.targetType === "product" ? "1" : "0.01"}
+                step={form.targetType === "product" ? "1" : "0.01"}
+                value={form.quantity}
+                onChange={(e) => setForm((c) => ({ ...c, quantity: e.target.value }))}
+              />
+            </label>
             <label className="catalogue-field">
               <span>Reason</span>
               <select value={form.reason} onChange={(e) => setForm((c) => ({ ...c, reason: e.target.value }))}>
                 <option value="expired">Expired</option>
-                <option value="spoiled">Spoiled</option>
+                <option value="spilled">Spilled / Spoiled</option>
                 <option value="damaged">Damaged</option>
                 <option value="prep_loss">Kitchen Prep Loss</option>
+                <option value="other">Other</option>
               </select>
             </label>
             <label className="catalogue-field"><span>Estimated Cost (PKR)</span><input type="number" min="0" step="0.01" value={form.cost_pkr} onChange={(e) => setForm((c) => ({ ...c, cost_pkr: e.target.value }))} /></label>
@@ -1609,7 +1624,7 @@ export function AdvertisingModule({ user }: { user: StaffUser }) {
   const canView = isOwner || user.role === "manager" || user.role === "finance";
   const [data, setData] = useState<AdvertisingOverviewResponse | null>(null);
   const [configDraft, setConfigDraft] = useState<MonetizationConfigAdmin | null>(null);
-  const [zoneDrafts, setZoneDrafts] = useState<Record<string, { publisher_zone_id: string; script_origin: string; is_enabled: boolean; status_note: string }>>({});
+  const [zoneDrafts, setZoneDrafts] = useState<Record<string, { publisher_zone_id: string; script_origin: string; placement_slot: string; is_enabled: boolean; status_note: string }>>({});
   const [loading, setLoading] = useState(canView);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1635,12 +1650,50 @@ export function AdvertisingModule({ user }: { user: StaffUser }) {
     try {
       const res = await adminApi.advertisingOverview();
       setData(res);
-      setConfigDraft(res.config);
-      const zMap: Record<string, { publisher_zone_id: string; script_origin: string; is_enabled: boolean; status_note: string }> = {};
+      const rawCfg = res.config as unknown as Record<string, unknown>;
+      const rawFormats = (rawCfg.formats && typeof rawCfg.formats === "object" ? rawCfg.formats : {}) as Record<string, unknown>;
+      const rawDevices = (rawCfg.devices && typeof rawCfg.devices === "object" ? rawCfg.devices : {}) as Record<string, unknown>;
+      const rawPages = (rawCfg.pages && typeof rawCfg.pages === "object" ? rawCfg.pages : {}) as Record<string, unknown>;
+      const rawSafety = (rawCfg.safety && typeof rawCfg.safety === "object" ? rawCfg.safety : {}) as Record<string, unknown>;
+      setConfigDraft({
+        ...res.config,
+        frequencyCapPerSession: typeof res.config.frequencyCapPerSession === "number" ? res.config.frequencyCapPerSession : 4,
+        loadTimeoutMs: typeof res.config.loadTimeoutMs === "number" ? res.config.loadTimeoutMs : 4500,
+        consentRequiredRegions: Array.isArray(res.config.consentRequiredRegions) ? res.config.consentRequiredRegions : ["EEA", "UK"],
+        formats: {
+          banner: rawFormats.banner === true,
+          nativeBanner: rawFormats.nativeBanner === true || rawFormats.native === true,
+          socialBar: rawFormats.socialBar === true,
+          inPagePush: rawFormats.inPagePush === true,
+          popunder: false,
+          interstitial: false,
+          smartlink: false
+        },
+        devices: {
+          mobile: rawDevices.mobile !== false,
+          desktop: rawDevices.desktop !== false
+        },
+        pages: {
+          home: rawPages.home !== false,
+          categories: rawPages.categories !== false,
+          products: rawPages.products !== false,
+          productDetail: rawPages.productDetail !== false,
+          promotions: rawPages.promotions !== false,
+          editorial: rawPages.editorial !== false
+        },
+        safety: {
+          safeAdsOnly: rawSafety.safeAdsOnly !== false,
+          soundOffOnly: rawSafety.soundOffOnly !== false,
+          blockAutoRedirects: rawSafety.blockAutoRedirects !== false,
+          collapseOnEmpty: rawSafety.collapseOnEmpty !== false
+        }
+      });
+      const zMap: Record<string, { publisher_zone_id: string; script_origin: string; placement_slot: string; is_enabled: boolean; status_note: string }> = {};
       for (const z of res.zones) {
         zMap[z.id] = {
           publisher_zone_id: z.publisher_zone_id || "",
           script_origin: z.script_origin || "",
+          placement_slot: z.placement_slot || "home_mid_feed",
           is_enabled: Boolean(z.is_enabled),
           status_note: z.status_note || ""
         };
@@ -1877,10 +1930,34 @@ export function AdvertisingModule({ user }: { user: StaffUser }) {
                 <thead><tr><th>Slot / Zone Key</th><th>Format &amp; Size</th><th>Publisher Zone ID</th><th>HTTPS Script Origin</th><th>Enabled</th><th>Action</th></tr></thead>
                 <tbody>
                   {data.zones.map((z) => {
-                    const zd = zoneDrafts[z.id] ?? { publisher_zone_id: "", script_origin: "", is_enabled: false, status_note: "" };
+                    const zd = zoneDrafts[z.id] ?? { publisher_zone_id: "", script_origin: "", placement_slot: z.placement_slot || "home_mid_feed", is_enabled: false, status_note: "" };
                     return (
                       <tr key={z.id}>
-                        <td><strong>{z.zone_key}</strong><small>{z.placement_slot}</small></td>
+                        <td>
+                          <strong>{z.zone_key}</strong>
+                          <select
+                            disabled={!isOwner}
+                            aria-label={`Placement slot for ${z.zone_key}`}
+                            value={zd.placement_slot}
+                            onChange={(e) => setZoneDrafts((c) => ({ ...c, [z.id]: { ...zd, placement_slot: e.target.value } }))}
+                            style={{ display: "block", marginTop: "4px", fontSize: "11px", padding: "3px 6px", borderRadius: "5px", border: "1px solid var(--line)" }}
+                          >
+                            <option value="home_mid_feed">home_mid_feed (Home)</option>
+                            <option value="category_footer">category_footer (Categories)</option>
+                            <option value="products_footer">products_footer (Products)</option>
+                            <option value="product_below_related">product_below_related (Product Detail)</option>
+                            <option value="search_below_results">search_below_results (Search)</option>
+                            <option value="promotions_sponsor_card">promotions_sponsor_card (Promotions)</option>
+                            <option value="editorial_in_article">editorial_in_article (Guide In-Article)</option>
+                            <option value="editorial_footer">editorial_footer (Guide Footer)</option>
+                            <option value="about_footer">about_footer (About Footer)</option>
+                            <option value="home_below_hero">home_below_hero → home_mid_feed</option>
+                            <option value="home_editorial_mid">home_editorial_mid → home_mid_feed</option>
+                            <option value="catalogue_grid_after">catalogue_grid_after → products/category</option>
+                            <option value="editorial_inline_native">editorial_inline_native → editorial_in_article</option>
+                            <option value="editorial_footer_banner">editorial_footer_banner → editorial_footer</option>
+                          </select>
+                        </td>
                         <td>{z.format} ({z.width}×{z.height})</td>
                         <td>
                           <input

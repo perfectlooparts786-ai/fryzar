@@ -1,19 +1,20 @@
 # FRYZAR Project Status
 
 **Updated:** 7 November 2026  
-**Active Release Candidate Branch:** `feature/fryzar-master-transformation`  
+**Accepted Release Candidate Branch:** `feature/fryzar-preview-acceptance`  
+**Release Gate:** **RELEASE CANDIDATE READY / PREVIEW ACCEPTANCE PASSED**  
 **Monthly Cost:** **$0.00** (Cloudflare Workers Free + D1 Free + GitHub Actions Free)
 
 ## Executive Status
 
 | Area | Status | Evidence |
 |---|---|---|
-| **GitHub Repository** | Complete & Reconciled | Branch `feature/fryzar-master-transformation` with full 9-migration platform, tests, and 17 core docs |
-| **Customer Storefront** | Complete (17 Pages, EN/UR RTL, SEO) | Deployed on `fryzar-app-preview` (`9466e07b-0820-404c-981f-bc448e1a4e3d`) |
-| **Owner Control Center** | Complete (27 Modules, 0 Placeholders) | Deployed on `fryzar-admin-preview` (`b7a247d2-ad87-4e78-96ae-aefde3a941b4`) |
-| **Central API & Schema** | Complete (`0001`–`0009`, 46 Tables) | Deployed on `fryzar-api-preview` (`2760e1e3-7179-4e6f-b8f1-daa60669ea70`) |
-| **Adsterra Monetization** | Complete & Safely Disabled by Default | 12 modular files, zero ads on transactional/policy pages, 1-click Emergency Kill Switch |
-| **Test Suites** | 100% Passing | 108 unit/routing + 11 D1 integration + 8 Playwright E2E tests |
+| **GitHub Repository** | Complete & Preview-Accepted | Branch `feature/fryzar-preview-acceptance` with 8 Phase 2 fixes, regression tests, and 24 core docs |
+| **Customer Storefront** | Accepted (17 Pages, EN/UR RTL, SEO, `_headers`) | Deployed on `fryzar-app-preview` (`16bc6c30-96ed-42b7-bdfa-26dac85b1791`) |
+| **Owner Control Center** | Accepted (27 Modules, Readiness Checklist, Role NAV) | Deployed on `fryzar-admin-preview` (`40f93681-a678-4867-a920-92717dd3b560`) |
+| **Central API & Schema** | Accepted (`0001`–`0009`, 46 Tables, RBAC Hardened) | Deployed on `fryzar-api-preview` (`b811d6af-78ba-4374-93d5-26eba94d7095`) |
+| **Adsterra Monetization** | Reconciled & Safely Disabled (`$0.00` verified) | 12 modular files, 9 canonical slots, zero ads on restricted pages, 1-click Emergency Kill Switch |
+| **Test Suites** | 100% Passing | 114 unit/routing + 11 D1 integration + 11 Playwright E2E + live HTTPS/Chrome QA |
 | **Production Environment** | **100% Protected & Untouched** | `fryzar-production` (3 categories, 4 products, 215 stock units) preserved read-only |
 
-See [PROJECT_STATE.md](PROJECT_STATE.md), [RELEASE_READINESS.md](RELEASE_READINESS.md), and [PRODUCTION_MIGRATION_PLAN.md](PRODUCTION_MIGRATION_PLAN.md) for detailed cutover checklists.
+See [PREVIEW_ACCEPTANCE_REPORT.md](PREVIEW_ACCEPTANCE_REPORT.md), [PRODUCTION_CUTOVER_READINESS.md](PRODUCTION_CUTOVER_READINESS.md), and [OWNER_BUSINESS_INPUTS.md](OWNER_BUSINESS_INPUTS.md).

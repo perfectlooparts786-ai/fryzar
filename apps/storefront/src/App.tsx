@@ -824,6 +824,26 @@ export default function App() {
     };
   }, [selectedProduct]);
 
+  useEffect(() => {
+    if (!cartOpen && !checkoutOpen) return;
+    const handleDrawerEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (checkoutOpen) {
+        if (!submitting) {
+          event.preventDefault();
+          setCheckoutOpen(false);
+        }
+        return;
+      }
+      if (cartOpen) {
+        event.preventDefault();
+        setCartOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleDrawerEscape);
+    return () => window.removeEventListener("keydown", handleDrawerEscape);
+  }, [cartOpen, checkoutOpen, submitting]);
+
   const storeOpen = settings.store_status === "open" && isTrue(settings.launch_ready);
   const selectedZone = zones.find((zone) => zone.id === selectedZoneId) ?? null;
 
