@@ -1,0 +1,189 @@
+name: FRYZAR Production Cutover (Gated)
+
+# Strictly manual, approval-gated production cutover workflow.
+# NEVER executes automatically on push or pull_request.
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: "Verified release tag, branch, or commit SHA to deploy"
+        required: true
+        default: "release/fryzar-production-ready"
+        type: string
+      cutover_authorization:
+        description: "Type AUTHORIZE_FRYZAR_PRODUCTION_CUTOVER to confirm owner approval"
+        required: true
+        type: string
+      verified_backup_reference:
+        description: "Verified SHA-256 backup manifest reference for fryzar-production & fryzar-core"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fryzar-production-cutover
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    name: Execute gated production D1 migration and Worker cutover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: production
+    env:
+      WRANGLER_SEND_METRICS: "false"
+
+    steps:
+      - name: Enforce explicit owner cutover authorization and backup verification
+        shell: bash
+        env:
+          AUTH_PHRASE: ${{ inputs.cutover_authorization }}
+          BACKUP_REF: ${{ inputs.verified_backup_reference }}
+        run: |
+          set -euo pipefail
+          if [[ "$AUTH_PHRASE" != "AUTHORIZE_FRYZAR_PRODUCTION_CUTOVER" ]]; then
+            echo "::error::Production cutover aborted: cutover_authorization did not match AUTHORIZE_FRYZAR_PRODUCTION_CUTOVER."
+            exit 1
+          fi
+          if [[ "${#BACKUP_REF}" -lt 8 ]]; then
+            echo "::error::Production cutover aborted: verified_backup_reference is required before touching production."
+            exit 1
+          fi
+
+      - name: Check out verified candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate production secrets without printing values
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TRACKING_SECRET: ${{ secrets.TRACKING_SECRET }}
+          OWNER_BOOTSTRAP_TOKEN: ${{ secrets.OWNER_BOOTSTRAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "$CLOUDFLARE_ACCOUNT_ID" != "234b20e49261c7a002f63b129e985563" ]]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID does not match the FRYZAR Cloudflare account."
+            exit 1
+          fi
+          for secret_name in CLOUDFLARE_API_TOKEN TRACKING_SECRET OWNER_BOOTSTRAP_TOKEN; do
+            if [[ -z "${!secret_name}" ]]; then
+              echo "::error::Missing required production secret: $secret_name"
+              exit 1
+            fi
+          done
+          if [[ "${#TRACKING_SECRET}" -lt 32 || "${#OWNER_BOOTSTRAP_TOKEN}" -lt 32 ]]; then
+            echo "::error::TRACKING_SECRET and OWNER_BOOTSTRAP_TOKEN must each be at least 32 characters."
+            exit 1
+          fi
+
+      - name: Install dependencies deterministically
+        working-directory: candidate
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run pre-cutover verification gates
+        working-directory: candidate
+        run: |
+          npm run typecheck
+          npm test
+          npm run test:config-safety
+          npm run test:integration:migrations
+          npm run test:integration:legacy-migration
+          npm run build
+
+      - name: Apply forward D1 migrations to fryzar-core
+        working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler d1 migrations apply fryzar-core --remote --config apps/api/wrangler.production.toml
+
+      - name: Provision production API secrets
+        working-directory: candidate
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TRACKING_SECRET: ${{ secrets.TRACKING_SECRET }}
+          OWNER_BOOTSTRAP_TOKEN: ${{ secrets.OWNER_BOOTSTRAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TRACKING_SECRET" | npx wrangler secret put TRACKING_SECRET --config apps/api/wrangler.production.toml
+          printf '%s' "$OWNER_BOOTSTRAP_TOKEN" | npx wrangler secret put OWNER_BOOTSTRAP_TOKEN --config apps/api/wrangler.production.toml
+
+      - name: Deploy production API Worker (fryzar-api)
+        working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --config apps/api/wrangler.production.toml
+
+      - name: Deploy production customer Worker (fryzar-app)
+        working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --config apps/customer-worker/wrangler.production.toml
+
+      - name: Deploy production admin Worker (fryzar-admin)
+        working-directory: candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --config apps/admin-worker/wrangler.production.toml
+
+      - name: Post-cutover production smoke verification
+        shell: bash
+        env:
+          API_BASE_URL: https://fryzar-api.perfectlooparts786.workers.dev
+          CUSTOMER_BASE_URL: https://fryzar-app.perfectlooparts786.workers.dev
+          ADMIN_BASE_URL: https://fryzar-admin.perfectlooparts786.workers.dev
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const api = process.env.API_BASE_URL;
+          const customer = process.env.CUSTOMER_BASE_URL;
+          const admin = process.env.ADMIN_BASE_URL;
+
+          async function check(url, init = {}) {
+            for (let i = 0; i < 6; i++) {
+              const res = await fetch(url, init);
+              if (res.status < 500) return res;
+              await new Promise((r) => setTimeout(r, 4000));
+            }
+            throw new Error("Smoke check failed: " + url);
+          }
+
+          (async () => {
+            const h = await check(`${api}/api/v1/health`);
+            assert.equal(h.status, 200);
+            const hb = await h.json();
+            assert.equal(hb.ok, true);
+            assert.equal(hb.schema, "ready");
+
+            const ch = await check(`${customer}/api/v1/health`, { headers: { Origin: customer } });
+            assert.equal(ch.status, 200);
+
+            const ah = await check(`${admin}/api/v1/admin/session`, { headers: { Origin: admin } });
+            assert.equal(ah.status, 401);
+
+            const ad = await check(`${customer}/api/v1/monetization-config`, { headers: { Origin: customer } });
+            assert.equal(ad.status, 200);
+            const adb = await ad.json();
+            assert.equal(adb.monetization.effectiveActive, false, "Ads remain disabled until approved");
+
+            console.log("Post-cutover production smoke checks passed.");
+          })();
+          NODE

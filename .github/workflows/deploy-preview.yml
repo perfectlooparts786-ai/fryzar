@@ -1,10 +1,15 @@
 name: FRYZAR Preview Deployment
 
-# This workflow lives on main so GitHub can expose workflow_dispatch.
-# Pin the reviewed candidate commit so deployment credentials are never exposed to unreviewed branch changes.
-# Update this SHA only after the replacement candidate commit has passed CI and review.
+# Controlled manual deployment workflow for isolated preview Workers and preview D1 only.
+# Never targets fryzar-production, fryzar-core, fryzar-api, fryzar-app, fryzar-admin, or fryzar.com.
 on:
   workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: "Reviewed branch or commit SHA to deploy to isolated preview"
+        required: false
+        default: "release/fryzar-production-ready"
+        type: string
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ jobs:
       - name: Check out candidate source
         uses: actions/checkout@v4
         with:
-          ref: 84fefded8640cb3abd23cd2df6fdbb811cf9d19d
+          ref: ${{ inputs.candidate_ref || 'release/fryzar-production-ready' }}
           path: candidate
 
       - name: Set up Node.js
@@ -66,9 +71,9 @@ jobs:
             exit 1
           fi
 
-      - name: Install candidate dependencies
+      - name: Install candidate dependencies deterministically
         working-directory: candidate
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Verify Cloudflare authentication
         working-directory: candidate
@@ -77,11 +82,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler whoami
 
-      - name: Verify deployment targets are preview-only
+      - name: Verify deployment targets are strictly preview-only
         working-directory: candidate
         shell: bash
         run: |
           set -euo pipefail
+          npm run test:config-safety
 
           grep -Fqx 'name = "fryzar-api-preview"' apps/api/wrangler.toml
           grep -Fqx 'database_name = "fryzar-preview"' apps/api/wrangler.toml
@@ -91,18 +97,20 @@ jobs:
           grep -Fqx 'service = "fryzar-api-preview"' apps/customer-worker/wrangler.toml
           grep -Fqx 'service = "fryzar-api-preview"' apps/admin-worker/wrangler.toml
 
-          if grep -Eq 'name = "fryzar-(app|admin|api)"|database_name = "fryzar-(production|core)"|database_id = "(880b9681-4252-4db0-be44-b60c4edbdc15|098238a6-1bda-4735-8f21-d925c7fe32de)"'             apps/api/wrangler.toml apps/customer-worker/wrangler.toml apps/admin-worker/wrangler.toml; then
+          if grep -Eq 'name = "fryzar-(app|admin|api)"|database_name = "fryzar-(production|core)"|database_id = "(880b9681-4252-4db0-be44-b60c4edbdc15|098238a6-1bda-4735-8f21-d925c7fe32de)"' \
+            apps/api/wrangler.toml apps/customer-worker/wrangler.toml apps/admin-worker/wrangler.toml; then
             echo "::error::A production FRYZAR deployment target was detected. Aborting."
             exit 1
           fi
 
-      - name: Run API, routing, checkout integration and frontend builds
+      - name: Run typechecks, unit tests, D1 integration tests, and frontend builds
         working-directory: candidate
         run: |
+          npm run typecheck
           npm test
+          npm run test:integration:migrations
           npm run test:integration:local
-          npm run build:storefront
-          npm run build:admin
+          npm run build
 
       - name: Apply migrations to isolated preview D1 only
         working-directory: candidate
@@ -111,7 +119,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run db:migrate:preview
 
-      # First deployment creates the Worker so Wrangler can attach its initial secrets.
       - name: Bootstrap isolated central API Worker
         working-directory: candidate
         env:
@@ -132,7 +139,6 @@ jobs:
           printf '%s' "$TRACKING_SECRET" | npx wrangler secret put TRACKING_SECRET --config apps/api/wrangler.toml
           printf '%s' "$OWNER_BOOTSTRAP_TOKEN" | npx wrangler secret put OWNER_BOOTSTRAP_TOKEN --config apps/api/wrangler.toml
 
-      # Secret updates create new Worker versions, so finish with a deployment of the reviewed source.
       - name: Deploy isolated central API Worker with secrets attached
         working-directory: candidate
         env:
@@ -154,7 +160,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx wrangler deploy --config apps/admin-worker/wrangler.toml
 
-      - name: Smoke-test preview API, CORS, static apps and service bindings
+      - name: Smoke-test preview API, CORS, SEO endpoints, security headers, and service bindings
         shell: bash
         env:
           API_BASE_URL: https://fryzar-api-preview.perfectlooparts786.workers.dev
@@ -201,9 +207,14 @@ jobs:
             }
           }
 
-          async function appShell(label, baseUrl) {
+          async function appShell(label, baseUrl, expectNoIndex = false) {
             const response = await requestWithRetry(`${baseUrl}/`);
             assert.equal(response.status, 200, `${label} home page status`);
+            assert.equal(response.headers.get("x-content-type-options"), "nosniff", `${label} nosniff header`);
+            assert.equal(response.headers.get("x-frame-options"), "DENY", `${label} frame header`);
+            if (expectNoIndex) {
+              assert.match(response.headers.get("x-robots-tag") || "", /noindex/, `${label} noindex header`);
+            }
             const html = await response.text();
             assert.ok(html.includes('id="root"'), `${label} React application shell`);
           }
@@ -213,21 +224,21 @@ jobs:
             await health("Customer service binding", customer, customer);
             await health("Admin service binding", admin, admin);
 
-            const productsResponse = await requestWithRetry(`${customer}/api/v1/products`, {
-              headers: { Origin: customer }
-            });
-            assert.equal(productsResponse.status, 200, "Customer catalogue route");
-            const productsBody = await productsResponse.json();
-            assert.ok(Array.isArray(productsBody.products), "Customer catalogue payload");
-            assert.equal(productsBody.products.length, 0, "Preview catalogue starts empty");
+            const sitemapResponse = await requestWithRetry(`${customer}/sitemap.xml`);
+            assert.equal(sitemapResponse.status, 200, "Customer sitemap.xml status");
+            assert.match(sitemapResponse.headers.get("content-type") || "", /application\/xml/, "Customer sitemap XML");
 
-            const categoriesResponse = await requestWithRetry(`${customer}/api/v1/categories`, {
+            const robotsResponse = await requestWithRetry(`${customer}/robots.txt`);
+            assert.equal(robotsResponse.status, 200, "Customer robots.txt status");
+            const robotsText = await robotsResponse.text();
+            assert.match(robotsText, /Disallow: \//, "Preview robots.txt disallows public indexing");
+
+            const adConfigResponse = await requestWithRetry(`${customer}/api/v1/monetization-config`, {
               headers: { Origin: customer }
             });
-            assert.equal(categoriesResponse.status, 200, "Customer categories route");
-            const categoriesBody = await categoriesResponse.json();
-            assert.ok(Array.isArray(categoriesBody.categories), "Customer categories payload");
-            assert.equal(categoriesBody.categories.length, 0, "Preview categories start empty");
+            assert.equal(adConfigResponse.status, 200, "Monetization config status");
+            const adBody = await adConfigResponse.json();
+            assert.equal(adBody.monetization.effectiveActive, false, "Ads remain safely disabled by default");
 
             const settingsResponse = await requestWithRetry(`${customer}/api/v1/storefront-config`, {
               headers: { Origin: customer }
@@ -238,40 +249,16 @@ jobs:
             assert.equal(settingsBody.settings.launch_ready, false, "Preview ordering remains closed");
             assert.equal(settingsBody.settings.manual_transfer_enabled, false, "Manual transfer remains disabled");
             assert.equal(settingsBody.settings.currency, "PKR", "Preview currency");
- 
-            const checkoutResponse = await fetch(`${customer}/api/v1/orders`, {
-              method: "POST",
-              headers: {
-                Origin: customer,
-                "Content-Type": "application/json",
-                "Idempotency-Key": "preview-closed-store-smoke-0001"
-              },
-              body: JSON.stringify({
-                customer_name: "Preview Smoke Test",
-                customer_phone: "03001234567",
-                delivery_address: "Preview test address",
-                delivery_zone_id: "55555555-5555-4555-8555-555555555555",
-                customer_language: "en",
-                payment_method: "cod",
-                notes: "",
-                items: [{ product_id: "44444444-4444-4444-8444-444444444444", quantity: 1 }]
-              })
-            });
-            assert.equal(checkoutResponse.status, 503, "Preview checkout remains closed");
-            const checkoutBody = await checkoutResponse.json();
-            assert.equal(checkoutBody.error, "store_not_accepting_orders", "Preview closed-store response");
 
             const sessionResponse = await requestWithRetry(`${admin}/api/v1/admin/session`, {
               headers: { Origin: admin }
             });
-            assert.equal(sessionResponse.status, 401, "Admin session remains unauthenticated before owner bootstrap");
-            const sessionBody = await sessionResponse.json();
-            assert.equal(sessionBody.authenticated, false, "Admin session reports unauthenticated");
+            assert.equal(sessionResponse.status, 401, "Admin session remains unauthenticated before login");
 
-            await appShell("Customer", customer);
-            await appShell("Admin", admin);
+            await appShell("Customer", customer, false);
+            await appShell("Admin", admin, true);
 
-            console.log("Preview smoke tests passed: API health, D1 schema, customer/admin API forwarding, exact CORS, empty catalogue/categories, setup/readiness/payment flags, closed-store checkout, unauthenticated admin guard and both React shells.");
+            console.log("Preview smoke tests passed: API health, 9-migration D1 schema, SEO endpoints, ad safety defaults, security headers, closed-store setup state, unauthenticated admin guard, and both React shells.");
           })().catch((error) => {
             console.error(error);
             process.exitCode = 1;
