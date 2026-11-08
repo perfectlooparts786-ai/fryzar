@@ -55,7 +55,13 @@ assert.ok(!hasExactLine(prodApi, 'database_id = "880b9681-4252-4db0-be44-b60c4ed
 
 assert.ok(hasExactLine(prodCustomer, 'name = "fryzar-app"'), "Production customer Worker must target fryzar-app");
 assert.ok(hasExactLine(prodCustomer, 'service = "fryzar-api"'), "Production customer Worker must bind fryzar-api");
+assert.ok(prodCustomer.includes('pattern = "fryzar.com", custom_domain = true'), "Customer config must attach fryzar.com custom domain");
+assert.ok(prodCustomer.includes('pattern = "www.fryzar.com", custom_domain = true'), "Customer config must attach www.fryzar.com custom domain");
+
 assert.ok(hasExactLine(prodAdmin, 'name = "fryzar-admin"'), "Production admin Worker must target fryzar-admin");
 assert.ok(hasExactLine(prodAdmin, 'service = "fryzar-api"'), "Production admin Worker must bind fryzar-api");
+assert.ok(prodAdmin.includes('pattern = "admin.fryzar.com", custom_domain = true'), "Admin config must attach admin.fryzar.com custom domain");
 
-console.log("Preview & production configuration safety passed: default wrangler.toml targets preview only, and isolated *.production.toml targets fryzar-core cleanly.");
+assert.ok(prodApi.includes('pattern = "api.fryzar.com", custom_domain = true'), "API config must attach api.fryzar.com custom domain");
+
+console.log("Preview & production configuration safety passed: default wrangler.toml targets preview only, and isolated *.production.toml targets fryzar-core cleanly with custom domain routes.");

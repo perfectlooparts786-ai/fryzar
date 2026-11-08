@@ -84,6 +84,22 @@ test("customer Worker forwards /sitemap.xml and /robots.txt to the central API",
   assert.equal(assets.calls.length, 0);
 });
 
+test("customer Worker redirects www.fryzar.com to https://fryzar.com preserving path and query", async () => {
+  const worker = await customerWorkerPromise;
+  const api = createFetcher("central-api", 200);
+  const assets = createFetcher("customer-assets");
+
+  const req1 = new Request("http://www.fryzar.com/");
+  const res1 = await worker.fetch(req1, { API: api, ASSETS: assets });
+  assert.equal(res1.status, 301);
+  assert.equal(res1.headers.get("Location"), "https://fryzar.com/");
+
+  const req2 = new Request("https://www.fryzar.com/menu?category=burgers");
+  const res2 = await worker.fetch(req2, { API: api, ASSETS: assets });
+  assert.equal(res2.status, 301);
+  assert.equal(res2.headers.get("Location"), "https://fryzar.com/menu?category=burgers");
+});
+
 test("customer Worker serves non-API routes from its static asset binding", async () => {
   const worker = await customerWorkerPromise;
   const api = createFetcher("central-api");

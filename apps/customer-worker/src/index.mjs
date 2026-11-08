@@ -34,13 +34,20 @@ function withSecurityHeaders(response) {
 
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+
+    // Canonical redirect: www.fryzar.com -> https://fryzar.com (preserving path and query)
+    if (url.hostname.toLowerCase() === "www.fryzar.com") {
+      url.hostname = "fryzar.com";
+      url.protocol = "https:";
+      return Response.redirect(url.toString(), 301);
+    }
 
     if (
-      pathname === "/api" ||
-      pathname.startsWith("/api/") ||
-      pathname === "/sitemap.xml" ||
-      pathname === "/robots.txt"
+      url.pathname === "/api" ||
+      url.pathname.startsWith("/api/") ||
+      url.pathname === "/sitemap.xml" ||
+      url.pathname === "/robots.txt"
     ) {
       return env.API.fetch(request);
     }

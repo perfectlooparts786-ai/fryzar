@@ -5,6 +5,10 @@ main = "src/index.mjs"
 compatibility_date = "2026-11-01"
 workers_dev = true
 
+routes = [
+  { pattern = "admin.fryzar.com", custom_domain = true }
+]
+
 [assets]
 directory = "../../dist/admin"
 binding = "ASSETS"
