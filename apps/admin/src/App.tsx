@@ -87,7 +87,7 @@ const ALL_STAFF_ROLES: readonly StaffUser["role"][] = [
 
 const NAV: Array<{ id: Section; label: string; group: string; icon: string; roles: readonly StaffUser["role"][] }> = [
   { id: "overview", label: "1. Overview", group: "Operations", icon: "overview", roles: ["owner", "manager", "operator", "kitchen", "finance", "support"] },
-  { id: "orders", label: "2. Live Orders", group: "Operations", icon: "orders", roles: ["owner", "manager", "operator", "kitchen", "finance", "support"] },
+  { id: "orders", label: "2. Live Orders", group: "Operations", icon: "orders", roles: ["owner", "manager", "operator", "kitchen"] },
   { id: "kitchen", label: "3. Kitchen Queue", group: "Operations", icon: "kitchen", roles: ["owner", "manager", "operator", "kitchen"] },
   { id: "products", label: "4. Products", group: "Catalogue", icon: "catalogue", roles: ["owner", "manager", "operator", "kitchen"] },
   { id: "categories", label: "5. Categories", group: "Catalogue", icon: "catalogue", roles: ["owner", "manager", "operator", "kitchen"] },
@@ -505,9 +505,9 @@ function Overview({
     { label: "Delivered revenue", value: ov ? money(ov.delivered_revenue_paisa) : metrics ? money(metrics.delivered_revenue_paisa) : "—", tone: "slate", note: ov ? `Gross ${money(ov.gross_order_value_paisa)}` : "Delivered order totals" },
     { label: "Collected COD", value: ov ? money(ov.collected_cod_paisa) : "—", tone: "mint", note: ov ? `Pending ${money(ov.pending_payments_paisa)}` : `${metrics?.unpaid_cod_count ?? 0} unpaid COD` },
     { label: "Refund totals", value: ov ? money(ov.refund_totals_paisa) : "—", tone: "sand", note: "Approved & completed" },
-    { label: "Active products", value: String(ov?.active_products ?? metrics?.active_products ?? products.length), tone: "mint", note: `${ov?.archived_products ?? 0} archived` },
+    { label: "Active products", value: String(ov?.active_products ?? metrics?.active_products ?? (products || []).length), tone: "mint", note: `${ov?.archived_products ?? 0} archived` },
     { label: "Low / Out of stock", value: ov ? `${ov.low_stock_products} / ${ov.out_of_stock_products}` : String(metrics?.low_stock_products ?? "—"), tone: "sand", note: "Tracked stock ≤ 5" },
-    { label: "Categories & Zones", value: `${ov?.active_categories ?? metrics?.active_categories ?? categories.length} / ${ov?.active_delivery_zones ?? metrics?.active_delivery_zones ?? zones.length}`, tone: "blue", note: "Active groups / PK zones" },
+    { label: "Categories & Zones", value: `${ov?.active_categories ?? metrics?.active_categories ?? (categories || []).length} / ${ov?.active_delivery_zones ?? metrics?.active_delivery_zones ?? (zones || []).length}`, tone: "blue", note: "Active groups / PK zones" },
     { label: "Open support cases", value: String(ov?.open_support_cases ?? 0), tone: "slate", note: open ? "Store Open" : "Store in Setup" }
   ];
 
@@ -1630,6 +1630,7 @@ function RidersModule({ user }: { user: StaffUser }) {
 
   const isRiderRole = user.role === "rider";
   const canManage = user.role === "owner" || user.role === "manager" || user.role === "operator";
+  const canCreateProfile = user.role === "owner" || user.role === "manager";
 
   async function loadData() {
     setLoading(true); setError("");
@@ -1694,7 +1695,7 @@ function RidersModule({ user }: { user: StaffUser }) {
           </p>
         </div>
         <div className="ops-inline-actions">
-          {canManage ? (
+          {canCreateProfile ? (
             <button className="primary-button" type="button" onClick={() => setShowAdd(!showAdd)}>+ Add Rider Profile</button>
           ) : null}
           <button className="refresh-button" type="button" onClick={() => void loadData()}>↻ Refresh</button>
@@ -2670,12 +2671,12 @@ export default function App() {
       canViewOverview ? adminApi.overviewSummary() : Promise.resolve(null)
     ]).then(results => {
       if (!active) return;
-      if (results[0].status === "fulfilled") setSettings(results[0].value.settings);
-      if (results[1].status === "fulfilled") setProducts(results[1].value.products);
-      if (results[2].status === "fulfilled") setCategories(results[2].value.categories);
-      if (results[3].status === "fulfilled") setZones(results[3].value.delivery_zones);
-      if (results[4].status === "fulfilled" && results[4].value) setMetrics(results[4].value.metrics);
-      if (results[5].status === "fulfilled" && results[5].value) setOverviewData(results[5].value);
+      if (results[0].status === "fulfilled" && results[0].value?.settings) setSettings(results[0].value.settings);
+      if (results[1].status === "fulfilled" && Array.isArray(results[1].value?.products)) setProducts(results[1].value.products);
+      if (results[2].status === "fulfilled" && Array.isArray(results[2].value?.categories)) setCategories(results[2].value.categories);
+      if (results[3].status === "fulfilled" && Array.isArray(results[3].value?.delivery_zones)) setZones(results[3].value.delivery_zones);
+      if (results[4].status === "fulfilled" && results[4].value?.metrics) setMetrics(results[4].value.metrics);
+      if (results[5].status === "fulfilled" && results[5].value?.overview) setOverviewData(results[5].value);
       const coreFailed = results.slice(0, 4).filter(result => result.status === "rejected").length;
       if (coreFailed) setDataError("Some public store data could not be loaded. Check API connectivity.");
       setDataLoading(false);

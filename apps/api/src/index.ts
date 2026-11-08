@@ -114,11 +114,15 @@ function originAllowed(origin: string | null, env: Env): boolean {
 function applySecurityHeaders(response: Response, request: Request, env: Env): Response {
   const headers = new Headers(response.headers);
   const origin = request.headers.get("Origin");
+  const pathname = new URL(request.url).pathname;
 
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if ((pathname === "/api" || pathname.startsWith("/api/")) && !headers.has("X-Robots-Tag")) {
+    headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
   headers.append("Vary", "Origin");
 
   if (origin && originAllowed(origin, env)) {
@@ -895,30 +899,61 @@ async function checkout(request: Request, env: Env): Promise<Response> {
       ).bind(validatedCoupon.id),
       env.DB.prepare(
         "INSERT INTO coupon_redemptions (id, coupon_id, order_id, customer_phone, discount_applied_paisa) " +
-        "VALUES (?1, ?2, ?3, ?4, ?5)"
+        "VALUES (?1, CASE WHEN changes() = 1 THEN ?2 ELSE NULL END, ?3, ?4, ?5)"
       ).bind(crypto.randomUUID(), validatedCoupon.id, orderId, input.customer_phone, discountPaisa)
     );
   }
 
   for (const item of calculatedItems) {
+    if (item.variant) {
+      statements.push(
+        env.DB.prepare(
+          "UPDATE product_variants SET " +
+          "stock_qty = CASE WHEN stock_qty IS NULL THEN NULL ELSE stock_qty - ?1 END, " +
+          "updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND is_available = 1 " +
+          "AND (stock_qty IS NULL OR stock_qty >= ?1)"
+        ).bind(item.quantity, String(item.variant.id)),
+        env.DB.prepare(
+          "INSERT INTO order_items (" +
+          "id, order_id, product_id, variant_id, product_name_ur_snapshot, product_name_en_snapshot, " +
+          "sku_snapshot, unit_price_paisa, quantity, line_total_paisa" +
+          ") VALUES (?1, CASE WHEN changes() = 1 THEN ?2 ELSE NULL END, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+        ).bind(
+          crypto.randomUUID(),
+          orderId,
+          item.product.id,
+          String(item.variant.id),
+          item.name_ur_snapshot,
+          item.name_en_snapshot,
+          item.sku_snapshot,
+          item.unit_price_paisa,
+          item.quantity,
+          item.line_total_paisa
+        )
+      );
+    } else {
+      statements.push(
+        env.DB.prepare(
+          "INSERT INTO order_items (" +
+          "id, order_id, product_id, variant_id, product_name_ur_snapshot, product_name_en_snapshot, " +
+          "sku_snapshot, unit_price_paisa, quantity, line_total_paisa" +
+          ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+        ).bind(
+          crypto.randomUUID(),
+          orderId,
+          item.product.id,
+          null,
+          item.name_ur_snapshot,
+          item.name_en_snapshot,
+          item.sku_snapshot,
+          item.unit_price_paisa,
+          item.quantity,
+          item.line_total_paisa
+        )
+      );
+    }
+
     statements.push(
-      env.DB.prepare(
-        "INSERT INTO order_items (" +
-        "id, order_id, product_id, variant_id, product_name_ur_snapshot, product_name_en_snapshot, " +
-        "sku_snapshot, unit_price_paisa, quantity, line_total_paisa" +
-        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
-      ).bind(
-        crypto.randomUUID(),
-        orderId,
-        item.product.id,
-        item.variant ? String(item.variant.id) : null,
-        item.name_ur_snapshot,
-        item.name_en_snapshot,
-        item.sku_snapshot,
-        item.unit_price_paisa,
-        item.quantity,
-        item.line_total_paisa
-      ),
       env.DB.prepare(
         "UPDATE products SET " +
         "stock_qty = CASE WHEN stock_qty IS NULL THEN NULL ELSE stock_qty - ?1 END, " +
@@ -932,17 +967,6 @@ async function checkout(request: Request, env: Env): Promise<Response> {
         "FROM products WHERE id = ?4 AND stock_qty IS NOT NULL"
       ).bind(crypto.randomUUID(), -item.quantity, orderId, item.product.id)
     );
-
-    if (item.variant) {
-      statements.push(
-        env.DB.prepare(
-          "UPDATE product_variants SET " +
-          "stock_qty = CASE WHEN stock_qty IS NULL THEN NULL ELSE stock_qty - ?1 END, " +
-          "updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND is_available = 1 " +
-          "AND (stock_qty IS NULL OR stock_qty >= ?1)"
-        ).bind(item.quantity, String(item.variant.id))
-      );
-    }
   }
 
   try {
@@ -961,7 +985,15 @@ async function checkout(request: Request, env: Env): Promise<Response> {
     }
 
     const message = error instanceof Error ? error.message.toLowerCase() : "";
-    if (message.includes("insufficient_stock") || message.includes("product_unavailable") || message.includes("product_missing")) {
+    if (message.includes("coupon_redemptions.coupon_id")) {
+      return json({ error: "coupon_invalid_or_expired" }, 409);
+    }
+    if (
+      message.includes("insufficient_stock") ||
+      message.includes("product_unavailable") ||
+      message.includes("product_missing") ||
+      message.includes("order_items.order_id")
+    ) {
       return json({ error: "product_or_stock_changed" }, 409);
     }
     return json({ error: "order_could_not_be_created" }, 500);
@@ -1918,10 +1950,16 @@ async function adminIngredientsAndBomApi(
     }
 
     const id = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO ingredients (id, name_ur, name_en, sku, unit, stock_qty, min_threshold, reorder_threshold, cost_per_unit_paisa, is_active, created_at, updated_at) " +
-      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)"
-    ).bind(id, nameUr, nameEn, sku, unit, stockQty, minThreshold, reorderThreshold, costPerUnit, now).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO ingredients (id, name_ur, name_en, sku, unit, stock_qty, min_threshold, reorder_threshold, cost_per_unit_paisa, is_active, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10)"
+      ).bind(id, nameUr, nameEn, sku, unit, stockQty, minThreshold, reorderThreshold, costPerUnit, now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'ingredient.created', 'ingredient', ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), user.id, user.role, id, JSON.stringify({ name_en: nameEn, unit, stock_qty: stockQty }), now)
+    ]);
 
     return json({ saved: true, id }, 201);
   }
@@ -1941,9 +1979,20 @@ async function adminIngredientsAndBomApi(
     const costPerUnit = Number(body.cost_per_unit_paisa || 0);
     const isActive = body.is_active === undefined ? true : body.is_active === true;
 
-    await env.DB.prepare(
-      "UPDATE ingredients SET name_ur=?1, name_en=?2, sku=?3, unit=?4, stock_qty=?5, min_threshold=?6, reorder_threshold=?7, cost_per_unit_paisa=?8, is_active=?9, updated_at=?10 WHERE id=?11"
-    ).bind(nameUr, nameEn, sku, unit, stockQty, minThreshold, reorderThreshold, costPerUnit, isActive ? 1 : 0, now, id).run();
+    if (!nameEn || !nameUr || !["gram", "kg", "ml", "liter", "piece", "pack"].includes(unit) || stockQty < 0) {
+      return json({ error: "validation_failed" }, 400);
+    }
+
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE ingredients SET name_ur=?1, name_en=?2, sku=?3, unit=?4, stock_qty=?5, min_threshold=?6, reorder_threshold=?7, cost_per_unit_paisa=?8, is_active=?9, updated_at=?10 WHERE id=?11"
+      ).bind(nameUr, nameEn, sku, unit, stockQty, minThreshold, reorderThreshold, costPerUnit, isActive ? 1 : 0, now, id),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "SELECT ?1, ?2, ?3, 'ingredient.updated', 'ingredient', id, ?4, ?5 FROM ingredients WHERE id = ?6 AND updated_at = ?5"
+      ).bind(crypto.randomUUID(), user.id, user.role, JSON.stringify({ name_en: nameEn, unit, is_active: isActive }), now, id)
+    ]);
+    if ((results[0]?.meta?.changes ?? 1) === 0) return json({ error: "ingredient_not_found" }, 404);
 
     return json({ saved: true, id });
   }
@@ -2000,6 +2049,13 @@ async function adminIngredientsAndBomApi(
         }
       }
 
+      statements.push(
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "VALUES (?1, ?2, ?3, 'recipe.saved', 'recipe', ?4, ?5, ?6)"
+        ).bind(crypto.randomUUID(), user.id, user.role, recipeId, JSON.stringify({ product_id: productId, ingredient_count: rawIngredients.length }), now)
+      );
+
       await env.DB.batch(statements);
       return json({ saved: true, recipe_id: recipeId }, 201);
     }
@@ -2045,15 +2101,48 @@ async function adminProcurementAndWastageApi(
     const phone = safeString(body.phone);
     const email = safeString(body.email);
     const address = safeString(body.address);
-    if (!name) return json({ error: "validation_failed" }, 400);
+    const isActive = body.is_active === undefined ? true : body.is_active === true;
+    if (!name || name.length > 180) return json({ error: "validation_failed" }, 400);
 
     const id = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO suppliers (id, name, contact_name, phone, email, address, is_active, created_at, updated_at) " +
-      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?7)"
-    ).bind(id, name, contactName, phone, email, address, now).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO suppliers (id, name, contact_name, phone, email, address, is_active, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)"
+      ).bind(id, name, contactName, phone, email, address, isActive ? 1 : 0, now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'supplier.created', 'supplier', ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), user.id, user.role, id, JSON.stringify({ name, is_active: isActive }), now)
+    ]);
 
     return json({ saved: true, id }, 201);
+  }
+
+  if (request.method === "PUT" && supplierSingleMatch) {
+    const id = supplierSingleMatch[1].toLowerCase();
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+    const name = safeString(body.name);
+    const contactName = safeString(body.contact_name);
+    const phone = safeString(body.phone);
+    const email = safeString(body.email);
+    const address = safeString(body.address);
+    const isActive = body.is_active === undefined ? true : body.is_active === true;
+    if (!name || name.length > 180) return json({ error: "validation_failed" }, 400);
+
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE suppliers SET name=?1, contact_name=?2, phone=?3, email=?4, address=?5, is_active=?6, updated_at=?7 WHERE id=?8"
+      ).bind(name, contactName, phone, email, address, isActive ? 1 : 0, now, id),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "SELECT ?1, ?2, ?3, 'supplier.updated', 'supplier', id, ?4, ?5 FROM suppliers WHERE id = ?6 AND updated_at = ?5"
+      ).bind(crypto.randomUUID(), user.id, user.role, JSON.stringify({ name, is_active: isActive }), now, id)
+    ]);
+    if ((results[0]?.meta?.changes ?? 1) === 0) return json({ error: "supplier_not_found" }, 404);
+
+    return json({ saved: true, id });
   }
 
   if (request.method === "GET" && poPath) {
@@ -2097,11 +2186,19 @@ async function adminProcurementAndWastageApi(
       }
     }
 
+    if (statements.length === 0) return json({ error: "validation_failed" }, 400);
+
     statements.unshift(
       env.DB.prepare(
         "INSERT INTO purchase_orders (id, supplier_id, order_number, status, total_cost_paisa, actor_staff_id, created_at, updated_at) " +
         "VALUES (?1, ?2, ?3, 'submitted', ?4, ?5, ?6, ?6)"
       ).bind(poId, supplierId, orderNum, totalCost, user.id, now)
+    );
+    statements.push(
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'purchase_order.created', 'purchase_order', ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), user.id, user.role, poId, JSON.stringify({ supplier_id: supplierId, order_number: orderNum, total_cost_paisa: totalCost }), now)
     );
 
     await env.DB.batch(statements);
@@ -2126,7 +2223,11 @@ async function adminProcurementAndWastageApi(
       env.DB.prepare(
         "INSERT INTO financial_ledger (id, entry_type, reference_id, debit_paisa, credit_paisa, actor_staff_id, note, created_at) " +
         "VALUES (?1, 'purchase_expense', ?2, ?3, 0, ?4, 'Purchase order received', ?5)"
-      ).bind(crypto.randomUUID(), poId, po.total_cost_paisa, user.id, now)
+      ).bind(crypto.randomUUID(), poId, po.total_cost_paisa, user.id, now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'purchase_order.received', 'purchase_order', ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), user.id, user.role, poId, JSON.stringify({ total_cost_paisa: po.total_cost_paisa }), now)
     ];
 
     for (const item of items.results) {
@@ -2927,7 +3028,7 @@ async function adminStaffApi(request: Request, env: Env, url: URL, user: Session
   return json({ error: "method_not_allowed" }, 405);
 }
 
-const SETTINGS_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator", "kitchen", "finance", "rider", "support"];
+const SETTINGS_READ_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager", "operator"];
 const SETTINGS_WRITE_ROLES: readonly StaffUserRow["role"][] = ["owner", "manager"];
 const EDITABLE_STORE_SETTING_KEYS = [
   "store_name_en",
@@ -3673,7 +3774,7 @@ async function adminCouponsApi(
   if (!(couponPath || couponMatch)) return null;
 
   if (request.method === "GET") {
-    if (!hasRole(user, CATALOG_READ_ROLES)) return roleDenied();
+    if (!hasRole(user, ["owner", "manager", "operator", "kitchen", "finance"])) return roleDenied();
   } else {
     if (!hasRole(user, CATALOG_WRITE_ROLES)) return roleDenied();
     if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
@@ -3689,29 +3790,78 @@ async function adminCouponsApi(
     return json({ coupons: result.results });
   }
 
-  if (request.method === "POST" && couponPath) {
-    const body = await parseJsonBody(request, 8192);
-    if (!body) return json({ error: "invalid_request" }, 400);
-
-    const code = safeString(body.code).trim();
+  const validateCouponPayload = (body: Record<string, unknown>) => {
+    const code = safeString(body.code).trim().toUpperCase();
     const discountType = safeString(body.discount_type);
     const discountValue = Number(body.discount_value);
-    const minOrderPaisa = Number.isInteger(body.min_order_paisa) ? Number(body.min_order_paisa) : 0;
-    const maxDiscountPaisa = body.max_discount_paisa === null || body.max_discount_paisa === undefined ? null : Number(body.max_discount_paisa);
-    const usageLimit = body.usage_limit === null || body.usage_limit === undefined ? null : Number(body.usage_limit);
+    const minOrderPaisa = body.min_order_paisa === undefined || body.min_order_paisa === null ? 0 : Number(body.min_order_paisa);
+    const maxDiscountPaisa = body.max_discount_paisa === null || body.max_discount_paisa === undefined || body.max_discount_paisa === "" ? null : Number(body.max_discount_paisa);
+    const usageLimit = body.usage_limit === null || body.usage_limit === undefined || body.usage_limit === "" ? null : Number(body.usage_limit);
     const startAt = safeString(body.start_at) || null;
     const expiresAt = safeString(body.expires_at) || null;
     const isActive = body.is_active === undefined ? true : body.is_active === true;
 
-    if (!code || (discountType !== "fixed" && discountType !== "percent") || !Number.isSafeInteger(discountValue) || discountValue <= 0) {
-      return json({ error: "validation_failed" }, 400);
+    if (
+      !code ||
+      code.length > 48 ||
+      (discountType !== "fixed" && discountType !== "percent") ||
+      !Number.isSafeInteger(discountValue) ||
+      discountValue <= 0 ||
+      (discountType === "percent" && discountValue > 100) ||
+      !Number.isSafeInteger(minOrderPaisa) ||
+      minOrderPaisa < 0 ||
+      (maxDiscountPaisa !== null && (!Number.isSafeInteger(maxDiscountPaisa) || maxDiscountPaisa <= 0)) ||
+      (usageLimit !== null && (!Number.isSafeInteger(usageLimit) || usageLimit <= 0))
+    ) {
+      return null;
     }
 
+    return { code, discountType, discountValue, minOrderPaisa, maxDiscountPaisa, usageLimit, startAt, expiresAt, isActive };
+  };
+
+  if (request.method === "POST" && couponPath) {
+    const body = await parseJsonBody(request, 8192);
+    if (!body) return json({ error: "invalid_request" }, 400);
+
+    const parsed = validateCouponPayload(body);
+    if (!parsed) return json({ error: "validation_failed" }, 400);
+
     const id = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO coupons (id, code, discount_type, discount_value, min_order_paisa, max_discount_paisa, usage_limit, used_count, start_at, expires_at, is_active, created_at, updated_at) " +
-      "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11, ?11)"
-    ).bind(id, code, discountType, discountValue, minOrderPaisa, maxDiscountPaisa, usageLimit, startAt, expiresAt, isActive ? 1 : 0, now).run();
+    try {
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO coupons (id, code, discount_type, discount_value, min_order_paisa, max_discount_paisa, usage_limit, used_count, start_at, expires_at, is_active, created_at, updated_at) " +
+          "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9, ?10, ?11, ?11)"
+        ).bind(
+          id,
+          parsed.code,
+          parsed.discountType,
+          parsed.discountValue,
+          parsed.minOrderPaisa,
+          parsed.maxDiscountPaisa,
+          parsed.usageLimit,
+          parsed.startAt,
+          parsed.expiresAt,
+          parsed.isActive ? 1 : 0,
+          now
+        ),
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "VALUES (?1, ?2, ?3, 'coupon.created', 'coupon', ?4, ?5, ?6)"
+        ).bind(
+          crypto.randomUUID(),
+          user.id,
+          user.role,
+          id,
+          JSON.stringify({ code: parsed.code, discount_type: parsed.discountType, discount_value: parsed.discountValue }),
+          now
+        )
+      ]);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (/UNIQUE constraint failed/i.test(msg)) return json({ error: "coupon_code_conflict" }, 409);
+      throw error;
+    }
 
     return json({ saved: true, id }, 201);
   }
@@ -3719,26 +3869,58 @@ async function adminCouponsApi(
   if (couponMatch) {
     const id = couponMatch[1].toLowerCase();
     if (request.method === "DELETE") {
-      await env.DB.prepare("DELETE FROM coupons WHERE id = ?1").bind(id).run();
+      const results = await env.DB.batch([
+        env.DB.prepare("DELETE FROM coupons WHERE id = ?1").bind(id),
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "VALUES (?1, ?2, ?3, 'coupon.deleted', 'coupon', ?4, '{}', ?5)"
+        ).bind(crypto.randomUUID(), user.id, user.role, id, now)
+      ]);
+      if ((results[0]?.meta?.changes ?? 1) === 0) return json({ error: "coupon_not_found" }, 404);
       return json({ deleted: true });
     }
     if (request.method === "PUT") {
       const body = await parseJsonBody(request, 8192);
       if (!body) return json({ error: "invalid_request" }, 400);
 
-      const code = safeString(body.code).trim();
-      const discountType = safeString(body.discount_type);
-      const discountValue = Number(body.discount_value);
-      const minOrderPaisa = Number.isInteger(body.min_order_paisa) ? Number(body.min_order_paisa) : 0;
-      const maxDiscountPaisa = body.max_discount_paisa === null || body.max_discount_paisa === undefined ? null : Number(body.max_discount_paisa);
-      const usageLimit = body.usage_limit === null || body.usage_limit === undefined ? null : Number(body.usage_limit);
-      const startAt = safeString(body.start_at) || null;
-      const expiresAt = safeString(body.expires_at) || null;
-      const isActive = body.is_active === undefined ? true : body.is_active === true;
+      const parsed = validateCouponPayload(body);
+      if (!parsed) return json({ error: "validation_failed" }, 400);
 
-      await env.DB.prepare(
-        "UPDATE coupons SET code=?1, discount_type=?2, discount_value=?3, min_order_paisa=?4, max_discount_paisa=?5, usage_limit=?6, start_at=?7, expires_at=?8, is_active=?9, updated_at=?10 WHERE id=?11"
-      ).bind(code, discountType, discountValue, minOrderPaisa, maxDiscountPaisa, usageLimit, startAt, expiresAt, isActive ? 1 : 0, now, id).run();
+      try {
+        const results = await env.DB.batch([
+          env.DB.prepare(
+            "UPDATE coupons SET code=?1, discount_type=?2, discount_value=?3, min_order_paisa=?4, max_discount_paisa=?5, usage_limit=?6, start_at=?7, expires_at=?8, is_active=?9, updated_at=?10 WHERE id=?11"
+          ).bind(
+            parsed.code,
+            parsed.discountType,
+            parsed.discountValue,
+            parsed.minOrderPaisa,
+            parsed.maxDiscountPaisa,
+            parsed.usageLimit,
+            parsed.startAt,
+            parsed.expiresAt,
+            parsed.isActive ? 1 : 0,
+            now,
+            id
+          ),
+          env.DB.prepare(
+            "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+            "SELECT ?1, ?2, ?3, 'coupon.updated', 'coupon', id, ?4, ?5 FROM coupons WHERE id = ?6 AND updated_at = ?5"
+          ).bind(
+            crypto.randomUUID(),
+            user.id,
+            user.role,
+            JSON.stringify({ code: parsed.code, discount_type: parsed.discountType, discount_value: parsed.discountValue, is_active: parsed.isActive }),
+            now,
+            id
+          )
+        ]);
+        if ((results[0]?.meta?.changes ?? 1) === 0) return json({ error: "coupon_not_found" }, 404);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "";
+        if (/UNIQUE constraint failed/i.test(msg)) return json({ error: "coupon_code_conflict" }, 409);
+        throw error;
+      }
 
       return json({ saved: true, id });
     }
@@ -3819,10 +4001,22 @@ async function adminRidersAndDispatchApi(
     if (!staff) return json({ error: "staff_user_not_found" }, 404);
 
     const id = crypto.randomUUID();
-    await env.DB.prepare(
-      "INSERT INTO riders (id, staff_user_id, vehicle_type, vehicle_number, current_status, is_active, created_at, updated_at) " +
-      "VALUES (?1, ?2, ?3, ?4, 'available', 1, ?5, ?5)"
-    ).bind(id, staffUserId, vehicleType, vehicleNumber, now).run();
+    try {
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO riders (id, staff_user_id, vehicle_type, vehicle_number, current_status, is_active, created_at, updated_at) " +
+          "VALUES (?1, ?2, ?3, ?4, 'available', 1, ?5, ?5)"
+        ).bind(id, staffUserId, vehicleType, vehicleNumber, now),
+        env.DB.prepare(
+          "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+          "VALUES (?1, ?2, ?3, 'rider.created', 'rider', ?4, ?5, ?6)"
+        ).bind(crypto.randomUUID(), user.id, user.role, id, JSON.stringify({ staff_user_id: staffUserId, vehicle_type: vehicleType }), now)
+      ]);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (/UNIQUE constraint failed/i.test(msg)) return json({ error: "rider_already_exists" }, 409);
+      throw error;
+    }
 
     return json({ saved: true, id }, 201);
   }
@@ -3845,9 +4039,16 @@ async function adminRidersAndDispatchApi(
       return json({ error: "validation_failed" }, 400);
     }
 
-    await env.DB.prepare(
-      "UPDATE riders SET vehicle_type=?1, vehicle_number=?2, current_status=?3, is_active=?4, updated_at=?5 WHERE id=?6"
-    ).bind(vehicleType, vehicleNumber, currentStatus, isActive ? 1 : 0, now, id).run();
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE riders SET vehicle_type=?1, vehicle_number=?2, current_status=?3, is_active=?4, updated_at=?5 WHERE id=?6"
+      ).bind(vehicleType, vehicleNumber, currentStatus, isActive ? 1 : 0, now, id),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "SELECT ?1, ?2, ?3, 'rider.updated', 'rider', id, ?4, ?5 FROM riders WHERE id = ?6 AND updated_at = ?5"
+      ).bind(crypto.randomUUID(), user.id, user.role, JSON.stringify({ vehicle_type: vehicleType, current_status: currentStatus, is_active: isActive }), now, id)
+    ]);
+    if ((results[0]?.meta?.changes ?? 1) === 0) return json({ error: "rider_not_found" }, 404);
 
     return json({ saved: true, id });
   }
@@ -4101,12 +4302,21 @@ async function adminSupportApi(
 
     if (!message) return json({ error: "validation_failed" }, 400);
 
+    const existingCase = await env.DB.prepare(
+      "SELECT id FROM support_cases WHERE id = ?1 LIMIT 1"
+    ).bind(caseId).first<{ id: string }>();
+    if (!existingCase) return json({ error: "ticket_not_found" }, 404);
+
     const msgId = crypto.randomUUID();
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(
         "INSERT INTO support_messages (id, case_id, sender_type, sender_staff_id, message, is_internal, created_at) " +
         "VALUES (?1, ?2, 'staff', ?3, ?4, ?5, ?6)"
-      ).bind(msgId, caseId, user.id, message, isInternal, now)
+      ).bind(msgId, caseId, user.id, message, isInternal, now),
+      env.DB.prepare(
+        "INSERT INTO audit_logs (id, actor_staff_id, actor_role, action, entity_type, entity_id, metadata_json, created_at) " +
+        "VALUES (?1, ?2, ?3, 'support.message_posted', 'support_case', ?4, ?5, ?6)"
+      ).bind(crypto.randomUUID(), user.id, user.role, caseId, JSON.stringify({ is_internal: Boolean(isInternal), status: newStatus || null }), now)
     ];
 
     if (!isInternal) {
@@ -4147,9 +4357,19 @@ async function adminNotificationsApi(
   const now = new Date().toISOString();
 
   if (request.method === "GET" && notifPath) {
+    let eventClause = "";
+    if (user.role === "kitchen") {
+      eventClause = " AND event_type IN ('order_created', 'order_delivered')";
+    } else if (user.role === "rider") {
+      eventClause = " AND event_type IN ('order_delivered')";
+    } else if (user.role === "finance") {
+      eventClause = " AND event_type IN ('payment_updated', 'refund_updated', 'order_delivered')";
+    } else if (user.role === "support") {
+      eventClause = " AND event_type IN ('support_ticket_created', 'support_reply')";
+    }
     const result = await env.DB.prepare(
       "SELECT id, recipient_type, title_ur, title_en, body_ur, body_en, event_type, related_id, read_at, created_at " +
-      "FROM notifications WHERE recipient_type = 'staff' ORDER BY created_at DESC LIMIT 100"
+      "FROM notifications WHERE recipient_type = 'staff'" + eventClause + " ORDER BY created_at DESC LIMIT 100"
     ).all<JsonRecord>();
     return json({ notifications: result.results });
   }
@@ -4157,9 +4377,11 @@ async function adminNotificationsApi(
   if (request.method === "PATCH" && notifReadMatch) {
     if (!browserOriginAllowed(request, env)) return json({ error: "origin_not_allowed" }, 403);
     const id = notifReadMatch[1].toLowerCase();
-    await env.DB.prepare(
-      "UPDATE notifications SET read_at = ?1 WHERE id = ?2"
-    ).bind(now, id).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE notifications SET read_at = ?1 WHERE id = ?2"
+      ).bind(now, id)
+    ]);
     return json({ read: true, id });
   }
 

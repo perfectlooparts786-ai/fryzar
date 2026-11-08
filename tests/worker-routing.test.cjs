@@ -98,6 +98,8 @@ test("customer Worker serves non-API routes from its static asset binding", asyn
   assert.equal(response.headers.get("Referrer-Policy"), "strict-origin-when-cross-origin");
   assert.equal(response.headers.get("X-Frame-Options"), "DENY");
   assert.match(response.headers.get("Permissions-Policy") || "", /camera=\(\)/);
+  assert.match(response.headers.get("Content-Security-Policy") || "", /frame-ancestors 'none'/);
+  assert.match(response.headers.get("Content-Security-Policy") || "", /object-src 'none'/);
   assert.equal(assets.calls.length, 1);
   assert.equal(assets.calls[0], request);
   assert.equal(api.calls.length, 0);
@@ -131,6 +133,8 @@ test("admin Worker serves its application shell and routes from static assets", 
   assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
   assert.equal(response.headers.get("X-Frame-Options"), "DENY");
   assert.match(response.headers.get("X-Robots-Tag") || "", /noindex/);
+  assert.match(response.headers.get("Content-Security-Policy") || "", /script-src 'self';/);
+  assert.match(response.headers.get("Content-Security-Policy") || "", /frame-ancestors 'none'/);
   assert.equal(assets.calls.length, 1);
   assert.equal(assets.calls[0], request);
   assert.equal(api.calls.length, 0);

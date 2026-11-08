@@ -22,6 +22,12 @@ function withSecurityHeaders(response) {
   if (!headers.has("X-Robots-Tag")) {
     headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   }
+  if (!headers.has("Content-Security-Policy")) {
+    headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    );
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

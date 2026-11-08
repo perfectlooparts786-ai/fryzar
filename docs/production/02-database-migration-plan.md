@@ -25,10 +25,10 @@
 
 | Legacy `fryzar-production` Table / Column | Target `fryzar-core` Table / Column | Reconciliation Action |
 | --- | --- | --- |
-| `categories.active` (`INTEGER`) | `categories.is_active` (`INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))`) | Mapped deterministically in `scripts/migrate-legacy-production-catalogue.cjs` (`legacyTruthyFlag(cat.active, 1)`). |
-| `products.active` (`INTEGER`), `products.featured` (`INTEGER`), `products.compare_at_paisa` (`INTEGER`) | `products.is_active`, `products.is_featured`, `products.compare_at_paisa` | Mapped deterministically in `scripts/migrate-legacy-production-catalogue.cjs` (`is_active`, `is_featured`, `compare_at_paisa` preserved on insert and `ON CONFLICT(slug) DO UPDATE`). |
-| `products.stock_qty` (`INTEGER`) | `products.stock_quantity`, `products.track_inventory = 1`, `inventory_adjustments`, `inventory_movements` | Opening stock imported atomically with matching `inventory_adjustments` (`reason_code = 'legacy_production_import'`) and `inventory_movements` (`movement_type = 'legacy_import'`) so stock invariants hold (`SUM(delta) == stock_quantity`). |
-| `payment_records` (0 rows in live DB) | `payments` + `payment_proofs` + `financial_ledger` | `payment_records` has `0` live rows in `fryzar-production`; no historical payment migration required. Target uses `payments` + double-entry `financial_ledger`. |
+| `categories.active` (`INTEGER`) | `categories.is_active` (`INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))`) | Mapped deterministically in `scripts/migrate-legacy-production-catalogue.cjs` (`is_active` preserved on insert and `ON CONFLICT(slug) DO UPDATE`). |
+| `products.is_available` / `active`, `products.featured`, `products.compare_at_paisa` | `products.is_available`, `products.is_featured`, `products.compare_at_paisa`, `products.is_archived = 0` | Mapped deterministically in `scripts/migrate-legacy-production-catalogue.cjs` (`is_available`, `is_featured`, `compare_at_paisa` preserved on insert and `ON CONFLICT(slug) DO UPDATE`). |
+| `products.stock_qty` (`INTEGER`) | `products.stock_qty`, `inventory_adjustments`, `inventory_movements`, `audit_logs` | Opening stock imported atomically with deterministic `INSERT OR IGNORE` rows in `inventory_adjustments` (`reason = 'stock_received'`), `inventory_movements` (`reference_type = 'legacy_migration'`), and `audit_logs`. |
+| `payment_records` (0 rows in live DB) | `payments` + `payment_proofs` + `financial_ledger` | `payment_records` has `0` live rows in `fryzar-production`; no historical payment migration required. Target uses `payments` + immutable `financial_ledger`. |
 | `order_status_history` (0 rows in live DB) | `order_status_events` | `order_status_history` has `0` live rows (`orders` = `0`); target uses `order_status_events` with actor attribution and public timeline projection. |
 
 ### 2.2 Live Catalogue Records Verified in `fryzar-production`
@@ -54,8 +54,8 @@
 
 **Why `fryzar-core` is the lowest-risk target:**
 1. `fryzar-api` in production is already bound to `fryzar-core` (`098238a6-1bda-4735-8f21-d925c7fe32de`).
-2. `fryzar-core` already tracks Cloudflare `d1_migrations` cleanly (`0001_foundation_schema.sql` through `0004_operational_controls.sql` applied).
-3. Applying forward migrations `0005` through `0009` brings `fryzar-core` to exact parity (`47` tables, `39` indexes, `2` triggers) with `fryzar-preview`.
+2. `fryzar-core` already tracks Cloudflare `d1_migrations` cleanly (`0001_core.sql` through `0004_inventory_adjustments.sql` applied).
+3. Applying forward migrations `0005_operational_retention.sql` through `0009_platform_completion.sql` brings `fryzar-core` to exact parity (`47` tables, `39` indexes, `2` triggers) with `fryzar-preview`.
 4. Keeping `fryzar-production` untouched guarantees instant zero-data-loss rollback if legacy `fryzar-app` / `fryzar-admin` Workers ever need to be restored.
 
 ---
@@ -64,15 +64,15 @@
 
 | Order | Migration File | Status on `fryzar-core` | Scope |
 | ---: | --- | --- | --- |
-| 1 | `0001_foundation_schema.sql` | Applied | Categories, products, variants, delivery zones, orders, order items, order status events, payments, staff users/sessions, store settings, audit logs, idempotency keys |
-| 2 | `0002_checkout_idempotency_uniqueness.sql` | Applied | Unique constraint on `(scope, key)` for `idempotency_keys` |
-| 3 | `0003_auth_bootstrap_and_throttles.sql` | Applied | `bootstrap_claims`, `auth_rate_limits` |
-| 4 | `0004_operational_controls.sql` | Applied | Operational indexes, inventory adjustments/movements constraints |
-| 5 | `0005_rate_limits_and_retention.sql` | **Pending Cutover** | `request_rate_limits` + retention indexes for daily cron cleanup |
-| 6 | `0006_complete_platform_modules.sql` | **Pending Cutover** | Modifier groups/options, order item modifiers, coupons/redemptions, customers, kitchen queue, riders, delivery assignments, refunds, support tickets/messages, editorial posts, SEO settings, feature flags, ad zones/events |
-| 7 | `0007_customer_payment_proofs_and_editorial_seed.sql` | **Pending Cutover** | `payment_proofs`, bilingual editorial guide seeds, baseline store settings |
-| 8 | `0008_inventory_bom_and_finance.sql` | **Pending Cutover** | Ingredients, product recipes (BOM), suppliers, purchase orders/items, wastage logs, double-entry `financial_ledger`, settlement batches |
-| 9 | `0009_adsterra_monetization_hardening.sql` | **Pending Cutover** | Adsterra placement slots, safety policy settings (`adsterra_enabled = false`), prohibited format protections |
+| 1 | `0001_core.sql` | Applied | Categories, products, delivery zones, orders, order items, order status events, payments, payment proofs, staff users/sessions, store settings, audit logs, idempotency keys, API rate limits |
+| 2 | `0002_checkout_integrity.sql` | Applied | Unique payment/inventory movement constraints and `validate_order_item_product` stock/availability trigger |
+| 3 | `0003_admin_bootstrap.sql` | Applied | `bootstrap_claims` & `auth_login_attempts` |
+| 4 | `0004_inventory_adjustments.sql` | Applied | `inventory_adjustments` ledger table & operational indexes |
+| 5 | `0005_operational_retention.sql` | **Pending Cutover** | Retention cleanup indexes for sessions, login attempts, idempotency keys, and rate limits |
+| 6 | `0006_product_variants_modifiers.sql` | **Pending Cutover** | `product_variants`, `modifier_groups`, `modifier_options`, `product_modifier_groups`, `order_item_modifiers`, `coupons`, `coupon_redemptions` |
+| 7 | `0007_delivery_and_support.sql` | **Pending Cutover** | `riders`, `delivery_assignments`, `support_cases`, `support_messages`, `notifications` |
+| 8 | `0008_inventory_bom_and_finance.sql` | **Pending Cutover** | `ingredients`, `recipes`, `recipe_ingredients`, `recipe_consumptions`, `suppliers`, `purchase_orders`, `purchase_order_items`, `wastage_records`, `financial_ledger`, `refunds` |
+| 9 | `0009_platform_completion.sql` | **Pending Cutover** | Product archiving/featured/image metadata, `editorial_posts`, `monetization_settings` (`masterEnabled = false`), `ad_zones` (`is_enabled = 0`), `ad_performance_reports`, `ad_events`, `system_events`, SEO & policy defaults |
 
 ---
 
@@ -99,8 +99,8 @@ node scripts/migrate-legacy-production-catalogue.cjs --input backups/fryzar-prod
 ```
 Inspect `backups/import-catalogue-to-core.sql` and confirm:
 - `categories = 3`, `products = 4`, `total_stock = 215`
-- `is_active`, `is_featured`, and `compare_at_paisa` match legacy `active`, `featured`, and `compare_at_paisa`
-- Opening stock creates matching `inventory_adjustments` and `inventory_movements` rows and records `legacy_production_catalogue_import_v1` in `store_settings` so re-running is strictly blocked unless clean.
+- `is_available`, `is_featured`, and `compare_at_paisa` match legacy values
+- Opening stock creates deterministic `INSERT OR IGNORE` rows in `inventory_adjustments`, `inventory_movements`, and `audit_logs`.
 
 ### Step 5 — Execute Catalogue Import Against `fryzar-core` (Optional if Owner Chooses Legacy Seed vs. Fresh Menu)
 If the owner elects to carry forward the 3 categories and 4 products from `fryzar-production`:
@@ -110,13 +110,13 @@ npx.cmd wrangler d1 execute fryzar-core --remote --config apps/api/wrangler.prod
 
 ### Step 6 — Post-Migration Schema & Invariant Verification
 ```powershell
-npx.cmd wrangler d1 execute fryzar-core --remote --config apps/api/wrangler.production.toml --command "SELECT (SELECT COUNT(*) FROM sqlite_master WHERE type='table') AS tables, (SELECT COUNT(*) FROM d1_migrations) AS migrations, (SELECT value_json FROM store_settings WHERE setting_key='store_status') AS store_status, (SELECT value_json FROM store_settings WHERE setting_key='adsterra_enabled') AS adsterra_enabled;"
+npx.cmd wrangler d1 execute fryzar-core --remote --config apps/api/wrangler.production.toml --command "SELECT (SELECT COUNT(*) FROM sqlite_master WHERE type='table') AS tables, (SELECT COUNT(*) FROM d1_migrations) AS migrations, (SELECT value_json FROM store_settings WHERE setting_key='store_status') AS store_status, (SELECT config_json FROM monetization_settings WHERE config_key='adsterra_config') AS adsterra_config;"
 ```
 Expected result:
 - `tables = 47`
 - `migrations = 9`
 - `store_status = "\"setup\""` (remains closed until owner completes launch checklist and triggers `POST /api/v1/admin/store/launch-gate`)
-- `adsterra_enabled = "false"`
+- `adsterra_config` contains `"masterEnabled":false`
 
 ---
 

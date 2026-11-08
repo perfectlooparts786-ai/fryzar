@@ -746,6 +746,7 @@ export function SuppliersPurchasesModule({ user }: { user: StaffUser }) {
   const [notice, setNotice] = useState("");
 
   const [supForm, setSupForm] = useState({ name: "", contact_name: "", phone: "", email: "", address: "" });
+  const [editingSupplierId, setEditingSupplierId] = useState<string>("");
   const [poSupplierId, setPoSupplierId] = useState("");
   const [poIngId, setPoIngId] = useState("");
   const [poQty, setPoQty] = useState("10");
@@ -774,9 +775,11 @@ export function SuppliersPurchasesModule({ user }: { user: StaffUser }) {
     e.preventDefault();
     setBusy(true); setError(""); setNotice("");
     try {
-      await adminApi.saveSupplier(supForm);
+      await adminApi.saveSupplier(supForm, editingSupplierId || undefined);
+      const updated = Boolean(editingSupplierId);
+      setEditingSupplierId("");
       setSupForm({ name: "", contact_name: "", phone: "", email: "", address: "" });
-      setNotice("Supplier added.");
+      setNotice(updated ? "Supplier updated." : "Supplier added.");
       await load();
     } catch (err) {
       setError(describeAdminError(err));
@@ -835,7 +838,7 @@ export function SuppliersPurchasesModule({ user }: { user: StaffUser }) {
       {canEdit ? (
         <div className="ops-split-grid">
           <form className="ops-card-padded" onSubmit={createSupplier}>
-            <h2>Add Supplier</h2>
+            <h2>{editingSupplierId ? "Edit Supplier" : "Add Supplier"}</h2>
             <div className="catalogue-form-grid">
               <label className="catalogue-field"><span>Supplier Name</span><input required value={supForm.name} onChange={(e) => setSupForm((c) => ({ ...c, name: e.target.value }))} /></label>
               <label className="catalogue-field"><span>Contact Person</span><input value={supForm.contact_name} onChange={(e) => setSupForm((c) => ({ ...c, contact_name: e.target.value }))} /></label>
@@ -843,7 +846,21 @@ export function SuppliersPurchasesModule({ user }: { user: StaffUser }) {
               <label className="catalogue-field"><span>Email</span><input type="email" value={supForm.email} onChange={(e) => setSupForm((c) => ({ ...c, email: e.target.value }))} /></label>
               <label className="catalogue-field catalogue-wide"><span>Address</span><input value={supForm.address} onChange={(e) => setSupForm((c) => ({ ...c, address: e.target.value }))} /></label>
             </div>
-            <div className="catalogue-actions"><button type="submit" disabled={busy}>Save Supplier</button></div>
+            <div className="catalogue-actions">
+              <button type="submit" disabled={busy}>{editingSupplierId ? "Update Supplier" : "Save Supplier"}</button>
+              {editingSupplierId ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setEditingSupplierId("");
+                    setSupForm({ name: "", contact_name: "", phone: "", email: "", address: "" });
+                  }}
+                >
+                  Cancel
+                </button>
+              ) : null}
+            </div>
           </form>
 
           <form className="ops-card-padded" onSubmit={submitPo}>
@@ -908,7 +925,7 @@ export function SuppliersPurchasesModule({ user }: { user: StaffUser }) {
         {suppliers.length === 0 ? <p className="orders-footnote">No suppliers added yet.</p> : (
           <div className="table-wrap">
             <table className="orders-table">
-              <thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Address</th></tr></thead>
+              <thead><tr><th>Supplier</th><th>Contact</th><th>Phone</th><th>Email</th><th>Address</th>{canEdit ? <th>Action</th> : null}</tr></thead>
               <tbody>
                 {suppliers.map((s) => (
                   <tr key={s.id}>
@@ -917,6 +934,26 @@ export function SuppliersPurchasesModule({ user }: { user: StaffUser }) {
                     <td>{s.phone || "—"}</td>
                     <td>{s.email || "—"}</td>
                     <td>{s.address || "—"}</td>
+                    {canEdit ? (
+                      <td>
+                        <button
+                          type="button"
+                          className="refresh-button"
+                          onClick={() => {
+                            setEditingSupplierId(s.id);
+                            setSupForm({
+                              name: s.name,
+                              contact_name: s.contact_name || "",
+                              phone: s.phone || "",
+                              email: s.email || "",
+                              address: s.address || ""
+                            });
+                          }}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -1082,12 +1119,43 @@ export function RefundsModule({ user }: { user: StaffUser }) {
   async function load() {
     setLoading(true); setError("");
     try {
-      const [rRes, oRes] = await Promise.all([
-        adminApi.refunds(),
-        adminApi.orders("")
-      ]);
-      setRefunds(rRes.refunds);
-      setOrders(oRes.orders);
+      if (user.role === "finance") {
+        const [rRes, pRes] = await Promise.all([
+          adminApi.refunds(),
+          adminApi.allPayments()
+        ]);
+        setRefunds(rRes.refunds);
+        const seen = new Set<string>();
+        const financeOrders: AdminOrder[] = [];
+        for (const p of pRes.payments) {
+          if (seen.has(p.order_id)) continue;
+          seen.add(p.order_id);
+          financeOrders.push({
+            id: p.order_id,
+            order_number: p.order_number,
+            status: p.order_status,
+            payment_method: p.method,
+            payment_status: p.payment_status,
+            customer_name: null,
+            customer_phone: null,
+            delivery_address: null,
+            delivery_area: null,
+            subtotal_paisa: p.amount_paisa,
+            delivery_fee_paisa: 0,
+            total_paisa: p.amount_paisa,
+            customer_language: "en",
+            created_at: p.created_at
+          });
+        }
+        setOrders(financeOrders);
+      } else {
+        const [rRes, oRes] = await Promise.all([
+          adminApi.refunds(),
+          adminApi.orders("")
+        ]);
+        setRefunds(rRes.refunds);
+        setOrders(oRes.orders);
+      }
     } catch (err) {
       setError(describeAdminError(err));
     } finally { setLoading(false); }

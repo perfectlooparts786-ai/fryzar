@@ -373,8 +373,10 @@ function productDescription(product: Product, language: Language): string {
 
 function errorText(
   error: unknown,
-  t: Pick<CopyText, "storeClosed" | "zoneUnavailable" | "notAvailable" | "genericError">
+  t: Pick<CopyText, "storeClosed" | "zoneUnavailable" | "notAvailable" | "genericError">,
+  language: Language = "en"
 ): string {
+  const ur = language === "ur";
   if (error instanceof ApiError) {
     switch (error.code) {
       case "store_not_accepting_orders":
@@ -385,6 +387,20 @@ function errorText(
       case "insufficient_stock":
       case "product_or_stock_changed":
         return t.notAvailable;
+      case "minimum_order_not_met":
+        return ur ? "کم از کم آرڈر کی شرط پوری نہیں ہوئی۔" : "Minimum order requirement for your delivery zone is not met.";
+      case "coupon_invalid_or_expired":
+        return ur ? "کوپن غیر فعال یا معیاد ختم ہو چکی ہے۔" : "The applied coupon code is no longer valid or met its usage limit.";
+      case "modifier_selection_invalid":
+      case "modifier_not_linked_to_product":
+        return ur ? "منتخب اضافی اختیارات درست نہیں ہیں۔ براہ کرم دوبارہ منتخب کریں۔" : "Selected product add-ons are no longer valid. Please re-add the item.";
+      case "idempotency_key_reused":
+      case "request_already_processing":
+        return ur ? "یہ آرڈر پہلے ہی عمل میں ہے۔ براہ کرم چند لمحے انتظار کریں۔" : "This order request is already being processed. Please wait a moment.";
+      case "rate_limit_exceeded":
+        return ur ? "بہت زیادہ درخواستیں بھیجی گئیں۔ براہ کرم ایک منٹ بعد کوشش کریں۔" : "Too many attempts. Please wait a moment and try again.";
+      case "validation_failed":
+        return ur ? "براہ کرم نام، فون نمبر اور مکمل پتہ درست درج کریں۔" : "Please verify your name, phone number, and complete delivery address.";
       default:
         return t.genericError;
     }
@@ -876,6 +892,42 @@ export default function App() {
   const minimumOrder = selectedZone?.minimum_order_paisa ?? 0;
   const minimumMet = subtotal >= minimumOrder;
 
+  useEffect(() => {
+    const activeCode = appliedCoupon?.code;
+    if (!activeCode || subtotal <= 0) return;
+    let cancelled = false;
+    void api.validateCoupon(activeCode, subtotal)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.valid) {
+          setAppliedCoupon((prev) =>
+            prev && prev.code === activeCode && prev.discount_paisa !== res.discount_paisa
+              ? { code: activeCode, discount_paisa: res.discount_paisa }
+              : prev
+          );
+        } else {
+          setAppliedCoupon(null);
+          setCouponError(
+            language === "ur"
+              ? "ٹوکری میں تبدیلی کے باعث کوپن ہٹا دیا گیا ہے۔"
+              : "Coupon removed because the updated basket no longer meets its requirements."
+          );
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAppliedCoupon(null);
+        setCouponError(
+          language === "ur"
+            ? "ٹوکری میں تبدیلی کے باعث کوپن ہٹا دیا گیا ہے۔"
+            : "Coupon removed because the updated basket no longer meets its requirements."
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [subtotal, appliedCoupon?.code, language]);
+
   function toggleOptionMap(
     setter: React.Dispatch<React.SetStateAction<Record<string, string[]>>>,
     groupId: string,
@@ -1050,7 +1102,7 @@ export default function App() {
         navigate("/order-confirmation");
       }
     } catch (error) {
-      setCheckoutError(errorText(error, t));
+      setCheckoutError(errorText(error, t, language));
     } finally {
       setSubmitting(false);
     }
@@ -1718,7 +1770,7 @@ export default function App() {
                   <article className="promo-card" key={promo.id}>
                     <div>
                       <span className="promo-badge">
-                        {promo.discount_type === "percentage"
+                        {promo.discount_type === "percentage" || (promo.discount_type as string) === "percent"
                           ? `${promo.discount_value}% OFF`
                           : `${money(promo.discount_value, language)} OFF`}
                       </span>
@@ -2779,6 +2831,12 @@ export default function App() {
                 </div>
                 <div className="drawer-summary">
                   <div><span>{t.subtotal}</span><strong>{money(subtotal, language)}</strong></div>
+                  {appliedCoupon ? (
+                    <div style={{ color: "var(--forest)" }}>
+                      <span>{isUrdu ? `رعایت (${appliedCoupon.code})` : `Discount (${appliedCoupon.code})`}</span>
+                      <strong>-{money(discountPaisa, language)}</strong>
+                    </div>
+                  ) : null}
                   <div><span>{t.delivery}</span><strong>{selectedZone ? money(deliveryFee, language) : "—"}</strong></div>
                   <div className="summary-total"><span>{t.estimatedTotal}</span><strong>{money(total, language)}</strong></div>
                   <small>{t.estimateNote}</small>

@@ -175,7 +175,9 @@ async function main() {
     throw new Error("API Wrangler config or integration fixture is missing");
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fryzar-checkout-d1-"));
+  const tempBase = path.join(root, ".tmp");
+  if (!fs.existsSync(tempBase)) fs.mkdirSync(tempBase, { recursive: true });
+  const tempRoot = fs.mkdtempSync(path.join(tempBase, "fryzar-checkout-d1-"));
   const persistTo = path.join(tempRoot, "d1-state");
   const envFile = path.join(tempRoot, ".dev.vars");
   fs.mkdirSync(persistTo);
@@ -201,11 +203,13 @@ async function main() {
 
     const port = await findFreePort();
     const baseUrl = "http://127.0.0.1:" + port;
+    const relEnvFile = path.relative(root, envFile).replace(/\\/g, "/");
     server = spawn(process.execPath, [
       wrangler, "dev",
       "--config", config,
       "--persist-to", persistTo,
-      "--env-file", envFile,
+      "--env-file", relEnvFile,
+      "--var", "TRACKING_SECRET:" + testSecret,
       "--compatibility-date", "2026-10-30",
       "--ip", "127.0.0.1",
       "--port", String(port),
@@ -297,13 +301,17 @@ async function main() {
     );
   } finally {
     if (server && server.exitCode === null) {
-      server.kill("SIGTERM");
+      if (process.platform === "win32" && server.pid) {
+        try { execFileSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { stdio: "ignore" }); } catch {}
+      } else {
+        server.kill("SIGTERM");
+      }
       await Promise.race([
         new Promise((resolve) => server.once("exit", resolve)),
         new Promise((resolve) => setTimeout(resolve, 5000))
       ]);
     }
-    fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    try { fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch {}
   }
 }
 

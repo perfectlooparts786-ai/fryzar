@@ -87,9 +87,9 @@ export const api = {
 
   promotions: async (signal?: AbortSignal): Promise<{ promotions: PublicPromotion[] }> => {
     try {
-      const raw = await getJson<{ coupons?: Record<string, unknown>[]; promotions?: PublicPromotion[] }>("/promotions", signal);
-      if (Array.isArray(raw.promotions)) return { promotions: raw.promotions };
-      const mapped: PublicPromotion[] = (raw.coupons ?? []).map((c) => ({
+      const raw = await getJson<{ coupons?: Record<string, unknown>[]; promotions?: Record<string, unknown>[] }>("/promotions", signal);
+      const source = Array.isArray(raw.promotions) ? raw.promotions : (raw.coupons ?? []);
+      const mapped: PublicPromotion[] = source.map((c) => ({
         id: String(c.id ?? ""),
         code: String(c.code ?? ""),
         description_en: String(c.description_en ?? ""),
@@ -98,7 +98,7 @@ export const api = {
         discount_value: Number(c.discount_value ?? 0),
         min_order_paisa: Number(c.min_order_paisa ?? 0),
         max_discount_paisa: c.max_discount_paisa == null ? null : Number(c.max_discount_paisa),
-        valid_until: typeof c.expires_at === "string" ? c.expires_at : null
+        valid_until: typeof c.valid_until === "string" ? c.valid_until : (typeof c.expires_at === "string" ? c.expires_at : null)
       }));
       return { promotions: mapped };
     } catch {

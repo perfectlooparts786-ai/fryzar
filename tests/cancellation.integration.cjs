@@ -164,7 +164,9 @@ async function main() {
   if (!fs.existsSync(wrangler) || !fs.existsSync(config)) {
     throw new Error("Local Wrangler/config missing; refusing to use any remote D1.");
   }
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fryzar-cancel-d1-"));
+  const tempBase = path.join(root, ".tmp");
+  if (!fs.existsSync(tempBase)) fs.mkdirSync(tempBase, { recursive: true });
+  const tempRoot = fs.mkdtempSync(path.join(tempBase, "fryzar-cancel-d1-"));
   const persistTo = path.join(tempRoot, "state");
   const envFile = path.join(tempRoot, ".dev.vars");
   const fixture = path.join(tempRoot, "cancellation-fixture.sql");
@@ -189,7 +191,8 @@ async function main() {
 
     const port = await findFreePort();
     const baseUrl = "http://127.0.0.1:" + port;
-    server = spawn(process.execPath,[wrangler,"dev","--local","--config",config,"--persist-to",persistTo,"--env-file",envFile,"--compatibility-date","2026-10-30","--ip","127.0.0.1","--port",String(port),"--log-level","error"],{
+    const relEnvFile = path.relative(root, envFile).replace(/\\/g, "/");
+    server = spawn(process.execPath,[wrangler,"dev","--local","--config",config,"--persist-to",persistTo,"--env-file",relEnvFile,"--var","TRACKING_SECRET:local-only-synthetic-test-secret-32-bytes-minimum","--compatibility-date","2026-10-30","--ip","127.0.0.1","--port",String(port),"--log-level","error"],{
       cwd:root,env:{...process.env,PATH:workerdBin+";"+(process.env.PATH||""),CI:"true"},stdio:["ignore","pipe","pipe"]
     });
     server.stdout.on("data",append);
@@ -262,11 +265,15 @@ async function main() {
 
     process.stdout.write("Local Wrangler D1 cancellation integration passed: concurrent winner, exactly-once stock/movement, status/audit consistency, invalid/repeated transitions, and atomic rollback.\n");
   } finally {
-    if (server && server.exitCode===null) {
-      server.kill("SIGTERM");
+    if (server && server.exitCode === null) {
+      if (process.platform === "win32" && server.pid) {
+        try { execFileSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], { stdio: "ignore" }); } catch {}
+      } else {
+        server.kill("SIGTERM");
+      }
       await Promise.race([new Promise(resolve=>server.once("exit",resolve)),new Promise(resolve=>setTimeout(resolve,5000))]);
     }
-    fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    try { fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch {}
   }
 }
 

@@ -87,7 +87,9 @@ function freePort() {
 }
 
 async function createLocalD1(options = {}) {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fryzar-local-d1-"));
+  const tempBase = path.join(ROOT, ".tmp");
+  if (!fs.existsSync(tempBase)) fs.mkdirSync(tempBase, { recursive: true });
+  const tempRoot = fs.mkdtempSync(path.join(tempBase, "fryzar-local-d1-"));
   const persistTo = path.join(tempRoot, "state");
   fs.mkdirSync(persistTo);
   const envFile = path.join(tempRoot, ".dev.vars");
@@ -130,7 +132,11 @@ async function createLocalD1(options = {}) {
     },
     async startWorker() {
       const port = await freePort();
-      const args = [WRANGLER, "dev", "--local", "--config", CONFIG, "--persist-to", persistTo, "--env-file", envFile, "--compatibility-date", "2026-10-30", "--ip", "127.0.0.1", "--port", String(port), "--log-level", options.logLevel || "error"];
+      const relEnvFile = path.relative(ROOT, envFile).replace(/\\/g, "/");
+      const args = [WRANGLER, "dev", "--local", "--config", CONFIG, "--persist-to", persistTo, "--env-file", relEnvFile, "--compatibility-date", "2026-10-30", "--ip", "127.0.0.1", "--port", String(port), "--log-level", options.logLevel || "error"];
+      for (const [key, value] of Object.entries(vars)) {
+        args.push("--var", `${key}:${value}`);
+      }
       if (options.testScheduled) args.push("--test-scheduled");
       this.server = spawn(process.execPath, args, {
         cwd: ROOT,

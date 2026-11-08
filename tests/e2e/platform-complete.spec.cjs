@@ -457,4 +457,130 @@ test.describe("FRYZAR 27-module Owner Control Center & Adsterra Emergency Kill S
     await expect(page.getByRole("heading", { name: "System Health & Diagnostics" })).toBeVisible();
     await expect(page.getByText("0009_platform_completion.sql")).toHaveCount(2);
   });
+
+  test("Finance and Support roles have clean RBAC navigation with zero 403 alerts and Admin has noindex meta", async ({ page }) => {
+    let ordersEndpointCalled = false;
+    await page.route("**/api/v1/**", async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      const respond = (body, status = 200) =>
+        route.fulfill({ status, contentType: "application/json; charset=utf-8", body: JSON.stringify(body) });
+
+      if (url.pathname === "/api/v1/admin/session") {
+        return respond({
+          authenticated: true,
+          user: { id: "fin-1", email: "finance@fryzar.pk", display_name: "FRYZAR Finance", role: "finance" }
+        });
+      }
+      if (url.pathname === "/api/v1/health") return respond({ ok: true, database: "ready", schema: "ready" });
+      if (url.pathname === "/api/v1/storefront-config") {
+        return respond({ settings: { store_status: "setup", launch_ready: false, cod_enabled: true } });
+      }
+      if (url.pathname === "/api/v1/admin/overview") {
+        return respond({
+          overview: {
+            total_orders: 1, new_orders: 1, pending_orders: 0, confirmed_orders: 0, preparing_orders: 0,
+            ready_orders: 0, out_for_delivery_orders: 0, delivered_orders: 1, cancelled_orders: 0,
+            gross_order_value_paisa: 125000, delivered_revenue_paisa: 125000, pending_payments_paisa: 0,
+            collected_cod_paisa: 125000, refund_totals_paisa: 0, active_products: 4, out_of_stock_products: 0,
+            low_stock_products: 0, archived_products: 0, active_categories: 3, active_delivery_zones: 1, open_support_cases: 0
+          },
+          low_stock_alerts: { products: [], ingredients: [] },
+          recent_activity: [],
+          operational_warnings: []
+        });
+      }
+      if (url.pathname === "/api/v1/admin/orders") {
+        ordersEndpointCalled = true;
+        return respond({ error: "insufficient_role" }, 403);
+      }
+      if (url.pathname === "/api/v1/admin/refunds") {
+        return respond({ refunds: [] });
+      }
+      if (url.pathname === "/api/v1/admin/payments/all") {
+        return respond({
+          payments: [
+            {
+              payment_id: "pay-1",
+              order_id: "11111111-1111-4111-8111-111111111111",
+              order_number: "FRZ-20261108-1001",
+              order_status: "delivered",
+              method: "cod",
+              payment_status: "collected",
+              amount_paisa: 125000,
+              created_at: "2026-11-08T00:00:00.000Z",
+              reviewed_at: "2026-11-08T01:00:00.000Z"
+            }
+          ],
+          proofs: []
+        });
+      }
+      if (url.pathname === "/api/v1/admin/coupons") {
+        return respond({
+          coupons: [
+            {
+              id: "coup-1", code: "SAVE15", discount_type: "percent", discount_value: 15,
+              min_order_paisa: 100000, max_discount_paisa: 30000, usage_limit: 50, used_count: 2,
+              start_at: null, expires_at: null, is_active: 1, created_at: "2026-11-08T00:00:00.000Z"
+            }
+          ]
+        });
+      }
+      if (url.pathname === "/api/v1/admin/coupon-redemptions") {
+        return respond({ redemptions: [] });
+      }
+      return respond({});
+    });
+
+    await page.goto("http://127.0.0.1:5174");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    await expect(page.locator("nav.side-nav").getByRole("button", { name: "2. Live Orders" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "16. Refunds" }).click();
+    await expect(page.getByRole("heading", { name: "Refunds & Adjustments" })).toBeVisible();
+    await expect(page.locator(".orders-alert")).toHaveCount(0);
+    await expect(page.locator("select option", { hasText: "FRZ-20261108-1001" })).toHaveCount(1);
+    expect(ordersEndpointCalled).toBe(false);
+
+    await page.getByRole("button", { name: "7. Promotions & Coupons" }).click();
+    await expect(page.locator(".orders-alert")).toHaveCount(0);
+    await expect(page.getByText("SAVE15")).toBeVisible();
+  });
+
+  test("Storefront /promotions renders percentage discounts accurately as % OFF", async ({ page }) => {
+    await setupRichStorefrontApi(page);
+    await page.route("**/api/v1/promotions", async (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          promotions: [
+            {
+              id: "promo-pct",
+              code: "CRISP15",
+              discount_type: "percent",
+              discount_value: 15,
+              min_order_paisa: 100000,
+              max_discount_paisa: 25000,
+              expires_at: null
+            },
+            {
+              id: "promo-fix",
+              code: "FLAT200",
+              discount_type: "fixed",
+              discount_value: 20000,
+              min_order_paisa: 150000,
+              max_discount_paisa: null,
+              expires_at: null
+            }
+          ]
+        })
+      });
+    });
+
+    await page.goto("http://127.0.0.1:5173/promotions");
+    await expect(page.getByText("15% OFF")).toBeVisible();
+    await expect(page.getByText("CRISP15").first()).toBeVisible();
+    await expect(page.getByText("FLAT200").first()).toBeVisible();
+  });
 });

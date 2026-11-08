@@ -19,6 +19,12 @@ function withSecurityHeaders(response) {
   if (!headers.has("Permissions-Policy")) {
     headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   }
+  if (!headers.has("Content-Security-Policy")) {
+    headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' https: data: blob:; connect-src 'self' https:; frame-src https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    );
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
