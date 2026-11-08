@@ -945,3 +945,160 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   line-height: 1.6;
 }
 
+/* ============================================================================
+   UI/UX POLISH, ACCESSIBILITY, MOBILE TOUCH TARGETS & URDU RTL ENHANCEMENTS
+   ============================================================================ */
+
+/* Touch Target Minimum Sizing (WCAG 2.5.5 / 2.5.8) */
+.quantity-control button {
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.language-switch, .mobile-menu-toggle {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.category-chip {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+}
+.product-footer button {
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 11px;
+}
+
+/* Urdu Typography & Line-Height Polishing */
+[dir="rtl"] {
+  font-family: "Noto Nastaliq Urdu", "DM Sans", system-ui, sans-serif;
+  text-align: right;
+}
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3, [dir="rtl"] h4 {
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+[dir="rtl"] p, [dir="rtl"] small, [dir="rtl"] span, [dir="rtl"] label {
+  line-height: 1.85;
+}
+[dir="rtl"] .hero-copy h1 {
+  font-size: clamp(34px, 4.2vw, 56px);
+  line-height: 1.35;
+}
+[dir="rtl"] .drawer-header, [dir="rtl"] .section-heading, [dir="rtl"] .welcome-row {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .site-header {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .header-actions {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .desktop-nav {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .product-footer {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .tracking-result-head {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .checkout-summary > div, [dir="rtl"] .drawer-summary > div {
+  flex-direction: row-reverse;
+}
+[dir="rtl"] .drawer-item {
+  direction: rtl;
+  text-align: right;
+  grid-template-columns: auto 1fr 58px;
+}
+[dir="rtl"] .drawer-item-art {
+  grid-column: 3;
+}
+[dir="rtl"] .drawer-item-copy {
+  grid-column: 2;
+}
+[dir="rtl"] .drawer-line-total {
+  grid-column: 1;
+  text-align: left;
+}
+[dir="rtl"] .tracking-timeline li::before {
+  left: auto;
+  right: calc(-50% - 3px);
+}
+[dir="rtl"] .tracking-timeline li:first-child::before {
+  display: none;
+}
+[dir="rtl"] .policy-prose ul {
+  padding-inline-start: 0;
+  padding-inline-end: 20px;
+}
+
+/* Focus Visibility & Accessibility High-Contrast Rings */
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid var(--forest);
+  outline-offset: 2px;
+}
+
+/* Mobile Layout Safeguards (360px - 430px) */
+@media (max-width: 480px) {
+  .hero-section {
+    padding: 36px 16px 42px;
+  }
+  .hero-copy h1 {
+    font-size: clamp(32px, 8.5vw, 42px);
+    line-height: 1.15;
+  }
+  .page-container {
+    padding: 20px 14px 48px;
+  }
+  .site-header {
+    height: 64px;
+    padding: 0 14px;
+  }
+  .product-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .product-image {
+    height: 200px;
+  }
+  .product-info h3 {
+    font-size: 14px;
+  }
+  .product-info p {
+    font-size: 11px;
+  }
+  .drawer, .checkout-panel {
+    padding: 18px 14px;
+  }
+  .standalone-product-layout {
+    padding: 16px;
+    gap: 18px;
+  }
+  .standalone-product-media {
+    min-height: 200px;
+  }
+  .tracking-meta {
+    grid-template-columns: 1fr;
+  }
+  .tracking-timeline {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 14px;
+  }
+  .zones-table th, .zones-table td {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+}
+
+

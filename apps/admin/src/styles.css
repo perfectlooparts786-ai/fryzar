@@ -511,3 +511,59 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .receipt-sheet { border: 0 !important; padding: 0 !important; }
 }
 
+/* ============================================================================
+   ADMIN OPERATIONS UX POLISH & ACCESSIBILITY EXTENSIONS
+   ============================================================================ */
+
+/* High-contrast focus rings for keyboard navigation (WCAG 2.4.7) */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--forest);
+  outline-offset: 2px;
+}
+
+/* Touch targets & button sizing on tablets & mobiles */
+.side-nav button {
+  min-height: 44px;
+}
+.refresh-button, .secondary-button, .primary-button, .danger-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Responsive Table Wrapper with Horizontal Scroll Hints */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 8px;
+}
+
+@media (max-width: 768px) {
+  .topbar {
+    min-height: 60px;
+    padding: 0 16px;
+  }
+  .page-content {
+    padding: 20px 14px 32px;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .stat-card {
+    min-height: 120px;
+    padding: 12px;
+  }
+  .stat-card > strong {
+    font-size: 20px;
+  }
+  .orders-table th, .orders-table td {
+    padding: 8px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+}
+
+
